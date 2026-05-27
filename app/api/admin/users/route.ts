@@ -95,3 +95,74 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+export async function POST(req: NextRequest) {
+  const authErr = requireAdminApi(req);
+  if (authErr) return authErr;
+
+  const supabase = await getAdminSupabase();
+  if (!supabase) return NextResponse.json({ error: "Supabase not configured" }, { status: 503 });
+
+  try {
+    const { email, password, fullName, whatsapp, platform, niche, plan } = await req.json();
+
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
+    }
+    if (password.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    }
+
+    // 1. Create auth user via Supabase Admin
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true, // Auto-confirm email (no verification needed)
+      user_metadata: { full_name: fullName || "" },
+    });
+
+    if (authError) {
+      return NextResponse.json({ error: authError.message }, { status: 400 });
+    }
+
+    const userId = authData.user.id;
+
+    // 2. Create user profile
+    await supabase.from("user_profiles").upsert({
+      id: userId,
+      full_name: fullName || "",
+      whatsapp: whatsapp || "",
+      platform: platform || "",
+      niche: niche || "",
+      status: "active",
+      api_keys_set: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+
+    // 3. Create subscription record
+    if (plan && plan !== "free") {
+      await supabase.from("user_subscriptions").upsert({
+        user_id: userId,
+        plan_type: plan,
+        status: "active",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: userId,
+        email,
+        name: fullName || "",
+        plan: plan || "free",
+      },
+    });
+  } catch (e: any) {
+    console.error("[/api/admin/users POST]", e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
