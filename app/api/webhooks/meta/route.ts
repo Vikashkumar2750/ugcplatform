@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
 
 // Supabase service role client (bypasses RLS)
 function getServiceClient() {
-  return createServiceClient(
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function processWebhookEvent(
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: any,
   event: {
     platform: string;
     eventType: string;
@@ -99,7 +99,7 @@ async function processWebhookEvent(
 }
 
 async function processMessagingEvent(
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: any,
   messaging: any,
   pageId: string
 ) {
@@ -210,7 +210,7 @@ async function sendAutomatedReply(
 }
 
 async function processCommentEvent(
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: any,
   payload: any,
   webhookEventId?: string
 ) {
@@ -258,7 +258,7 @@ async function processCommentEvent(
 }
 
 async function processMentionEvent(
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: any,
   payload: any,
   webhookEventId?: string
 ) {
