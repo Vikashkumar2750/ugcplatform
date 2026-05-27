@@ -1,0 +1,23 @@
+{
+  "name": "contentiq-worker",
+  "version": "1.0.0",
+  "description": "ContentIQ Background Worker — runs on Render",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "node-cron": "^3.0.3",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.19",
+    "@types/node-cron": "^3.0.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
