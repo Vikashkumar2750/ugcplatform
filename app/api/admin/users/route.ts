@@ -80,12 +80,20 @@ export async function PATCH(req: NextRequest) {
     if (!userId || !action) return NextResponse.json({ error: "userId and action required" }, { status: 400 });
 
     if (action === "set_status") {
-      await supabase.from("user_profiles").update({ status: value, updated_at: new Date().toISOString() }).eq("id", userId);
+      const { error: statusErr } = await supabase
+        .from("user_profiles")
+        .update({ status: value, updated_at: new Date().toISOString() })
+        .eq("id", userId);
+      if (statusErr) throw new Error(statusErr.message);
     } else if (action === "set_plan") {
-      await supabase.from("user_subscriptions").upsert({
-        user_id: userId, plan_type: value, status: "active",
-        updated_at: new Date().toISOString()
-      }, { onConflict: "user_id" });
+      const now = new Date().toISOString();
+      const { error: planErr } = await supabase
+        .from("user_subscriptions")
+        .upsert(
+          { user_id: userId, plan_type: value, status: "active", updated_at: now, created_at: now },
+          { onConflict: "user_id" }
+        );
+      if (planErr) throw new Error(planErr.message);
     } else {
       return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
