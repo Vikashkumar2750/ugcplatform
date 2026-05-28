@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 function getServiceClient() {
-  return createClient(
+  return createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
@@ -11,16 +10,13 @@ function getServiceClient() {
 
 async function getUserId(): Promise<string | null> {
   try {
-    const cookieStore = await cookies();
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { cookies: { getAll: () => cookieStore.getAll() } }
-    );
+    const { createClient } = await import("@/lib/supabase/server");
+    const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     return user?.id || null;
   } catch { return null; }
 }
+
 
 // GET — list automation rules for current user
 export async function GET(req: NextRequest) {
