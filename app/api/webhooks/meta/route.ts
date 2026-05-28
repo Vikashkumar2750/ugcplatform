@@ -216,25 +216,55 @@ async function processCommentEvent(
 ) {
   const commentText = payload?.text?.toLowerCase() || "";
   const commentId = payload?.id;
-  const mediaId = payload?.media?.id;
+  const mediaId = payload?.media?.id; // ID of the post that was commented on
 
-  // Find matching comment automation rules
+  // Fetch ALL active comment rules
   const { data: rules } = await supabase
     .from("automation_rules")
-    .select("*, connected_accounts(access_token, page_id)")
+    .select("*, platform_connections(access_token, platform_user_id)")
     .in("type", ["comment_reply", "comment_to_dm"])
     .eq("is_active", true);
 
   for (const rule of (rules || [])) {
+    // ── Media ID filter ───────────────────────────────────────────────
+    // If rule has a specific media_id, only trigger for that post
+    const ruleMediaId = rule.trigger_config?.media_id;
+    if (ruleMediaId && ruleMediaId !== mediaId) {
+      continue; // Skip — comment is not on the target post
+    }
+    // If ruleMediaId is null/undefined → global rule → applies to all posts ✓
+
+    // ── Keyword match ─────────────────────────────────────────────────
     const keywords: string[] = rule.trigger_config?.keywords || [];
-    const matched = keywords.length === 0 || keywords.some(k => commentText.includes(k.toLowerCase()));
+    const matchType: string = rule.trigger_config?.match_type || "any";
+    const matched = keywords.length === 0
+      ? true // No keywords = trigger on all comments
+      : matchType === "all"
+        ? keywords.every(k => commentText.includes(k.toLowerCase()))
+        : keywords.some(k => commentText.includes(k.toLowerCase()));
+
     if (!matched) continue;
 
-    const token = rule.connected_accounts?.access_token;
+    // ── Get access token ──────────────────────────────────────────────
+    // Try from joined platform_connections first, fallback to connected_accounts
+    let token = rule.platform_connections?.access_token;
+    let pageId = rule.platform_connections?.platform_user_id;
+
+    if (!token) {
+      // Fallback: look up via account_id
+      const { data: acc } = await supabase
+        .from("platform_connections")
+        .select("access_token, platform_user_id")
+        .eq("id", rule.account_id)
+        .single();
+      token = acc?.access_token;
+      pageId = acc?.platform_user_id;
+    }
+
     if (!token) continue;
 
+    // ── Perform action ────────────────────────────────────────────────
     if (rule.type === "comment_reply" && rule.action_config?.reply_text) {
-      // Reply to comment
       await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -246,12 +276,12 @@ async function processCommentEvent(
     }
 
     if (rule.type === "comment_to_dm" && payload?.from?.id) {
-      // Send DM to commenter
-      await sendAutomatedReply(token, payload.from.id, rule.action_config, rule.connected_accounts?.page_id);
+      await sendAutomatedReply(token, payload.from.id, rule.action_config, pageId);
     }
 
+    // Update trigger count
     await supabase.from("automation_rules").update({
-      trigger_count: rule.trigger_count + 1,
+      trigger_count: (rule.trigger_count || 0) + 1,
       last_triggered: new Date().toISOString(),
     }).eq("id", rule.id);
   }
