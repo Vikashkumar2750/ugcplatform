@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!;
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET!;
@@ -6,11 +6,11 @@ const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET!;
 const RAZORPAY_AUTH = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString("base64");
 
 // Plan IDs — create these in Razorpay Dashboard first
-// Monthly: plan_monthly_contentiq
-// Yearly:  plan_yearly_contentiq
+// Monthly: plan_monthly_Content Engineer
+// Yearly:  plan_yearly_Content Engineer
 const PLAN_IDS: Record<string, string> = {
-  monthly: process.env.RAZORPAY_PLAN_MONTHLY || "plan_monthly_contentiq",
-  yearly: process.env.RAZORPAY_PLAN_YEARLY || "plan_yearly_contentiq",
+  monthly: process.env.RAZORPAY_PLAN_MONTHLY || "plan_monthly_Content Engineer",
+  yearly: process.env.RAZORPAY_PLAN_YEARLY || "plan_yearly_Content Engineer",
 };
 
 // Prices for one-time lifetime payment (in paise)

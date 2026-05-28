@@ -1,6 +1,6 @@
-{
+﻿{
   "nav": {
-    "brand": "ContentIQ",
+    "brand": "Content Engineer",
     "signIn": "Sign In",
     "getAccess": "Get Access for ₹9"
   },
@@ -12,7 +12,7 @@
       "primary": "Get Instant Access for ₹9",
       "secondary": "View Sample Report"
     },
-    "social_proof": "2,400+ Indian creators already growing with ContentIQ"
+    "social_proof": "2,400+ Indian creators already growing with Content Engineer"
   },
   "how": {
     "title": "How It Works",

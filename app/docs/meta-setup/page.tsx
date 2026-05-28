@@ -95,7 +95,7 @@ export default function MetaSetupDocsPage() {
           </div>
           <h1 className="font-heading text-2xl font-bold">Meta App Setup Guide</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Complete step-by-step guide to create your Meta Developer App, configure permissions, and set up webhooks for ContentIQ.
+            Complete step-by-step guide to create your Meta Developer App, configure permissions, and set up webhooks for Content Engineer.
           </p>
         </div>
 
@@ -111,7 +111,7 @@ export default function MetaSetupDocsPage() {
               <p>Click <strong className="text-foreground">"Create App"</strong> → Select <strong className="text-foreground">"Business"</strong> as app type</p>
             </Step>
             <Step num={2} title="Fill in App Details">
-              <p><strong className="text-foreground">App Name:</strong> ContentIQ (or your branded name)</p>
+              <p><strong className="text-foreground">App Name:</strong> Content Engineer (or your branded name)</p>
               <p><strong className="text-foreground">App Contact Email:</strong> Your business email</p>
               <p><strong className="text-foreground">Business Account:</strong> Link your Facebook Business Manager</p>
             </Step>
@@ -290,7 +290,7 @@ export default function MetaSetupDocsPage() {
           <div className="space-y-5">
             <Step num={1} title="Create Google Cloud Project">
               <p>Visit <a href="https://console.cloud.google.com" target="_blank" rel="noopener" className="text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1">console.cloud.google.com <ExternalLink className="w-3 h-3" /></a></p>
-              <p>Create a new project → Name it "ContentIQ"</p>
+              <p>Create a new project → Name it "Content Engineer"</p>
             </Step>
             <Step num={2} title="Enable Required APIs">
               <p>Go to <strong className="text-foreground">APIs & Services → Library</strong> and enable:</p>

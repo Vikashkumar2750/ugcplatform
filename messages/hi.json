@@ -1,6 +1,6 @@
-{
+﻿{
   "nav": {
-    "brand": "ContentIQ",
+    "brand": "Content Engineer",
     "signIn": "Sign In",
     "getAccess": "₹9 mein shuru karo"
   },
@@ -12,7 +12,7 @@
       "primary": "₹9 mein access lo",
       "secondary": "Sample report dekho"
     },
-    "social_proof": "2,400+ Indian creators already growing with ContentIQ"
+    "social_proof": "2,400+ Indian creators already growing with Content Engineer"
   },
   "how": {
     "title": "Kaise kaam karta hai?",

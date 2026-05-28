@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { PublicHeader, PublicFooter } from "@/components/public-layout";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — ContentIQ",
-  description: "ContentIQ Terms of Service — rules and guidelines for using our platform.",
+  title: "Terms of Service — Content Engineer",
+  description: "Content Engineer Terms of Service — rules and guidelines for using our platform.",
 };
 
 export default function TermsPage() {
@@ -18,12 +18,12 @@ export default function TermsPage() {
           <div className="space-y-8 text-muted-foreground leading-relaxed text-sm">
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">1. Acceptance of Terms</h2>
-              <p>By accessing or using ContentIQ (&ldquo;the Service&rdquo;), you agree to these Terms of Service. If you do not agree, do not use the Service.</p>
+              <p>By accessing or using Content Engineer (&ldquo;the Service&rdquo;), you agree to these Terms of Service. If you do not agree, do not use the Service.</p>
             </section>
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">2. Service Description</h2>
-              <p>ContentIQ is a social media analytics and automation platform that:</p>
+              <p>Content Engineer is a social media analytics and automation platform that:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li>Analyzes social media profiles using official platform APIs and your own API keys</li>
                 <li>Generates content scripts and hooks using AI (using your own Anthropic API key)</li>
@@ -35,7 +35,7 @@ export default function TermsPage() {
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">3. Payment Terms</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>ContentIQ offers subscription plans processed via Razorpay</li>
+                <li>Content Engineer offers subscription plans processed via Razorpay</li>
                 <li>All prices are in Indian Rupees (INR) and inclusive of applicable taxes</li>
                 <li>Subscription fees are billed monthly or annually as per chosen plan</li>
                 <li>The subscription fee does not include third-party API costs (Anthropic, Apify) which are charged directly by those providers</li>
@@ -44,7 +44,7 @@ export default function TermsPage() {
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">4. Permitted Use</h2>
-              <p>You may use ContentIQ only for:</p>
+              <p>You may use Content Engineer only for:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li>Managing your own social media accounts</li>
                 <li>Analyzing social media profiles for legitimate competitive research</li>
@@ -54,7 +54,7 @@ export default function TermsPage() {
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">5. Prohibited Use</h2>
-              <p>You may NOT use ContentIQ to:</p>
+              <p>You may NOT use Content Engineer to:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li>Send spam, unsolicited messages, or misleading content</li>
                 <li>Violate Meta&apos;s, Google&apos;s, or any platform&apos;s Terms of Service</li>
@@ -66,7 +66,7 @@ export default function TermsPage() {
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">6. Platform API Compliance</h2>
-              <p>ContentIQ integrates with Meta (Instagram/Facebook) and Google (YouTube) APIs. You are responsible for ensuring your use of ContentIQ complies with the respective platform&apos;s terms:</p>
+              <p>Content Engineer integrates with Meta (Instagram/Facebook) and Google (YouTube) APIs. You are responsible for ensuring your use of Content Engineer complies with the respective platform&apos;s terms:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li><a href="https://developers.facebook.com/policy/" className="text-amber-600 dark:text-amber-400 hover:underline" target="_blank" rel="noopener">Meta Platform Terms</a></li>
                 <li><a href="https://developers.google.com/youtube/terms/api-services-terms-of-service" className="text-amber-600 dark:text-amber-400 hover:underline" target="_blank" rel="noopener">YouTube API Terms of Service</a></li>
@@ -75,12 +75,12 @@ export default function TermsPage() {
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">7. Disclaimer of Warranties</h2>
-              <p>ContentIQ is provided &ldquo;as is&rdquo; without warranty. We do not guarantee specific results, engagement rates, or follower growth. AI-generated content should be reviewed before publishing.</p>
+              <p>Content Engineer is provided &ldquo;as is&rdquo; without warranty. We do not guarantee specific results, engagement rates, or follower growth. AI-generated content should be reviewed before publishing.</p>
             </section>
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">8. Limitation of Liability</h2>
-              <p>ContentIQ shall not be liable for any indirect, incidental, or consequential damages arising from your use of the Service, including account suspensions by social media platforms.</p>
+              <p>Content Engineer shall not be liable for any indirect, incidental, or consequential damages arising from your use of the Service, including account suspensions by social media platforms.</p>
             </section>
 
             <section>

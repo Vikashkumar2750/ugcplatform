@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -67,7 +67,7 @@ function AdminSidebar() {
         </div>
         {!collapsed && (
           <div>
-            <span className="font-heading font-bold text-sm text-white">ContentIQ</span>
+            <span className="font-heading font-bold text-sm text-white">Content Engineer</span>
             <span className="block text-[10px] text-red-400 font-bold uppercase tracking-wider">
               Super Admin
             </span>

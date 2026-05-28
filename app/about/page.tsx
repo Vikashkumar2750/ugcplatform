@@ -1,10 +1,10 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { PublicHeader, PublicFooter } from "@/components/public-layout";
 import { Zap, Target, Users, Shield } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "About Us — ContentIQ by TechAasvik",
-  description: "Learn about ContentIQ — the AI-powered social media automation and analytics platform built by TechAasvik for Indian content creators.",
+  title: "About Us — Content Engineer by TechAasvik",
+  description: "Learn about Content Engineer — the AI-powered social media automation and analytics platform built by TechAasvik for Indian content creators.",
 };
 
 export default function AboutPage() {
@@ -20,10 +20,10 @@ export default function AboutPage() {
               <Zap className="w-3 h-3" /> Built for Indian Creators
             </div>
             <h1 className="font-heading text-4xl sm:text-5xl font-bold mb-4">
-              About <span className="text-gradient">ContentIQ</span>
+              About <span className="text-gradient">Content Engineer</span>
             </h1>
             <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mx-auto">
-              ContentIQ is an AI-powered social media analytics and automation platform built by <strong className="text-foreground">TechAasvik</strong> — helping Indian content creators and businesses grow smarter on Instagram, Facebook, and YouTube.
+              Content Engineer is an AI-powered social media analytics and automation platform built by <strong className="text-foreground">TechAasvik</strong> — helping Indian content creators and businesses grow smarter on Instagram, Facebook, and YouTube.
             </p>
           </div>
         </section>
@@ -75,7 +75,7 @@ export default function AboutPage() {
                 <strong className="text-foreground">TechAasvik</strong> is an India-based technology company focused on building practical SaaS tools for content creators and digital businesses. We believe in building tools that actually solve problems — not just add complexity.
               </p>
               <p>
-                ContentIQ was born from a simple observation: Indian creators spend hours manually responding to DMs, checking analytics, and planning content — time that could be spent creating. We built ContentIQ to automate the repetitive so you can focus on the creative.
+                Content Engineer was born from a simple observation: Indian creators spend hours manually responding to DMs, checking analytics, and planning content — time that could be spent creating. We built Content Engineer to automate the repetitive so you can focus on the creative.
               </p>
               <p>
                 All our products are built with a mobile-first, India-first mindset — optimized for the way Indian creators and businesses actually use the internet.
@@ -85,7 +85,7 @@ export default function AboutPage() {
             <div className="mt-8 p-6 rounded-2xl border border-amber-400/20 bg-amber-400/5">
               <p className="font-semibold text-sm mb-1">Get in Touch</p>
               <p className="text-muted-foreground text-sm">
-                Have questions about ContentIQ or want to partner with us?{" "}
+                Have questions about Content Engineer or want to partner with us?{" "}
                 <a href="mailto:contact@techaasvik.com" className="text-amber-600 dark:text-amber-400 hover:underline">contact@techaasvik.com</a>
               </p>
             </div>

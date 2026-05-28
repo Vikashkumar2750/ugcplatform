@@ -1,7 +1,7 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Pricing — ContentIQ",
+  title: "Pricing — Content Engineer",
   description: "Monthly, Yearly, aur Lifetime plans — India ka best content AI tool",
 };
 

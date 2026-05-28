@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { LifeBuoy, Plus, Send, CheckCircle2, Clock, MessageSquare, ChevronRight, Loader2 } from "lucide-react";
@@ -195,7 +195,7 @@ export default function SupportPage() {
                 <div key={m.id} className={`flex ${m.sender_role === "user" ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-xs sm:max-w-md rounded-2xl px-4 py-3 ${m.sender_role === "user" ? "btn-amber text-black" : "bg-muted text-foreground"}`}>
                     <p className="text-[10px] font-bold mb-1 opacity-60">
-                      {m.sender_role === "admin" ? "ContentIQ Support" : "You"} · {formatTime(m.created_at)}
+                      {m.sender_role === "admin" ? "Content Engineer Support" : "You"} · {formatTime(m.created_at)}
                     </p>
                     <p className="text-sm">{m.content}</p>
                   </div>

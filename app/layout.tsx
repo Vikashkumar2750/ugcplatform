@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Inter, Outfit } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
@@ -17,7 +17,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "ContentIQ — UGC Content Intelligence for Indian Creators",
+  title: "Content Engineer — UGC Content Intelligence for Indian Creators",
   description:
     "90 seconds mein jaano ki tumhara content kyun nahi grow kar raha. Profile audit, competitor analysis, trend research aur 7 ready-to-post scripts — sirf ₹9 mein.",
   keywords: [
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     "influencer marketing india",
   ],
   openGraph: {
-    title: "ContentIQ — UGC Content Intelligence for Indian Creators",
+    title: "Content Engineer — UGC Content Intelligence for Indian Creators",
     description: "AI-powered content strategy platform for Indian creators. ₹9 lifetime access.",
     type: "website",
   },

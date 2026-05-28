@@ -39,6 +39,16 @@ Privacy Policy URL:  https://contentengineer.techaasvik.in/privacy
 Terms of Service:    https://contentengineer.techaasvik.in/terms
 Category:            Business & Pages
 Sub-Category:        (leave blank)
+
+User Data Deletion:
+  → Dropdown mein select karo: "Data deletion callback URL"
+  → URL: https://contentengineer.techaasvik.in/api/webhooks/data-deletion
+```
+
+**App Icon:**
+```
+1024 x 1024 PNG upload karo
+(Transparent background allowed nahi)
 ```
 
 Click **"Save Changes"**
@@ -73,8 +83,9 @@ Deauthorize Callback URL:
   https://contentengineer.techaasvik.in/api/webhooks/deauthorize
 
 Data Deletion Request URL:
-  https://contentengineer.techaasvik.in/api/webhooks/meta/deletion
+  https://contentengineer.techaasvik.in/api/webhooks/data-deletion
 ```
+
 
 ### 3B — Add Instagram Testers
 
@@ -167,8 +178,9 @@ Deauthorize Callback URL:
   https://contentengineer.techaasvik.in/api/webhooks/deauthorize
 
 Data Deletion Request URL:
-  https://contentengineer.techaasvik.in/api/webhooks/meta/deletion
+  https://contentengineer.techaasvik.in/api/webhooks/data-deletion
 ```
+
 
 ---
 
@@ -320,6 +332,16 @@ App Domains:         contentengineer.techaasvik.in
 Privacy Policy URL:  https://contentengineer.techaasvik.in/privacy
 Terms of Service:    https://contentengineer.techaasvik.in/terms
 Category:            Business & Pages
+
+User Data Deletion:
+  → Dropdown mein select karo: "Data deletion callback URL"
+  → URL: https://contentengineer.techaasvik.in/api/webhooks/data-deletion
+```
+
+**App Icon:**
+```
+1024 x 1024 PNG upload karo
+(Transparent background allowed nahi)
 ```
 
 Click **"Save Changes"**
@@ -479,7 +501,7 @@ NEXT_PUBLIC_APP_URL=https://contentengineer.techaasvik.in
 | **Instagram OAuth Callback** | `https://contentengineer.techaasvik.in/api/connect/callback/instagram` |
 | **Facebook OAuth Callback** | `https://contentengineer.techaasvik.in/api/connect/callback/facebook` |
 | **Deauthorize Callback** | `https://contentengineer.techaasvik.in/api/webhooks/deauthorize` |
-| **Data Deletion URL** | `https://contentengineer.techaasvik.in/api/webhooks/meta/deletion` |
+| **Data Deletion URL** | `https://contentengineer.techaasvik.in/api/webhooks/data-deletion` |
 | **Privacy Policy** | `https://contentengineer.techaasvik.in/privacy` |
 | **Terms of Service** | `https://contentengineer.techaasvik.in/terms` |
 | **Local Dev Instagram** | `http://localhost:3000/api/connect/callback/instagram` |

@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { PublicHeader, PublicFooter } from "@/components/public-layout";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — ContentIQ",
-  description: "ContentIQ Privacy Policy — how we collect, use, and protect your data.",
+  title: "Privacy Policy — Content Engineer",
+  description: "Content Engineer Privacy Policy — how we collect, use, and protect your data.",
 };
 
 export default function PrivacyPage() {
@@ -18,7 +18,7 @@ export default function PrivacyPage() {
           <div className="space-y-8 text-muted-foreground leading-relaxed text-sm">
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">1. Information We Collect</h2>
-              <p>When you use ContentIQ, we collect:</p>
+              <p>When you use Content Engineer, we collect:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li><strong className="text-foreground">Account Information:</strong> Name, email address, WhatsApp number provided during registration.</li>
                 <li><strong className="text-foreground">Social Media Data:</strong> If you connect your social accounts via OAuth, we access your profile data, insights, and content as authorized by you.</li>
@@ -31,7 +31,7 @@ export default function PrivacyPage() {
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">2. How We Use Your Data</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>To provide, maintain, and improve the ContentIQ service</li>
+                <li>To provide, maintain, and improve the Content Engineer service</li>
                 <li>To analyze your social media profiles (with your explicit permission)</li>
                 <li>To automate DMs and comments on your behalf (only when you create automation rules)</li>
                 <li>To schedule and publish posts on your connected accounts</li>
@@ -41,7 +41,7 @@ export default function PrivacyPage() {
 
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">3. Meta Platform Data</h2>
-              <p>ContentIQ uses the Meta (Facebook/Instagram) Graph API and complies with <a href="https://developers.facebook.com/policy/" className="text-amber-600 dark:text-amber-400 hover:underline" target="_blank" rel="noopener">Meta&apos;s Platform Terms</a>.</p>
+              <p>Content Engineer uses the Meta (Facebook/Instagram) Graph API and complies with <a href="https://developers.facebook.com/policy/" className="text-amber-600 dark:text-amber-400 hover:underline" target="_blank" rel="noopener">Meta&apos;s Platform Terms</a>.</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
                 <li>We only request permissions you explicitly grant</li>
                 <li>We do not sell or share your Meta data with third parties</li>

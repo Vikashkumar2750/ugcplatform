@@ -1,4 +1,4 @@
-import { BookOpen, ExternalLink } from "lucide-react";
+﻿import { BookOpen, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 export default function AdminSetupPage() {
@@ -8,7 +8,7 @@ export default function AdminSetupPage() {
         <h1 className="font-heading text-2xl font-bold text-zinc-100 flex items-center gap-2">
           <BookOpen className="w-6 h-6 text-amber-400" /> Platform Setup Guide
         </h1>
-        <p className="text-zinc-500 text-sm mt-1">One-time configuration checklist for ContentIQ administrators</p>
+        <p className="text-zinc-500 text-sm mt-1">One-time configuration checklist for Content Engineer administrators</p>
       </div>
 
       {[

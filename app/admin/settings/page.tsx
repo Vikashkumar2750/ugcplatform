@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Globe, Bell, Shield, Save, RefreshCw, Loader2, CheckCircle2 } from "lucide-react";
@@ -15,7 +15,7 @@ interface Settings {
 }
 
 const DEFAULTS: Settings = {
-  platformName: "ContentIQ",
+  platformName: "Content Engineer",
   contactEmail: "support@techaasvik.in",
   whatsapp: "+91 78270 24726",
   maintenanceMode: false,
@@ -101,7 +101,7 @@ export default function AdminSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold text-zinc-100">Platform Settings</h1>
-          <p className="text-zinc-500 text-sm">Global configuration for ContentIQ platform</p>
+          <p className="text-zinc-500 text-sm">Global configuration for Content Engineer platform</p>
         </div>
         {saved && (
           <div className="flex items-center gap-2 text-green-400 text-sm font-medium">

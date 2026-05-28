@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
@@ -125,7 +125,7 @@ export default function LandingPage() {
                 <div className="w-3 h-3 rounded-full bg-green-400/70" />
               </div>
               <div className="flex-1 mx-4 h-6 rounded-md bg-muted text-xs text-muted-foreground flex items-center px-3">
-                contentiq.app/results/your-analysis
+                Content Engineer.app/results/your-analysis
               </div>
             </div>
             {/* Dashboard content mockup */}
@@ -449,7 +449,7 @@ export default function LandingPage() {
                 name: "Rahul Kumar",
                 niche: "Finance Creator",
                 platform: "YouTube",
-                quote: "Bhai, pehle main blind tha — kya post karna hai, kab karna hai, kuch nahi pata tha. ContentIQ ne seedha bataya ki mere competitors kya kar rahe hain. 3 weeks mein mera engagement 2x ho gaya.",
+                quote: "Bhai, pehle main blind tha — kya post karna hai, kab karna hai, kuch nahi pata tha. Content Engineer ne seedha bataya ki mere competitors kya kar rahe hain. 3 weeks mein mera engagement 2x ho gaya.",
                 followers: "48K",
               },
               {

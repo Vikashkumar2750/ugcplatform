@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { CheckCircle2, Zap, Star, Shield, Clock, ArrowRight, IndianRupee } from "lucide-react";
@@ -91,8 +91,8 @@ export default function PricingPage() {
       const plan = PLANS.find(p => p.id === planId)!;
       const opts: any = {
         key: RAZORPAY_KEY,
-        name: "ContentIQ",
-        description: `ContentIQ ${plan.label} Plan`,
+        name: "Content Engineer",
+        description: `Content Engineer ${plan.label} Plan`,
         image: "/favicon.ico",
         prefill: { name: "", email: "", contact: "" },
         theme: { color: "#F59E0B" },

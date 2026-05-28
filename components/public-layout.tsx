@@ -10,7 +10,7 @@ export function PublicHeader() {
             <Zap className="w-4 h-4 text-black" />
           </div>
           <span className="font-heading font-bold text-lg tracking-tight">
-            Content<span className="text-gradient">IQ</span>
+            Content<span className="text-gradient">Engineer</span>
           </span>
         </Link>
         <nav className="flex items-center gap-5 text-sm text-muted-foreground">
@@ -38,7 +38,7 @@ export function PublicFooter() {
                 <Zap className="w-3.5 h-3.5 text-black" />
               </div>
               <span className="font-heading font-bold text-base">
-                Content<span className="text-gradient">IQ</span>
+                Content<span className="text-gradient">Engineer</span>
               </span>
             </Link>
             <p className="text-xs text-muted-foreground leading-relaxed">

@@ -1,7 +1,8 @@
 {
   "name": "contentiq-worker",
   "version": "1.0.0",
-  "description": "ContentIQ Background Worker — runs on Render",
+  "description": "Content Engineer Background Worker — runs on Render",
+
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

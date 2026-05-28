@@ -32,7 +32,7 @@ export function Navbar() {
               <Zap className="w-4 h-4 text-black" />
             </div>
             <span className="font-heading font-bold text-xl tracking-tight">
-              Content<span className="text-gradient">IQ</span>
+              Content<span className="text-gradient">Engineer</span>
             </span>
           </Link>
 

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi, getAdminSupabase } from "@/lib/admin-auth";
 
 export async function GET(req: NextRequest) {
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest) {
       await supabase.from("support_messages").insert({
         ticket_id: ticketId,
         sender_role: "admin",
-        sender_name: "ContentIQ Support",
+        sender_name: "Content Engineer Support",
         content: message,
       });
       await supabase.from("support_tickets").update({

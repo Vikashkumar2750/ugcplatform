@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
@@ -89,7 +89,7 @@ export function LeadFormModal({ isOpen, onClose }: LeadFormModalProps) {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: 900,
         currency: "INR",
-        name: "ContentIQ",
+        name: "Content Engineer",
         description: "Lifetime platform access — ek baar pay, hamesha use karo",
         order_id: data.orderId,
         prefill: {

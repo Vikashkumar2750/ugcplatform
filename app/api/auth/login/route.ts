@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@techaasvik.in";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
-const SESSION_SECRET = process.env.SESSION_SECRET || "contentiq_super_secret_2025_techaasvik";
+const SESSION_SECRET = process.env.SESSION_SECRET || "Content Engineer_super_secret_2025_techaasvik";
 
 function signToken(payload: string): string {
   return createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");

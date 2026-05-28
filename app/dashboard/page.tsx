@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -20,7 +20,7 @@ function WelcomeModal({ onClose }: { onClose: () => void }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border shadow-2xl max-w-md w-full p-8 text-center space-y-4">
         <div className="text-4xl">🎉</div>
-        <h2 className="font-heading text-2xl font-bold">Swagat hai ContentIQ mein!</h2>
+        <h2 className="font-heading text-2xl font-bold">Swagat hai Content Engineer mein!</h2>
         <p className="text-muted-foreground text-sm">
           Payment ho gayi. Ab pehle Settings mein jaake apni <strong>Anthropic API key</strong> aur <strong>Apify API key</strong> add karo — phir pehla analysis run karo!
         </p>

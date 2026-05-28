@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { PublicHeader, PublicFooter } from "@/components/public-layout";
 
 export const metadata: Metadata = {
-  title: "Refund Policy — ContentIQ",
-  description: "ContentIQ Refund Policy — understand our refund and cancellation terms.",
+  title: "Refund Policy — Content Engineer",
+  description: "Content Engineer Refund Policy — understand our refund and cancellation terms.",
 };
 
 export default function RefundPolicyPage() {
@@ -18,7 +18,7 @@ export default function RefundPolicyPage() {
           <div className="space-y-8 text-muted-foreground leading-relaxed text-sm">
             <section>
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">1. Subscription Plans</h2>
-              <p>ContentIQ offers monthly and annual subscription plans. All payments are processed securely via Razorpay.</p>
+              <p>Content Engineer offers monthly and annual subscription plans. All payments are processed securely via Razorpay.</p>
             </section>
 
             <section>
@@ -26,7 +26,7 @@ export default function RefundPolicyPage() {
               <p>We offer refunds under the following conditions:</p>
               <ul className="list-disc pl-5 space-y-2 mt-2">
                 <li>
-                  <strong className="text-foreground">7-Day Money-Back Guarantee:</strong> If you are not satisfied with ContentIQ, you may request a full refund within 7 days of your initial subscription purchase. This applies to first-time subscribers only.
+                  <strong className="text-foreground">7-Day Money-Back Guarantee:</strong> If you are not satisfied with Content Engineer, you may request a full refund within 7 days of your initial subscription purchase. This applies to first-time subscribers only.
                 </li>
                 <li>
                   <strong className="text-foreground">Technical Issues:</strong> If a verified technical issue on our end prevents you from using the service for more than 72 consecutive hours, you may be eligible for a pro-rated refund for that period.
@@ -44,7 +44,7 @@ export default function RefundPolicyPage() {
                 <li>Renewal charges after the initial subscription period (cancel before renewal)</li>
                 <li>Refund requests made after 7 days of the initial purchase</li>
                 <li>Account termination due to violation of our Terms of Service</li>
-                <li>Dissatisfaction with third-party API services (Anthropic, Apify, Meta, etc.) that ContentIQ integrates with</li>
+                <li>Dissatisfaction with third-party API services (Anthropic, Apify, Meta, etc.) that Content Engineer integrates with</li>
                 <li>Partial month usage after cancellation</li>
               </ul>
             </section>
@@ -53,7 +53,7 @@ export default function RefundPolicyPage() {
               <h2 className="font-heading text-lg font-bold text-foreground mb-3">4. Annual Subscription Cancellation</h2>
               <p>If you cancel an annual subscription:</p>
               <ul className="list-disc pl-5 space-y-1 mt-2">
-                <li>You will retain access to ContentIQ until the end of your billing period</li>
+                <li>You will retain access to Content Engineer until the end of your billing period</li>
                 <li>No pro-rated refunds are issued for unused months unless under the 7-day guarantee</li>
                 <li>Auto-renewal will be disabled immediately upon cancellation</li>
               </ul>

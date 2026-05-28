@@ -1,7 +1,7 @@
-import { Metadata } from "next";
+﻿import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Data Deletion Status — ContentIQ",
+  title: "Data Deletion Status — Content Engineer",
 };
 
 export default async function DataDeletionStatusPage({
@@ -21,7 +21,7 @@ export default async function DataDeletionStatusPage({
         </div>
         <h1 className="font-heading text-2xl font-bold">Data Deletion Request Received</h1>
         <p className="text-muted-foreground">
-          Your data deletion request has been processed. All data associated with your Facebook account has been permanently removed from ContentIQ.
+          Your data deletion request has been processed. All data associated with your Facebook account has been permanently removed from Content Engineer.
         </p>
         {code && (
           <p className="text-xs text-muted-foreground">
@@ -30,8 +30,8 @@ export default async function DataDeletionStatusPage({
         )}
         <p className="text-xs text-muted-foreground">
           If you have any questions, contact us at{" "}
-          <a href="mailto:privacy@contentiq.app" className="text-amber-600 dark:text-amber-400 hover:underline">
-            privacy@contentiq.app
+          <a href="mailto:privacy@Content Engineer.app" className="text-amber-600 dark:text-amber-400 hover:underline">
+            privacy@Content Engineer.app
           </a>
         </p>
       </div>

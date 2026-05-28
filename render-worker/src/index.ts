@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cron from "node-cron";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
@@ -381,7 +381,7 @@ async function processUnhandledWebhookEvents(): Promise<void> {
 // Start server
 // ─────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 ContentIQ Worker running on port ${PORT}`);
+  console.log(`🚀 Content Engineer Worker running on port ${PORT}`);
   console.log(`📅 Post publisher: every minute`);
   console.log(`🔑 Token refresh: every 6 hours`);
   console.log(`📨 Webhook processor: every 30 seconds`);
