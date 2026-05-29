@@ -126,9 +126,9 @@ export async function GET(request: NextRequest) {
         console.log("[IG] Strategy 2 Page", page.name, "→ IG:", igId || "none");
         if (!igId) continue;
 
-        // Fetch IG profile — use only core fields (profile_picture_url can fail for Creator accounts)
+        // Fetch IG profile — ONLY use guaranteed basic fields (others are restricted in dev mode)
         const igRes = await fetch(
-          `https://graph.facebook.com/v21.0/${igId}?fields=id,username,name,account_type,followers_count&access_token=${pageToken}`
+          `https://graph.facebook.com/v21.0/${igId}?fields=id,username,name&access_token=${pageToken}`
         );
         const igData = await igRes.json();
         console.log("[IG] Strategy 2 IG profile:", JSON.stringify(igData).substring(0, 300));
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
     // ── STRATEGY 3: me/instagram_accounts (direct IG account list) ──
     if (!accountSaved) {
       const igListRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/instagram_accounts?fields=id,username,name,profile_picture_url,account_type&access_token=${userToken}`
+        `https://graph.facebook.com/v21.0/me/instagram_accounts?fields=id,username,name&access_token=${userToken}`
       );
       const igListData = await igListRes.json();
       console.log("[IG] Strategy 3 me/instagram_accounts:", JSON.stringify(igListData).substring(0, 400));
@@ -226,7 +226,7 @@ export async function GET(request: NextRequest) {
     if (!accountSaved && appScopedUserId && tokenType === "USER") {
       console.log("[IG] Strategy 4: Trying app_scoped_user_id as IG account →", appScopedUserId);
       const igRes = await fetch(
-        `https://graph.facebook.com/v21.0/${appScopedUserId}?fields=id,username,name,profile_picture_url,account_type&access_token=${userToken}`
+        `https://graph.facebook.com/v21.0/${appScopedUserId}?fields=id,username,name&access_token=${userToken}`
       );
       const igData = await igRes.json();
       console.log("[IG] Strategy 4 result:", JSON.stringify(igData).substring(0, 300));
