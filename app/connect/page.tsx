@@ -32,9 +32,9 @@ const PLATFORM_CONFIG = {
     permissions: [
       { key: "instagram_basic", label: "Profile & Posts", required: true },
       { key: "instagram_manage_insights", label: "Full Analytics & Insights", required: true },
-      { key: "instagram_content_publish", label: "Post Scheduling", required: false },
-      { key: "instagram_manage_messages", label: "DM Automation", required: false, reviewNeeded: true },
-      { key: "instagram_manage_comments", label: "Comment Automation", required: false, reviewNeeded: true },
+      { key: "instagram_content_publish", label: "Post Scheduling", required: false, grantedWhenConnected: true },
+      { key: "instagram_manage_messages", label: "DM Automation", required: false, grantedWhenConnected: true },
+      { key: "instagram_manage_comments", label: "Comment Automation", required: false, grantedWhenConnected: true },
     ],
     requirements: "Requires Business or Creator account (not personal)",
     oauthUrl: "/api/auth/instagram",
@@ -50,7 +50,7 @@ const PLATFORM_CONFIG = {
       { key: "pages_show_list", label: "List Your Pages", required: true },
       { key: "pages_read_engagement", label: "Page Analytics", required: true },
       { key: "pages_manage_posts", label: "Post Scheduling", required: false, grantedWhenConnected: true },
-      { key: "pages_messaging", label: "Messenger Automation", required: false, reviewNeeded: true },
+      { key: "pages_messaging", label: "Messenger Automation", required: false, grantedWhenConnected: true },
     ],
     requirements: "Requires admin access to a Facebook Page",
     oauthUrl: "/api/auth/facebook",
@@ -169,8 +169,11 @@ function PlatformCard({
         <div className="space-y-2">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Permissions</p>
           {config.permissions.map(perm => {
-            const isGranted = (connected && connected.permissions?.includes(perm.key))
-              || (connected && "grantedWhenConnected" in perm && perm.grantedWhenConnected);
+            // isGranted = connected + (scope in DB OR grantedWhenConnected flag)
+            const isGranted = !!connected && (
+              connected.permissions?.includes(perm.key)
+              || ("grantedWhenConnected" in perm && perm.grantedWhenConnected)
+            );
             return (
               <div key={perm.key} className="flex items-center gap-2 text-xs">
                 {isGranted ? (
@@ -183,11 +186,6 @@ function PlatformCard({
                 <span className={isGranted ? "" : "text-muted-foreground"}>
                   {perm.label}
                 </span>
-                {"reviewNeeded" in perm && perm.reviewNeeded && !isGranted && (
-                  <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] bg-amber-400/10 text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
-                    Review pending
-                  </span>
-                )}
                 {perm.required && !connected && (
                   <span className="ml-auto text-[10px] text-muted-foreground">required</span>
                 )}
