@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   // Get user's active Instagram connection with access token
   const { data: connection } = await supabase
-    .from("platform_connections")
+    .from("connected_accounts")          // ← was platform_connections (wrong table)
     .select("access_token, platform_user_id")
     .eq("user_id", userId)
     .eq("platform", "instagram")
