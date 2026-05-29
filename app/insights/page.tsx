@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   TrendingUp, TrendingDown, Users, Heart, MessageCircle,
@@ -93,7 +93,21 @@ function SimpleLineChart({ data }: { data: { date: string; followers: number }[]
 
 export default function InstagramInsightsPage() {
   const [refreshing, setRefreshing] = useState(false);
+  const [igConnected, setIgConnected] = useState<boolean | null>(null); // null = loading
+  const [connectedAccount, setConnectedAccount] = useState<{platform_username: string} | null>(null);
   const data = MOCK_INSIGHTS;
+
+  useEffect(() => {
+    fetch("/api/connect/accounts")
+      .then(r => r.json())
+      .then(d => {
+        const accounts: any[] = d.accounts || [];
+        const ig = accounts.find(a => a.platform === "instagram");
+        setIgConnected(!!ig);
+        if (ig) setConnectedAccount(ig);
+      })
+      .catch(() => setIgConnected(false));
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -101,7 +115,20 @@ export default function InstagramInsightsPage() {
     setRefreshing(false);
   };
 
-  if (!data.connected) {
+  // Loading state
+  if (igConnected === null) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="mt-12 text-center space-y-4 animate-pulse">
+          <div className="w-14 h-14 rounded-full bg-muted mx-auto" />
+          <div className="h-4 w-48 bg-muted rounded mx-auto" />
+          <div className="h-3 w-64 bg-muted rounded mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!igConnected) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
         <div className="mt-12 text-center space-y-4">

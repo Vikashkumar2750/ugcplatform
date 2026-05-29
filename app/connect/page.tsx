@@ -49,7 +49,7 @@ const PLATFORM_CONFIG = {
     permissions: [
       { key: "pages_show_list", label: "List Your Pages", required: true },
       { key: "pages_read_engagement", label: "Page Analytics", required: true },
-      { key: "pages_manage_posts", label: "Post Scheduling", required: false },
+      { key: "pages_manage_posts", label: "Post Scheduling", required: false, grantedWhenConnected: true },
       { key: "pages_messaging", label: "Messenger Automation", required: false, reviewNeeded: true },
     ],
     requirements: "Requires admin access to a Facebook Page",
@@ -168,28 +168,32 @@ function PlatformCard({
 
         <div className="space-y-2">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Permissions</p>
-          {config.permissions.map(perm => (
-            <div key={perm.key} className="flex items-center gap-2 text-xs">
-              {connected && connected.permissions?.includes(perm.key) ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-              ) : perm.required ? (
-                <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-              ) : (
-                <div className="w-3.5 h-3.5 rounded-full border border-border flex-shrink-0" />
-              )}
-              <span className={connected && connected.permissions?.includes(perm.key) ? "" : "text-muted-foreground"}>
-                {perm.label}
-              </span>
-              {"reviewNeeded" in perm && perm.reviewNeeded && (
-                <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] bg-amber-400/10 text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
-                  Review pending
+          {config.permissions.map(perm => {
+            const isGranted = (connected && connected.permissions?.includes(perm.key))
+              || (connected && "grantedWhenConnected" in perm && perm.grantedWhenConnected);
+            return (
+              <div key={perm.key} className="flex items-center gap-2 text-xs">
+                {isGranted ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                ) : perm.required ? (
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                ) : (
+                  <div className="w-3.5 h-3.5 rounded-full border border-border flex-shrink-0" />
+                )}
+                <span className={isGranted ? "" : "text-muted-foreground"}>
+                  {perm.label}
                 </span>
-              )}
-              {perm.required && !connected && (
-                <span className="ml-auto text-[10px] text-muted-foreground">required</span>
-              )}
-            </div>
-          ))}
+                {"reviewNeeded" in perm && perm.reviewNeeded && !isGranted && (
+                  <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] bg-amber-400/10 text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">
+                    Review pending
+                  </span>
+                )}
+                {perm.required && !connected && (
+                  <span className="ml-auto text-[10px] text-muted-foreground">required</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -344,17 +348,6 @@ function ConnectContent() {
         </div>
       </div>
 
-      <div className="p-4 rounded-xl border border-border bg-muted/30 text-xs text-muted-foreground flex items-start gap-2">
-        <Shield className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-green-500" />
-        <span>
-          Your access tokens are stored encrypted in our database. We never share your data with third parties.
-          Some features (DM automation, comment automation) require Meta App Review and are shown as "Review pending"
-          until approval. You can configure rules now — they'll activate automatically once approved.{" "}
-          <a href="/docs/meta-setup" className="text-amber-600 dark:text-amber-400 hover:underline">
-            Read setup guide →
-          </a>
-        </span>
-      </div>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { MessageSquare, MessageCircle, Calendar, Zap, TrendingUp, AlertCircle, CheckCircle2 } from "lucide-react";
+import { MessageSquare, MessageCircle, Calendar, Zap, AlertCircle } from "lucide-react";
 
 const FEATURES = [
   {
@@ -9,7 +10,6 @@ const FEATURES = [
     icon: MessageSquare,
     title: "DM Automation",
     desc: "Keyword triggers, new follower welcome, story reply — auto-send messages with links or attachments",
-    status: "active",
     stats: { label: "Rules", value: "0" },
   },
   {
@@ -17,7 +17,6 @@ const FEATURES = [
     icon: MessageCircle,
     title: "Comment Automation",
     desc: "Auto-reply to comments, send DMs to commenters, pin/hide comments based on keywords",
-    status: "active",
     stats: { label: "Rules", value: "0" },
   },
   {
@@ -25,12 +24,23 @@ const FEATURES = [
     icon: Calendar,
     title: "Post Scheduler",
     desc: "Schedule posts for Instagram, Facebook, and YouTube. Calendar view with AI-suggested best times",
-    status: "active",
     stats: { label: "Scheduled", value: "0" },
   },
 ];
 
 export default function AutomationPage() {
+  const [hasConnected, setHasConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/connect/accounts")
+      .then(r => r.json())
+      .then(d => {
+        const accounts: any[] = d.accounts || [];
+        setHasConnected(accounts.length > 0);
+      })
+      .catch(() => setHasConnected(false));
+  }, []);
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div>
@@ -43,32 +53,21 @@ export default function AutomationPage() {
         </p>
       </div>
 
-      {/* Connect accounts warning if no accounts connected */}
-      <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-        <div className="text-sm">
-          <p className="font-medium">Connect accounts to activate automation</p>
-          <p className="text-muted-foreground text-xs mt-0.5">
-            DM and comment automation requires a connected Instagram Business or Facebook Page account.
-          </p>
-          <Link href="/connect" className="text-amber-600 dark:text-amber-400 text-xs font-bold hover:underline mt-1 inline-block">
-            Connect accounts →
-          </Link>
+      {/* Only show connect warning if NO accounts are connected */}
+      {hasConnected === false && (
+        <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium">Connect accounts to activate automation</p>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              DM and comment automation requires a connected Instagram Business or Facebook Page account.
+            </p>
+            <Link href="/connect" className="text-amber-600 dark:text-amber-400 text-xs font-bold hover:underline mt-1 inline-block">
+              Connect accounts →
+            </Link>
+          </div>
         </div>
-      </div>
-
-      {/* Meta review note */}
-      <div className="p-4 rounded-xl border border-border bg-card flex items-start gap-3">
-        <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-        <div className="text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground">Meta App Review note:</span> DM and comment automation features require Meta App Review approval.
-          You can create rules now and they'll activate automatically once approved.
-          Post scheduling works immediately.{" "}
-          <Link href="/docs/meta-setup" className="text-amber-600 dark:text-amber-400 hover:underline">
-            Read setup guide →
-          </Link>
-        </div>
-      </div>
+      )}
 
       {/* Feature cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
@@ -82,12 +81,8 @@ export default function AutomationPage() {
               <div className="w-11 h-11 rounded-xl bg-amber-400/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <f.icon className="w-5 h-5 text-amber-500" />
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                f.status === "active"
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                  : "bg-muted text-muted-foreground"
-              }`}>
-                {f.status === "active" ? "Active" : "Coming soon"}
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                Active
               </span>
             </div>
             <h3 className="font-heading font-semibold mb-1">{f.title}</h3>

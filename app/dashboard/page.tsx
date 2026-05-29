@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -45,10 +45,18 @@ function DashboardContent() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("ugc_keys");
-      if (saved) {
-        const keys = JSON.parse(atob(saved));
-        setHasKeys(!!(keys.anthropic && keys.apify));
+      // Check new settings format (ce_settings_v2) AND old format (ugc_keys)
+      const raw = localStorage.getItem("ce_settings_v2") || localStorage.getItem("ugc_keys");
+      if (raw) {
+        const data = JSON.parse(atob(raw));
+        // New format: llmKeys + scraperKeys; Old format: anthropic + apify
+        const hasLLM = data.llmKeys
+          ? Object.values(data.llmKeys as Record<string,string>).some(v => !!v)
+          : !!(data.anthropic);
+        const hasScraper = data.scraperKeys
+          ? Object.values(data.scraperKeys as Record<string,string>).some(v => !!v)
+          : !!(data.apify);
+        setHasKeys(hasLLM && hasScraper);
       } else {
         setHasKeys(false);
       }
