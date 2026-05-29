@@ -252,9 +252,12 @@ function ConnectContent() {
         instagram: "Instagram", facebook: "Facebook", youtube: "YouTube"
       };
       setToast({ message: `${platformNames[success] || success} connected successfully! ✓`, type: "success" });
+      // Re-fetch after a short delay to ensure DB write is committed
+      setTimeout(() => fetchAccounts(), 1500);
     } else if (error) {
       const errorMessages: Record<string, string> = {
         oauth_denied: "You declined the permission request.",
+        no_ig_business_account: "No Instagram Business or Creator account found. Make sure your Instagram account is a Business or Creator account linked to a Facebook Page.",
       };
       setToast({ message: errorMessages[error] || `Connection failed: ${error}`, type: "error" });
     }
@@ -269,10 +272,19 @@ function ConnectContent() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div>
-        <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
-          Connect Accounts
-          {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
+            Connect Accounts
+            {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
+          </h1>
+          <button
+            onClick={() => { setLoading(true); fetchAccounts(); }}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition hover:border-amber-400/50"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        </div>
         <p className="text-muted-foreground text-sm mt-1">
           Connect your social accounts for real analytics, DM automation, and post scheduling.
           Your own Apify key is only needed for competitor analysis.

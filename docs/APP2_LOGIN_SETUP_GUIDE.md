@@ -25,7 +25,7 @@ Category:            Business & Pages
 ```
 
 **User Data Deletion:**
-```
+```![alt text](image.png)
 Dropdown: "Data deletion callback URL"
 URL:      https://contentengineer.techaasvik.in/api/webhooks/data-deletion
 ```
@@ -106,15 +106,19 @@ https://contentengineer.techaasvik.in/api/webhooks/data-deletion
 
 **Path:** Use cases → "Authenticate and request data..." → **Customize → Permissions and features**
 
-Sirf yeh 3 add karo:
+Sirf yeh 2 add karo:
 
 ```
 ✅ public_profile     ← Auto-granted (already added)
 ✅ email              ← Add karo
-✅ instagram_basic    ← Add karo
 ```
 
 Baki sab SKIP karo — App 2 ke liye kuch aur nahi chahiye.
+
+> ⚠️ **`instagram_basic` App 2 mein NAHI chahiye!**
+> - `instagram_basic` Facebook Login use case ke Permissions section mein available hi nahi hoti
+> - Instagram account connect karna **App 1 (Business App)** handle karta hai
+> - App 2 ka kaam sirf user ko Facebook se login karana hai
 
 ---
 
@@ -159,7 +163,7 @@ Development → Live  (toggle karo)
 
 Popup aayega → **"Switch to Live Mode"** confirm karo.
 
-> ✅ `public_profile`, `email`, `instagram_basic` — yeh sab auto-approved hain.
+> ✅ `public_profile`, `email` — yeh dono auto-approved hain.
 > Live mode mein koi bhi user login kar sakta hai — App Review ki zarurat NAHI.
 
 ---
@@ -174,7 +178,8 @@ Popup aayega → **"Switch to Live Mode"** confirm karo.
 |---|---|
 | `public_profile` | ✅ Auto-approved — no review |
 | `email` | ✅ Auto-approved — no review |
-| `instagram_basic` | ✅ No review needed |
+
+> **Note:** `instagram_basic` App 2 mein add nahi hoti. Instagram connect karna App 1 (Business App) ka kaam hai.
 
 > **Bas Live mode ON karo — kaam ho jayega.**
 > App Review sirf App 1 (Business app) ke liye lagti hai jisme advanced permissions hain.
@@ -274,7 +279,7 @@ Login page → "Continue with Facebook" button → META_LOGIN_APP_ID
 ☐ Allowed Domains — contentengineer.techaasvik.in + localhost
 ☐ Deauthorize URL: https://contentengineer.techaasvik.in/api/webhooks/deauthorize
 ☐ Data Deletion URL: https://contentengineer.techaasvik.in/api/webhooks/data-deletion
-☐ Permissions added: public_profile, email, instagram_basic
+☐ Permissions added: public_profile, email (sirf yeh 2 — instagram_basic App 1 mein hoti hai)
 ☐ Quickstart Site URL set: https://contentengineer.techaasvik.in/
 ☐ App Roles → At least your own Facebook account added as Developer
 ☐ Live Mode: ON ← MOST IMPORTANT
@@ -295,7 +300,7 @@ Login page → "Continue with Facebook" button → META_LOGIN_APP_ID
 2. Click: "Continue with Facebook" button
 3. Facebook login popup opens
 4. Login with your Facebook account
-5. Grant: public_profile + email + instagram_basic
+5. Grant: public_profile + email
 6. Should redirect to: https://contentengineer.techaasvik.in/dashboard
 7. Dashboard mein apna naam + profile picture dikhe
 

@@ -69,7 +69,7 @@ export function DashboardSidebar({ currentPath }: { currentPath: string }) {
         </div>
         {!collapsed && (
           <span className="font-heading font-bold text-lg">
-            Content<span className="text-gradient">IQ</span>
+            Content<span className="text-gradient">Engineer</span>
           </span>
         )}
       </div>
