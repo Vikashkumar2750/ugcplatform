@@ -61,21 +61,73 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
 
     // ── Google Gemini ──────────────────────────────────────────────
     case "gemini": {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${llmKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: system }] },
-            contents: [{ role: "user", parts: [{ text: userMessage }] }],
-            generationConfig: { maxOutputTokens: maxTokens },
-          }),
+      // Try gemini-1.5-flash first (most stable), fallback to 2.0-flash
+      const models = ["gemini-1.5-flash", "gemini-2.0-flash"];
+      let lastError = "";
+      for (const model of models) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${llmKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: system }] },
+                contents: [{ role: "user", parts: [{ text: userMessage }] }],
+                generationConfig: {
+                  maxOutputTokens: maxTokens,
+                  temperature: 0.7,
+                },
+                safetySettings: [
+                  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+                ],
+              }),
+            }
+          );
+          const data = await res.json();
+          if (!res.ok) {
+            lastError = data.error?.message || `Gemini API error (${res.status})`;
+            continue;
+          }
+          const candidate = data.candidates?.[0];
+          const finishReason = candidate?.finishReason;
+          const text = candidate?.content?.parts?.[0]?.text || "";
+          if (!text) {
+            // Safety block or empty — try without system_instruction
+            if (finishReason === "SAFETY" || finishReason === "OTHER" || !candidate?.content) {
+              const res2 = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${llmKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{
+                      role: "user",
+                      parts: [{ text: `${system}\n\n${userMessage}` }],
+                    }],
+                    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+                  }),
+                }
+              );
+              const data2 = await res2.json();
+              const text2 = data2.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              if (text2) return text2;
+              lastError = `Gemini ${model}: empty response (finishReason: ${finishReason || "unknown"})`;
+              continue;
+            }
+            lastError = `Gemini ${model}: empty content`;
+            continue;
+          }
+          return text;
+        } catch (e: any) {
+          lastError = e.message;
+          continue;
         }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || "Gemini API error");
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      }
+      throw new Error(lastError || "Gemini API failed on all models");
     }
 
     // ── Kimi (Moonshot) ────────────────────────────────────────────
