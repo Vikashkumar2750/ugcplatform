@@ -48,12 +48,15 @@ export async function GET(request: NextRequest) {
     console.log("[IG] Token type:", tokenType, "| App scoped user ID:", appScopedUserId);
     console.log("[IG] Granted scopes:", grantedScopes.join(", "));
 
-    // ── Step 4: Call /me — could be FB user OR IG user depending on token ──
+    // ── Step 4: Call /me — get FB user info ──
     const meRes = await fetch(
-      `https://graph.facebook.com/v21.0/me?fields=id,name,username,profile_picture_url,account_type,instagram_business_account&access_token=${userToken}`
+      `https://graph.facebook.com/v21.0/me?fields=id,name,picture,instagram_business_account&access_token=${userToken}`
     );
     const meData = await meRes.json();
     console.log("[IG] /me response:", JSON.stringify(meData).substring(0, 500));
+
+    // Also try to get picture separately if needed
+    const avatarUrl = meData.picture?.data?.url || null;
 
     // ── Step 5: Supabase user ──
     const supabase = await createClient();
@@ -141,6 +144,37 @@ export async function GET(request: NextRequest) {
         accountSaved = true;
         console.log("[IG] Strategy 2 ✓ @" + igData.username);
       }
+    }
+
+    // -- STRATEGY 2B: me/businesses (Business Manager route) --
+    if (!accountSaved) {
+      try {
+        const bizRes = await fetch(
+          `https://graph.facebook.com/v21.0/me/businesses?` +
+          `fields=id,name,owned_instagram_accounts{id,username,name,profile_picture_url,account_type},instagram_business_accounts{id,username,name,profile_picture_url,account_type}&` +
+          `access_token=${userToken}`
+        );
+        const bizData = await bizRes.json();
+        console.log("[IG] Strategy 2B me/businesses:", JSON.stringify(bizData).substring(0, 500));
+        for (const biz of (bizData.data || [])) {
+          const igAccounts = [
+            ...(biz.owned_instagram_accounts?.data || []),
+            ...(biz.instagram_business_accounts?.data || []),
+          ];
+          for (const igAcc of igAccounts) {
+            if (!igAcc.username) continue;
+            await supabase.from("connected_accounts").upsert({
+              user_id: user.id, platform: "instagram",
+              platform_user_id: igAcc.id, platform_username: igAcc.username,
+              platform_name: igAcc.name || igAcc.username, avatar_url: igAcc.profile_picture_url || null,
+              access_token: userToken, token_expires_at: tokenExpiresAt,
+              account_type: igAcc.account_type || "CREATOR", permissions: grantedScopes, is_active: true,
+            }, { onConflict: "user_id,platform,platform_user_id" });
+            accountSaved = true;
+            console.log("[IG] Strategy 2B + @" + igAcc.username);
+          }
+        }
+      } catch (e: any) { console.error("[IG] Strategy 2B error:", e.message); }
     }
 
     // ── STRATEGY 3: me/instagram_accounts (direct IG account list) ──

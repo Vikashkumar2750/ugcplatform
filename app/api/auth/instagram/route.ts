@@ -11,7 +11,10 @@ const INSTAGRAM_SCOPES = [
   "instagram_manage_messages",
   "instagram_manage_comments",
   "pages_show_list",
+  "pages_read_engagement",
+  "business_management",
 ].join(",");
+
 
 // GET /api/auth/instagram — Redirect to Meta OAuth
 export async function GET(request: NextRequest) {
