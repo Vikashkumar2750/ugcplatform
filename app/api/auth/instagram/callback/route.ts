@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${APP_URL}/api/auth/instagram/callback`;
 
-    // 1. Exchange code for short-lived user access token
+    // ── Step 1: Exchange code → short-lived user token ──
     const tokenRes = await fetch(
       `https://graph.facebook.com/v21.0/oauth/access_token?` +
       `client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&` +
@@ -26,22 +26,22 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenRes.json();
 
     if (!tokenData.access_token) {
-      console.error("Token exchange failed:", tokenData);
+      console.error("[IG Callback] Token exchange failed:", JSON.stringify(tokenData));
       throw new Error(tokenData.error?.message || "Token exchange failed");
     }
 
-    // 2. Exchange for long-lived token (60 days)
+    // ── Step 2: Exchange → long-lived user token (60 days) ──
     const llRes = await fetch(
       `https://graph.facebook.com/v21.0/oauth/access_token?` +
       `grant_type=fb_exchange_token&client_id=${META_APP_ID}&` +
       `client_secret=${META_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`
     );
     const llData = await llRes.json();
-    const longLivedToken = llData.access_token || tokenData.access_token;
+    const userLongToken = llData.access_token || tokenData.access_token;
     const expiresIn = llData.expires_in || 5183944; // ~60 days
     const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-    // 3. Get Supabase user first
+    // ── Step 3: Get Supabase user ──
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -49,163 +49,99 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${APP_URL}/?auth_required=1`);
     }
 
+    // ── Step 4: Get FB Pages (with individual page access tokens) ──
+    const pagesRes = await fetch(
+      `https://graph.facebook.com/v21.0/me/accounts?` +
+      `fields=id,name,access_token&` +
+      `access_token=${userLongToken}`
+    );
+    const pagesData = await pagesRes.json();
+
+    console.log("[IG Callback] Pages found:", pagesData.data?.length ?? 0);
+
     let accountSaved = false;
 
-    // ── STRATEGY A: Via Facebook Pages (Business account linked to a Page) ──
-    try {
-      const pagesRes = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?` +
-        `fields=instagram_business_account,name,id,access_token&` +
-        `access_token=${longLivedToken}`
+    for (const page of (pagesData.data || [])) {
+      const pageAccessToken = page.access_token; // PAGE-level token — KEY FIX
+
+      // ── Step 5: Use PAGE TOKEN to get linked Instagram account ──
+      // Creator + Business accounts both work with page token
+      const pageDetailRes = await fetch(
+        `https://graph.facebook.com/v21.0/${page.id}?` +
+        `fields=instagram_business_account&` +
+        `access_token=${pageAccessToken}`   // ← Must use page token, not user token
       );
-      const pagesData = await pagesRes.json();
+      const pageDetail = await pageDetailRes.json();
 
-      for (const page of (pagesData.data || [])) {
-        const igAccount = page.instagram_business_account;
-        if (!igAccount?.id) continue;
+      console.log(`[IG Callback] Page "${page.name}" IG account:`, pageDetail.instagram_business_account?.id ?? "none");
 
-        // Get full Instagram profile
-        const igRes = await fetch(
-          `https://graph.facebook.com/v21.0/${igAccount.id}?` +
-          `fields=id,username,name,biography,followers_count,media_count,profile_picture_url,account_type&` +
-          `access_token=${longLivedToken}`
-        );
-        const igData = await igRes.json();
+      if (!pageDetail.instagram_business_account?.id) continue;
 
-        if (!igData.username) continue;
+      const igAccountId = pageDetail.instagram_business_account.id;
 
-        await supabase.from("connected_accounts").upsert({
-          user_id: user.id,
-          platform: "instagram",
-          platform_user_id: igData.id,
-          platform_username: igData.username,
-          platform_name: igData.name || igData.username,
-          avatar_url: igData.profile_picture_url || null,
-          access_token: longLivedToken,
-          token_expires_at: tokenExpiresAt,
-          account_type: igData.account_type || "BUSINESS",
-          page_id: page.id,
-          page_name: page.name,
-          permissions: [
-            "instagram_basic",
-            "instagram_manage_insights",
-            "instagram_content_publish",
-            "instagram_manage_messages",
-            "instagram_manage_comments",
-          ],
-          is_active: true,
-        }, {
-          onConflict: "user_id,platform,platform_user_id",
-        });
+      // ── Step 6: Fetch full Instagram profile with page token ──
+      const igRes = await fetch(
+        `https://graph.facebook.com/v21.0/${igAccountId}?` +
+        `fields=id,username,name,biography,followers_count,media_count,profile_picture_url,account_type&` +
+        `access_token=${pageAccessToken}`
+      );
+      const igData = await igRes.json();
 
-        accountSaved = true;
-        console.log("✓ Saved IG account via Pages strategy:", igData.username);
+      console.log("[IG Callback] IG profile fetched:", igData.username, "type:", igData.account_type);
+
+      if (!igData.id || !igData.username) {
+        console.warn("[IG Callback] IG profile missing data:", igData);
+        continue;
       }
-    } catch (strategyAErr) {
-      console.error("Strategy A (Pages) failed:", strategyAErr);
-    }
 
-    // ── STRATEGY B: Direct user IG account (Creator / Business Login flow) ──
-    if (!accountSaved) {
-      try {
-        // Try getting IG account linked to the user directly
-        const meRes = await fetch(
-          `https://graph.facebook.com/v21.0/me?` +
-          `fields=id,name,picture,instagram_business_account&` +
-          `access_token=${longLivedToken}`
-        );
-        const meData = await meRes.json();
+      // ── Step 7: Upsert connected_accounts ──
+      const { error: upsertError } = await supabase.from("connected_accounts").upsert({
+        user_id: user.id,
+        platform: "instagram",
+        platform_user_id: igData.id,
+        platform_username: igData.username,
+        platform_name: igData.name || igData.username,
+        avatar_url: igData.profile_picture_url || null,
+        access_token: pageAccessToken,          // Store PAGE token — needed for Graph API calls
+        token_expires_at: tokenExpiresAt,
+        account_type: igData.account_type || "CREATOR",
+        page_id: page.id,
+        page_name: page.name,
+        permissions: [
+          "instagram_basic",
+          "instagram_manage_insights",
+          "instagram_content_publish",
+          "instagram_manage_messages",
+          "instagram_manage_comments",
+        ],
+        is_active: true,
+      }, {
+        onConflict: "user_id,platform,platform_user_id",
+      });
 
-        if (meData.instagram_business_account?.id) {
-          const igRes = await fetch(
-            `https://graph.facebook.com/v21.0/${meData.instagram_business_account.id}?` +
-            `fields=id,username,name,biography,followers_count,profile_picture_url,account_type&` +
-            `access_token=${longLivedToken}`
-          );
-          const igData = await igRes.json();
-
-          if (igData.username) {
-            await supabase.from("connected_accounts").upsert({
-              user_id: user.id,
-              platform: "instagram",
-              platform_user_id: igData.id,
-              platform_username: igData.username,
-              platform_name: igData.name || igData.username,
-              avatar_url: igData.profile_picture_url || null,
-              access_token: longLivedToken,
-              token_expires_at: tokenExpiresAt,
-              account_type: igData.account_type || "BUSINESS",
-              permissions: ["instagram_basic", "instagram_manage_insights", "instagram_content_publish"],
-              is_active: true,
-            }, {
-              onConflict: "user_id,platform,platform_user_id",
-            });
-
-            accountSaved = true;
-            console.log("✓ Saved IG account via Strategy B (me direct):", igData.username);
-          }
-        }
-      } catch (strategyBErr) {
-        console.error("Strategy B (me direct) failed:", strategyBErr);
+      if (upsertError) {
+        console.error("[IG Callback] DB upsert error:", upsertError.message);
+        continue;
       }
-    }
 
-    // ── STRATEGY C: Instagram Basic Display API approach ──
-    if (!accountSaved) {
-      try {
-        // Get all accounts available via the token
-        const userRes = await fetch(
-          `https://graph.facebook.com/v21.0/me?fields=id,name,picture&access_token=${longLivedToken}`
-        );
-        const userData = await userRes.json();
-
-        // Try getting linked IG accounts through business API
-        const bizRes = await fetch(
-          `https://graph.facebook.com/v21.0/me/businesses?` +
-          `fields=instagram_business_accounts{id,username,name,profile_picture_url,account_type}&` +
-          `access_token=${longLivedToken}`
-        );
-        const bizData = await bizRes.json();
-
-        for (const biz of (bizData.data || [])) {
-          for (const igAcc of (biz.instagram_business_accounts?.data || [])) {
-            if (!igAcc.username) continue;
-
-            await supabase.from("connected_accounts").upsert({
-              user_id: user.id,
-              platform: "instagram",
-              platform_user_id: igAcc.id,
-              platform_username: igAcc.username,
-              platform_name: igAcc.name || igAcc.username,
-              avatar_url: igAcc.profile_picture_url || null,
-              access_token: longLivedToken,
-              token_expires_at: tokenExpiresAt,
-              account_type: igAcc.account_type || "BUSINESS",
-              permissions: ["instagram_basic"],
-              is_active: true,
-            }, {
-              onConflict: "user_id,platform,platform_user_id",
-            });
-
-            accountSaved = true;
-            console.log("✓ Saved IG account via Strategy C (businesses):", igAcc.username);
-          }
-        }
-      } catch (strategyCErr) {
-        console.error("Strategy C (businesses) failed:", strategyCErr);
-      }
+      accountSaved = true;
+      console.log(`[IG Callback] ✓ Account saved: @${igData.username} (${igData.account_type})`);
     }
 
     if (!accountSaved) {
-      console.error("All strategies failed — no Instagram Business account found for this user.");
+      console.error("[IG Callback] No Instagram account saved. Pages data:", JSON.stringify(pagesData));
+      // Redirect with debug info in query (safe — just account type message)
       return NextResponse.redirect(
-        `${APP_URL}/connect?error=${encodeURIComponent("no_ig_business_account")}`
+        `${APP_URL}/connect?error=no_ig_business_account`
       );
     }
 
     return NextResponse.redirect(`${APP_URL}/connect?success=instagram`);
+
   } catch (err: any) {
-    console.error("Instagram OAuth error:", err);
-    return NextResponse.redirect(`${APP_URL}/connect?error=${encodeURIComponent(err.message)}`);
+    console.error("[IG Callback] Unhandled error:", err);
+    return NextResponse.redirect(
+      `${APP_URL}/connect?error=${encodeURIComponent(err.message || "unknown_error")}`
+    );
   }
 }
