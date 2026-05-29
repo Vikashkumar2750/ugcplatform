@@ -246,7 +246,24 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   const mediaId = payload?.media?.id;
   const commentorId = payload?.from?.id;
 
-  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId}`);
+  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId}`);
+
+  // ── Dedup Layer 1: Has this exact comment already been processed? ─────
+  if (commentId) {
+    const { data: existingEvent } = await supabase
+      .from("webhook_events")
+      .select("id, processed")
+      .eq("event_type", "comments")
+      .eq("sender_id", commentorId)
+      .filter("payload->id", "eq", commentId)
+      .eq("processed", true)
+      .maybeSingle();
+
+    if (existingEvent) {
+      console.log(`[Webhook] Comment ${commentId} already processed — skipping`);
+      return;
+    }
+  }
 
   // Get all active comment rules with account token
   const { data: rules } = await supabase
@@ -271,6 +288,24 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     if (!matched) continue;
 
+    // ── Dedup Layer 2: Has this user already triggered THIS rule? ────────
+    // Prevents same user spamming keyword to get multiple replies
+    if (commentorId) {
+      const { data: alreadyTriggered } = await supabase
+        .from("webhook_events")
+        .select("id")
+        .eq("event_type", "comments")
+        .eq("sender_id", commentorId)
+        .eq("processed", true)
+        .filter("payload->rule_id", "eq", rule.id)
+        .maybeSingle();
+
+      if (alreadyTriggered) {
+        console.log(`[Webhook] User ${commentorId} already triggered rule ${rule.name} — skipping`);
+        continue;
+      }
+    }
+
     // Get token — from joined connected_accounts
     let token = rule.connected_accounts?.access_token;
     let igId = rule.connected_accounts?.platform_user_id;
@@ -293,7 +328,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // Execute action
     if (rule.type === "comment_reply" && rule.action_config?.reply_text) {
       console.log(`[Webhook] Replying to comment ${commentId}`);
-      await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
+      const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -301,6 +336,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           access_token: token,
         }),
       });
+      const replyData = await replyRes.json();
+      if (!replyRes.ok) console.error(`[Webhook] Reply failed: ${JSON.stringify(replyData)}`);
     }
 
     if (rule.type === "comment_to_dm" && commentorId) {
@@ -316,6 +353,14 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         body: JSON.stringify({ is_hidden: true, access_token: token }),
       });
     }
+
+    // Mark this comment as processed WITH rule_id in payload for dedup layer 2
+    await supabase
+      .from("webhook_events")
+      .update({ processed: true, payload: { ...payload, rule_id: rule.id } })
+      .eq("event_type", "comments")
+      .eq("sender_id", commentorId)
+      .filter("payload->id", "eq", commentId);
 
     // Update trigger count
     await supabase.from("automation_rules").update({
