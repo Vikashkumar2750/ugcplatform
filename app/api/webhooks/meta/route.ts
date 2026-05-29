@@ -365,13 +365,45 @@ async function sendInstagramDM(
 // Signature verification
 // ─────────────────────────────────────────────────────────────
 function verifySignature(body: string, signature: string): boolean {
-  if (!META_APP_SECRET) return true; // Skip in dev
+  // Set META_SKIP_SIGNATURE_CHECK=true in Vercel env to bypass (for testing)
+  if (process.env.META_SKIP_SIGNATURE_CHECK === "true") {
+    console.log("[Webhook] Signature check SKIPPED (META_SKIP_SIGNATURE_CHECK=true)");
+    return true;
+  }
+
+  if (!META_APP_SECRET) {
+    console.warn("[Webhook] META_APP_SECRET not set — skipping signature check");
+    return true;
+  }
+
+  if (!signature) {
+    console.warn("[Webhook] No signature header received");
+    return false;
+  }
+
   try {
     const crypto = require("crypto");
     const expected = "sha256=" +
-      crypto.createHmac("sha256", META_APP_SECRET).update(body).digest("hex");
-    return signature === expected;
-  } catch {
+      crypto.createHmac("sha256", META_APP_SECRET)
+        .update(Buffer.from(body, "utf-8"))
+        .digest("hex");
+
+    // Timing-safe comparison
+    try {
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length) {
+        console.warn("[Webhook] Signature length mismatch — check META_APP_SECRET in Vercel env");
+        return false;
+      }
+      return crypto.timingSafeEqual(sigBuf, expBuf);
+    } catch {
+      const match = signature === expected;
+      if (!match) console.warn("[Webhook] Signature mismatch — verify META_APP_SECRET matches Facebook App Secret");
+      return match;
+    }
+  } catch (e) {
+    console.error("[Webhook] Signature error:", e);
     return false;
   }
 }
