@@ -126,23 +126,46 @@ export async function GET(request: NextRequest) {
         console.log("[IG] Strategy 2 Page", page.name, "→ IG:", igId || "none");
         if (!igId) continue;
 
+        // Fetch IG profile — use only core fields (profile_picture_url can fail for Creator accounts)
         const igRes = await fetch(
-          `https://graph.facebook.com/v21.0/${igId}?fields=id,username,name,profile_picture_url,account_type&access_token=${pageToken}`
+          `https://graph.facebook.com/v21.0/${igId}?fields=id,username,name,account_type,followers_count&access_token=${pageToken}`
         );
         const igData = await igRes.json();
-        if (!igData.username) continue;
+        console.log("[IG] Strategy 2 IG profile:", JSON.stringify(igData).substring(0, 300));
 
-        await supabase.from("connected_accounts").upsert({
+        if (!igData.username) {
+          console.error("[IG] Strategy 2 IG fetch failed or no username:", JSON.stringify(igData));
+          continue;
+        }
+
+        // Fetch profile picture separately (optional — don't fail if missing)
+        let avatarUrl: string | null = null;
+        try {
+          const picRes = await fetch(
+            `https://graph.facebook.com/v21.0/${igId}?fields=profile_picture_url&access_token=${pageToken}`
+          );
+          const picData = await picRes.json();
+          avatarUrl = picData.profile_picture_url || null;
+        } catch (_) {}
+
+        const { error: upsertErr } = await supabase.from("connected_accounts").upsert({
           user_id: user.id, platform: "instagram",
           platform_user_id: igData.id, platform_username: igData.username,
-          platform_name: igData.name || igData.username, avatar_url: igData.profile_picture_url || null,
+          platform_name: igData.name || igData.username,
+          avatar_url: avatarUrl,
           access_token: pageToken, token_expires_at: tokenExpiresAt,
           account_type: igData.account_type || "CREATOR",
           page_id: page.id, page_name: page.name,
           permissions: grantedScopes, is_active: true,
         }, { onConflict: "user_id,platform,platform_user_id" });
+
+        if (upsertErr) {
+          console.error("[IG] Strategy 2 DB upsert error:", upsertErr.message, upsertErr.details);
+          continue;
+        }
+
         accountSaved = true;
-        console.log("[IG] Strategy 2 ✓ @" + igData.username);
+        console.log("[IG] Strategy 2 ✓ Saved @" + igData.username);
       }
     }
 
