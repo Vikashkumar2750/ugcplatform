@@ -64,7 +64,7 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
       // gemini-2.0-flash-lite = free tier available
       // gemini-2.0-flash = needs billing
       // gemini-1.5-flash = being deprecated
-      const models = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-latest"];
+      const models = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.0-flash"];
       let lastError = "";
       for (const model of models) {
         try {
