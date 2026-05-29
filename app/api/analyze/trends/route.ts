@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
     // Scrape trending content with Apify
     if (resolvedScraperKey && resolvedScraperProvider === "apify") {
       try {
-        const actorId = platform === "youtube" ? "streamers/youtube-scraper" : "apify/instagram-hashtag-scraper";
+        const actorId = platform === "youtube" ? "streamers/youtube-scraper" : "apify/instagram-scraper";
         const inputMap: Record<string, unknown> = {
-          instagram: { hashtags: [(niche || "India").toLowerCase().replace(/\s/g, "")], resultsLimit: 20 },
+          instagram: { directUrls: [`https://www.instagram.com/explore/tags/${(niche || "India").toLowerCase().replace(/\s/g, "")}/`], resultsLimit: 15 },
           youtube: { searchKeywords: [`${niche} India 2025`], maxResults: 10 },
         };
         const runRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${resolvedScraperKey}`, {
