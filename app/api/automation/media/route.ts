@@ -50,16 +50,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: data.error.message, media: [] });
     }
 
-    // Normalize media items
-    const media = (data.data || []).map((m: any) => ({
-      id: m.id,
-      type: m.media_type, // IMAGE | VIDEO | CAROUSEL_ALBUM
-      url: m.media_url || m.thumbnail_url || "",
-      thumbnail: m.thumbnail_url || m.media_url || "",
-      caption: m.caption?.substring(0, 100) || "",
-      timestamp: m.timestamp,
-      permalink: m.permalink,
-    }));
+    // Normalize media items — VIDEO needs thumbnail_url, not media_url
+    const media = (data.data || []).map((m: any) => {
+      const isVideo = m.media_type === "VIDEO" || m.media_type === "REEL";
+      return {
+        id: m.id,
+        type: m.media_type,
+        url: isVideo ? (m.thumbnail_url || m.media_url || "") : (m.media_url || ""),
+        thumbnail: m.thumbnail_url || m.media_url || "",
+        caption: m.caption?.substring(0, 100) || "",
+        timestamp: m.timestamp,
+        permalink: m.permalink,
+      };
+    });
 
     return NextResponse.json({ media });
   } catch (e: any) {

@@ -150,14 +150,25 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
 
   const isFirstMessage = !conv || (conv.message_count || 0) === 0;
 
-  // Upsert conversation tracker
-  await supabase.from("dm_conversations").upsert({
-    account_id: account.id,
-    user_id: account.user_id,
-    sender_id: senderId,
-    message_count: (conv?.message_count || 0) + 1,
-    last_message_at: new Date().toISOString(),
-  }, { onConflict: "account_id,sender_id" });
+  // Update or create conversation tracker (avoid upsert conflict issue)
+  if (conv) {
+    await supabase.from("dm_conversations")
+      .update({
+        message_count: (conv.message_count || 0) + 1,
+        last_message_at: new Date().toISOString(),
+      })
+      .eq("account_id", account.id)
+      .eq("sender_id", senderId);
+  } else {
+    const { error: insertErr } = await supabase.from("dm_conversations").insert({
+      account_id: account.id,
+      user_id: account.user_id,
+      sender_id: senderId,
+      message_count: 1,
+      last_message_at: new Date().toISOString(),
+    });
+    if (insertErr) console.warn("[Webhook] dm_conversations insert error:", insertErr.message);
+  }
 
   // Handle opt-out keywords
   const OPT_OUT_KEYWORDS = ["stop", "unsubscribe", "optout", "opt out", "cancel", "band karo"];

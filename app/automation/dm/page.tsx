@@ -69,19 +69,23 @@ function PostPickerModal({ onSelect, onClose }: {
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {media.map(post => (
                 <button key={post.id} onClick={() => { onSelect(post); onClose(); }}
-                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-transparent hover:border-amber-400 transition group">
+                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-transparent hover:border-amber-400 transition group bg-muted">
                   {post.url ? (
-                    <img src={post.url} alt={post.caption} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-muted flex items-center justify-center">
-                      <ImageIcon className="w-6 h-6 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-end">
-                    <p className="text-[10px] text-white p-1.5 line-clamp-2 opacity-0 group-hover:opacity-100 transition">{post.caption || "No caption"}</p>
+                    <img src={post.url} alt={post.caption}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  ) : null}
+                  {/* Caption fallback shown always — visible when no image */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-gradient-to-br from-amber-500/20 to-amber-900/30">
+                    <p className="text-[10px] text-center text-foreground/80 line-clamp-4 leading-tight">{post.caption || "Post"}</p>
                   </div>
-                  {post.type === "VIDEO" && (
-                    <div className="absolute top-1 right-1 bg-black/60 rounded px-1 py-0.5 text-[9px] text-white">Reel</div>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition" />
+                  {(post.type === "VIDEO" || post.type === "REEL") && (
+                    <div className="absolute top-1 right-1 bg-black/60 rounded px-1 py-0.5 text-[9px] text-white z-10">Reel</div>
+                  )}
+                  {post.type === "CAROUSEL_ALBUM" && (
+                    <div className="absolute top-1 right-1 bg-black/60 rounded px-1 py-0.5 text-[9px] text-white z-10">⊞</div>
                   )}
                 </button>
               ))}
