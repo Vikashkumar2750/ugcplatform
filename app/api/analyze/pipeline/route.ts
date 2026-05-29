@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { callLLM, extractJSON, LLMProvider } from "@/lib/llm-call";
 
 export async function POST(req: NextRequest) {
   try {
-    const { platform, niche, language, profileUrl, anthropicKey } = await req.json();
-    if (!anthropicKey) return NextResponse.json({ error: "Missing anthropicKey" }, { status: 400 });
+    const { platform, niche, language, profileUrl, llmKey, llmProvider, anthropicKey } = await req.json();
 
-    const client = new Anthropic({ apiKey: anthropicKey });
+    const resolvedLLMKey = llmKey || anthropicKey || "";
+    const resolvedLLMProvider = (llmProvider || "anthropic") as LLMProvider;
+
+    if (!resolvedLLMKey) {
+      return NextResponse.json({ error: "Missing AI API key" }, { status: 400 });
+    }
+
     const isHindi = language === "hi";
-
-    const systemPrompt = isHindi
+    const system = isHindi
       ? `Tu ek expert content writer hai jo Indian creators ke liye shoot-ready scripts likhta hai. 
          Hinglish mein likho (Hindi + English mix). Scripts relatable, engaging, aur actionable honi chahiye.
          JSON format mein jawab do.`
@@ -17,7 +21,7 @@ export async function POST(req: NextRequest) {
          Write in clear English. Scripts should be relatable, engaging, and actionable.
          Respond in JSON format.`;
 
-    const userPrompt = `Create a 7-day content pipeline for this ${platform} creator:
+    const userMessage = `Create a 7-day content pipeline for this ${platform} creator:
 Profile: ${profileUrl}
 Niche: ${niche}
 Language: ${isHindi ? "Hinglish (Hindi + English mix)" : "English"}
@@ -47,16 +51,8 @@ Generate 7 unique scripts. For each provide:
 
 Make all 7 scripts completely different formats and topics. Be specific to the Indian audience.`;
 
-    const message = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 8000,
-      messages: [{ role: "user", content: userPrompt }],
-      system: systemPrompt,
-    });
-
-    const responseText = message.content[0].type === "text" ? message.content[0].text : "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: responseText };
+    const responseText = await callLLM({ llmKey: resolvedLLMKey, llmProvider: resolvedLLMProvider, system, userMessage, maxTokens: 8000 });
+    const data = extractJSON(responseText) || { raw: responseText };
 
     return NextResponse.json({ success: true, pipeline: data });
   } catch (err: any) {

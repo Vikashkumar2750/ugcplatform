@@ -93,20 +93,58 @@ export default function AnalyzePage() {
   const runAnalysis = async () => {
     setRunning(true);
 
-    // Load API keys from localStorage
-    let anthropicKey = "";
-    let apifyKey = "";
+    // ── Load API keys from localStorage (new + old format) ──
+    let llmKey = "";
+    let llmProvider = "anthropic";
+    let scraperKey = "";
+    let scraperProvider = "apify";
+
     try {
-      const saved = localStorage.getItem("ugc_keys");
-      if (saved) {
-        const keys = JSON.parse(atob(saved));
-        anthropicKey = keys.anthropic || "";
-        apifyKey = keys.apify || "";
+      const raw = localStorage.getItem("ce_settings_v2");
+      if (raw) {
+        // New format
+        const data = JSON.parse(atob(raw));
+        const llmPriority: string[] = data.llmPriority || ["anthropic", "openai", "gemini", "kimi", "ollama"];
+        const llmEnabled: Record<string, boolean> = data.llmEnabled || {};
+        const llmKeys: Record<string, string> = data.llmKeys || {};
+        // Pick first enabled LLM with a key
+        for (const id of llmPriority) {
+          if (llmEnabled[id] !== false && llmKeys[id]) {
+            llmKey = llmKeys[id];
+            llmProvider = id;
+            break;
+          }
+        }
+        const scraperPriority: string[] = data.scraperPriority || ["apify", "rapidapi"];
+        const scraperEnabled: Record<string, boolean> = data.scraperEnabled || {};
+        const scraperKeys: Record<string, string> = data.scraperKeys || {};
+        for (const id of scraperPriority) {
+          if (scraperEnabled[id] !== false && scraperKeys[id]) {
+            scraperKey = scraperKeys[id];
+            scraperProvider = id;
+            break;
+          }
+        }
+      } else {
+        // Fallback: old format
+        const old = localStorage.getItem("ugc_keys");
+        if (old) {
+          const keys = JSON.parse(atob(old));
+          llmKey = keys.anthropic || "";
+          llmProvider = "anthropic";
+          scraperKey = keys.apify || "";
+          scraperProvider = "apify";
+        }
       }
     } catch {}
 
-    if (!anthropicKey || !apifyKey) {
-      alert("Settings mein pehle Anthropic + Apify API keys add karo!");
+    if (!llmKey) {
+      alert("Settings mein koi bhi ek AI API key add karo (Claude, OpenAI, Gemini, Kimi, ya Ollama)");
+      setRunning(false);
+      return;
+    }
+    if (!scraperKey) {
+      alert("Settings mein koi bhi ek Scraping API key add karo (Apify ya RapidAPI)");
       setRunning(false);
       return;
     }
@@ -126,8 +164,13 @@ export default function AnalyzePage() {
             competitors: competitorMode === "known" ? competitorUrls.filter(Boolean) : [],
             profession: competitorMode === "discover" ? profession : "",
             resume: competitorMode === "discover" ? resume : "",
-            anthropicKey,
-            apifyKey,
+            llmKey,
+            llmProvider,
+            scraperKey,
+            scraperProvider,
+            // Legacy compat
+            anthropicKey: llmProvider === "anthropic" ? llmKey : llmKey,
+            apifyKey: scraperProvider === "apify" ? scraperKey : "",
           }),
         });
         if (!res.ok) throw new Error(`Phase ${phase} failed`);

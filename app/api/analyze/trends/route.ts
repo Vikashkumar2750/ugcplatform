@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { callLLM, extractJSON, LLMProvider } from "@/lib/llm-call";
 
 export async function POST(req: NextRequest) {
   try {
-    const { platform, niche, language, anthropicKey, apifyKey } = await req.json();
+    const { platform, niche, language, llmKey, llmProvider, scraperKey, scraperProvider, anthropicKey, apifyKey } = await req.json();
+
+    const resolvedLLMKey = llmKey || anthropicKey || "";
+    const resolvedLLMProvider = (llmProvider || "anthropic") as LLMProvider;
+    const resolvedScraperKey = scraperKey || apifyKey || "";
+    const resolvedScraperProvider = scraperProvider || "apify";
 
     let trendData: unknown[] = [];
 
     // Scrape trending content with Apify
-    if (apifyKey) {
+    if (resolvedScraperKey && resolvedScraperProvider === "apify") {
       try {
-        // Use Instagram hashtag scraper to get trending content
-        const niches = { instagram: "#" + (niche || "India").toLowerCase().replace(/\s/g, ""), youtube: niche || "India" };
         const actorId = platform === "youtube" ? "streamers/youtube-scraper" : "apify/instagram-hashtag-scraper";
         const inputMap: Record<string, unknown> = {
-          instagram: { hashtags: [niches.instagram.replace("#", "")], resultsLimit: 20 },
+          instagram: { hashtags: [(niche || "India").toLowerCase().replace(/\s/g, "")], resultsLimit: 20 },
           youtube: { searchKeywords: [`${niche} India 2025`], maxResults: 10 },
         };
-        const runRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${apifyKey}`, {
+        const runRes = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${resolvedScraperKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(inputMap[platform || "instagram"] || inputMap.instagram),
@@ -28,10 +31,10 @@ export async function POST(req: NextRequest) {
           if (runId) {
             for (let i = 0; i < 9; i++) {
               await new Promise(r => setTimeout(r, 5000));
-              const s = await (await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apifyKey}`)).json();
+              const s = await (await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${resolvedScraperKey}`)).json();
               if (s.data?.status === "SUCCEEDED") {
                 const items = await (await fetch(
-                  `https://api.apify.com/v2/datasets/${s.data.defaultDatasetId}/items?token=${apifyKey}&limit=20`
+                  `https://api.apify.com/v2/datasets/${s.data.defaultDatasetId}/items?token=${resolvedScraperKey}&limit=20`
                 )).json();
                 trendData = items;
                 break;
@@ -43,10 +46,12 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    const client = new Anthropic({ apiKey: anthropicKey });
     const isHindi = language === "hi";
+    const system = isHindi
+      ? "Tu Indian social media trend expert hai. Hinglish mein examples do. JSON format mein jawab."
+      : "You are an Indian social media trend expert. JSON format.";
 
-    const userPrompt = `Analyze trending content for ${platform} creators in India in the ${niche} niche (2025):
+    const userMessage = `Analyze trending content for ${platform} creators in India in the ${niche} niche (2025):
 
 Trending Data: ${JSON.stringify(trendData.slice(0, 10), null, 2).substring(0, 2000)}
 
@@ -59,25 +64,15 @@ Provide JSON:
     { "topic": "topic name", "searchVolume": "High/Medium/Low", "competition": "High/Medium/Low" }
   ],
   "trendingHashtags": ["#tag1", "#tag2", ...],
-  "trendingAudio": ["audio name 1", "audio name 2"] ,
+  "trendingAudio": ["audio name 1", "audio name 2"],
   "seasonalOpportunity": "current month opportunity specific to Indian audience",
   "viralHookFormulas": [
     { "formula": "hook formula", "example": "Hindi/Hinglish example", "emotion": "Curiosity/Fear/Relatability/etc" }
   ]
 }`;
 
-    const message = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: userPrompt }],
-      system: isHindi
-        ? "Tu Indian social media trend expert hai. Hinglish mein examples do. JSON format mein jawab."
-        : "You are an Indian social media trend expert. JSON format.",
-    });
-
-    const responseText = message.content[0].type === "text" ? message.content[0].text : "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: responseText };
+    const responseText = await callLLM({ llmKey: resolvedLLMKey, llmProvider: resolvedLLMProvider, system, userMessage, maxTokens: 2000 });
+    const data = extractJSON(responseText) || { raw: responseText };
 
     return NextResponse.json({ success: true, trends: data });
   } catch (err: any) {

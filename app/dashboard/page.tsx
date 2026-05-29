@@ -97,8 +97,8 @@ function DashboardContent() {
         <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-400/30 bg-amber-400/8">
           <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-medium">API keys set nahi ki hain</p>
-            <p className="text-xs text-muted-foreground">Analytics run karne ke liye Anthropic + Apify keys zaroori hain</p>
+            <p className="text-sm font-medium">AI + Scraping API keys set nahi hain</p>
+            <p className="text-xs text-muted-foreground">Koi bhi ek AI key (Claude/Gemini/OpenAI) aur ek Scraping key (Apify/RapidAPI) add karo</p>
           </div>
           <Link href="/settings" className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1">
             Add karo <ChevronRight className="w-3 h-3" />

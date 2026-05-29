@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { callLLM, extractJSON, LLMProvider } from "@/lib/llm-call";
 
 export async function POST(req: NextRequest) {
   try {
-    const { platform, niche, language, competitors, profession, apifyKey, anthropicKey } = await req.json();
+    const { platform, niche, language, competitors, profession, llmKey, llmProvider, scraperKey, scraperProvider, anthropicKey, apifyKey } = await req.json();
+
+    const resolvedLLMKey = llmKey || anthropicKey || "";
+    const resolvedLLMProvider = (llmProvider || "anthropic") as LLMProvider;
+    const resolvedScraperKey = scraperKey || apifyKey || "";
+    const resolvedScraperProvider = scraperProvider || "apify";
 
     let competitorData: Record<string, unknown>[] = [];
 
-    // If known competitors, scrape them
-    if (competitors?.length && apifyKey) {
+    // If known competitors, scrape them via Apify
+    if (competitors?.length && resolvedScraperKey && resolvedScraperProvider === "apify") {
       const actorMap: Record<string, string> = {
         instagram: "apify/instagram-profile-scraper",
         youtube: "streamers/youtube-channel-scraper",
         facebook: "apify/facebook-pages-scraper",
       };
       const actor = actorMap[platform || "instagram"];
-
       try {
-        const runRes = await fetch(`https://api.apify.com/v2/acts/${actor}/runs?token=${apifyKey}`, {
+        const runRes = await fetch(`https://api.apify.com/v2/acts/${actor}/runs?token=${resolvedScraperKey}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ startUrls: competitors.map((url: string) => ({ url })), resultsLimit: 10 }),
@@ -28,10 +32,10 @@ export async function POST(req: NextRequest) {
           if (runId) {
             for (let i = 0; i < 9; i++) {
               await new Promise(r => setTimeout(r, 5000));
-              const s = await (await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${apifyKey}`)).json();
+              const s = await (await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${resolvedScraperKey}`)).json();
               if (s.data?.status === "SUCCEEDED") {
                 const items = await (await fetch(
-                  `https://api.apify.com/v2/datasets/${s.data.defaultDatasetId}/items?token=${apifyKey}&limit=10`
+                  `https://api.apify.com/v2/datasets/${s.data.defaultDatasetId}/items?token=${resolvedScraperKey}&limit=10`
                 )).json();
                 competitorData = items;
                 break;
@@ -43,13 +47,12 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    const client = new Anthropic({ apiKey: anthropicKey });
     const isHindi = language === "hi";
-    const systemPrompt = isHindi
+    const system = isHindi
       ? "Tu expert social media analyst hai. Hinglish mein jawab de. JSON format mein."
       : "You are an expert social media analyst. Respond in English. JSON format.";
 
-    const userPrompt = `Analyze competitors for this ${platform} creator and provide insights:
+    const userMessage = `Analyze competitors for this ${platform} creator and provide insights:
 Niche: ${niche}
 ${profession ? `Creator's background: ${profession}` : ""}
 Known Competitors: ${competitors?.join(", ") || "None provided — discover top 3"}
@@ -77,16 +80,8 @@ Provide JSON:
   "recommendedSubNiche": "more specific sub-niche"
 }`;
 
-    const message = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: userPrompt }],
-      system: systemPrompt,
-    });
-
-    const responseText = message.content[0].type === "text" ? message.content[0].text : "";
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: responseText };
+    const responseText = await callLLM({ llmKey: resolvedLLMKey, llmProvider: resolvedLLMProvider, system, userMessage, maxTokens: 2000 });
+    const data = extractJSON(responseText) || { raw: responseText };
 
     return NextResponse.json({ success: true, competitors: data });
   } catch (err: any) {
