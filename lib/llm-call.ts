@@ -61,8 +61,10 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
 
     // ── Google Gemini ──────────────────────────────────────────────
     case "gemini": {
-      // Try gemini-1.5-flash first (most stable), fallback to 2.0-flash
-      const models = ["gemini-1.5-flash", "gemini-2.0-flash"];
+      // gemini-2.0-flash-lite = free tier available
+      // gemini-2.0-flash = needs billing
+      // gemini-1.5-flash = being deprecated
+      const models = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash-latest"];
       let lastError = "";
       for (const model of models) {
         try {
@@ -89,25 +91,23 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
           );
           const data = await res.json();
           if (!res.ok) {
-            lastError = data.error?.message || `Gemini API error (${res.status})`;
+            // 429 = quota exceeded, 404 = model not found — try next
+            lastError = data.error?.message || `Gemini ${model} error (${res.status})`;
             continue;
           }
           const candidate = data.candidates?.[0];
           const finishReason = candidate?.finishReason;
           const text = candidate?.content?.parts?.[0]?.text || "";
           if (!text) {
-            // Safety block or empty — try without system_instruction
             if (finishReason === "SAFETY" || finishReason === "OTHER" || !candidate?.content) {
+              // Retry without system_instruction
               const res2 = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${llmKey}`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    contents: [{
-                      role: "user",
-                      parts: [{ text: `${system}\n\n${userMessage}` }],
-                    }],
+                    contents: [{ role: "user", parts: [{ text: `${system}\n\n${userMessage}` }] }],
                     generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
                   }),
                 }
@@ -115,10 +115,8 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
               const data2 = await res2.json();
               const text2 = data2.candidates?.[0]?.content?.parts?.[0]?.text || "";
               if (text2) return text2;
-              lastError = `Gemini ${model}: empty response (finishReason: ${finishReason || "unknown"})`;
-              continue;
             }
-            lastError = `Gemini ${model}: empty content`;
+            lastError = `Gemini ${model}: empty response (finishReason: ${finishReason || "unknown"})`;
             continue;
           }
           return text;
@@ -127,7 +125,11 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
           continue;
         }
       }
-      throw new Error(lastError || "Gemini API failed on all models");
+      throw new Error(
+        lastError.includes("quota") || lastError.includes("429")
+          ? `Gemini quota exceed ho gaya. Google AI Studio mein billing enable karo ya naya free key lo: https://aistudio.google.com/app/apikey`
+          : (lastError || "Gemini API failed on all models")
+      );
     }
 
     // ── Kimi (Moonshot) ────────────────────────────────────────────

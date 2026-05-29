@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     // If known competitors, scrape them via Apify
     if (competitors?.length && resolvedScraperKey && resolvedScraperProvider === "apify") {
       const actorMap: Record<string, string> = {
-        instagram: "apify/instagram-profile-scraper",
+        instagram: "apify/instagram-scraper",
         youtube: "streamers/youtube-channel-scraper",
         facebook: "apify/facebook-pages-scraper",
       };
