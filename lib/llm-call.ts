@@ -3,7 +3,7 @@
  * All providers are called via HTTP to avoid SDK dependencies
  */
 
-export type LLMProvider = "anthropic" | "openai" | "gemini" | "kimi" | "ollama";
+export type LLMProvider = "anthropic" | "openai" | "gemini" | "kimi" | "ollama" | "bedrock";
 
 export interface LLMCallOptions {
   llmKey: string;
@@ -172,9 +172,96 @@ export async function callLLM({ llmKey, llmProvider, system, userMessage, maxTok
       return data.message?.content || "";
     }
 
+    // ── AWS Bedrock ────────────────────────────────────────────────
+    // llmKey format: "AccessKeyId:SecretAccessKey:region" e.g. "AKIA...:secret:us-east-1"
+    case "bedrock": {
+      const parts = llmKey.split(":");
+      if (parts.length < 3) {
+        throw new Error("Bedrock key format galat hai. Sahi format: AccessKeyId:SecretKey:region (e.g. AKIA...:secret:us-east-1)");
+      }
+      const [accessKeyId, secretAccessKey, region = "us-east-1"] = parts;
+      const modelId = "anthropic.claude-3-haiku-20240307-v1:0";
+      const endpoint = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/invoke`;
+
+      // AWS SigV4 signing
+      const body = JSON.stringify({
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      const now = new Date();
+      const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
+      const dateStamp = amzDate.slice(0, 8);
+      const service = "bedrock";
+      const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+
+      // Hash payload
+      const bodyHash = await sha256Hex(body);
+      const canonicalHeaders = `content-type:application/json\nhost:bedrock-runtime.${region}.amazonaws.com\nx-amz-date:${amzDate}\n`;
+      const signedHeaders = "content-type;host;x-amz-date";
+      const canonicalRequest = `POST\n/model/${encodeURIComponent(modelId)}/invoke\n\n${canonicalHeaders}\n${signedHeaders}\n${bodyHash}`;
+
+      const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
+
+      const signingKey = await getSigningKey(secretAccessKey, dateStamp, region, service);
+      const signature = await hmacHex(signingKey, stringToSign);
+
+      const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Amz-Date": amzDate,
+          Authorization: authHeader,
+        },
+        body,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || `Bedrock API error (${res.status})`);
+      return data.content?.[0]?.text || "";
+    }
+
     default:
       throw new Error(`Unknown LLM provider: ${llmProvider}`);
   }
+}
+
+// ── AWS SigV4 helpers ─────────────────────────────────────────────
+async function sha256Hex(message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hmacHex(key: ArrayBuffer | string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = typeof key === "string" ? encoder.encode(`AWS4${key}`) : key;
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw", typeof keyData === "string" ? encoder.encode(keyData) : keyData,
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
+  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hmacBuf(key: ArrayBuffer | string, message: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const keyBytes = typeof key === "string" ? encoder.encode(`AWS4${key}`) : new Uint8Array(key as ArrayBuffer);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw", keyBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  return crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
+}
+
+async function getSigningKey(secret: string, date: string, region: string, service: string): Promise<ArrayBuffer> {
+  const kDate = await hmacBuf(secret, date);
+  const kRegion = await hmacBuf(kDate, region);
+  const kService = await hmacBuf(kRegion, service);
+  return hmacBuf(kService, "aws4_request");
 }
 
 /**

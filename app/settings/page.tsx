@@ -17,7 +17,8 @@ const LLM_PROVIDERS: LLMProvider[] = [
   { id: "anthropic", name: "Claude (Anthropic)", label: "Anthropic API Key", helpUrl: "https://console.anthropic.com", placeholder: "sk-ant-..." },
   { id: "openai",    name: "OpenAI (ChatGPT)",  label: "OpenAI API Key",     helpUrl: "https://platform.openai.com/api-keys", placeholder: "sk-..." },
   { id: "gemini",    name: "Google Gemini",     label: "Gemini API Key",     helpUrl: "https://aistudio.google.com/app/apikey", placeholder: "AIza..." },
-  { id: "kimi",      name: "Kimi (Moonshot)",   label: "Kimi API Key",       helpUrl: "https://platform.moonshot.cn", placeholder: "sk-..." },
+  { id: "kimi",      name: "Kimi (Moonshot)",   label: "Kimi API Key",       helpUrl: "https://platform.moonshot.cn", placeholder: "sk-... (platform.moonshot.cn se lo)" },
+  { id: "bedrock",   name: "AWS Bedrock",       label: "Bedrock Key (AccessKeyId:Secret:region)", helpUrl: "https://aws.amazon.com/bedrock", placeholder: "AKIA...:secretkey:us-east-1" },
   { id: "ollama",    name: "Ollama (Local)",    label: "Ollama Base URL",    helpUrl: "https://ollama.ai", placeholder: "http://localhost:11434" },
 ];
 
