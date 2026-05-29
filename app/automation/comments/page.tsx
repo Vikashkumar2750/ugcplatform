@@ -133,7 +133,7 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name, type, keywords, matchType,
+          name, type, platform: "instagram", keywords, matchType,
           replyText, dmMessage, dmLink,
           mediaId: scope === "specific" ? selectedPost?.id : null,
           mediaThumb: scope === "specific" ? selectedPost?.thumbnail : null,

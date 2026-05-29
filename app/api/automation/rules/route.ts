@@ -54,25 +54,25 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption } = body;
+  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
   const supabase = getServiceClient();
 
-  // Get user's connected account id
+  // Get user's connected account id (correct table: connected_accounts)
   const { data: account } = await supabase
-    .from("platform_connections")
+    .from("connected_accounts")
     .select("id")
     .eq("user_id", userId)
-    .eq("platform", "instagram")
+    .eq("platform", platform)
     .eq("is_active", true)
     .single();
 
   const trigger_config: any = {
     keywords: keywords || [],
     match_type: matchType || "any",
-    media_id: mediaId || null,           // null = all posts
+    media_id: mediaId || null,
     media_thumb: mediaThumb || null,
     media_caption: mediaCaption || null,
   };
@@ -89,6 +89,7 @@ export async function POST(req: NextRequest) {
     .insert({
       user_id: userId,
       account_id: account?.id || null,
+      platform,          // ← was missing, caused NOT NULL violation
       name,
       type,
       trigger_config,
