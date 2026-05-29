@@ -46,35 +46,26 @@ export async function GET() {
       }
     } catch {}
 
-    // ── 3. Recent Posts ───────────────────────────────────────────
+    // ── 3. Recent Posts with Engagement (single call) ─────────────
     let posts: any[] = [];
     try {
       const postsRes = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/posts?fields=id,message,story,created_time,attachments{type}&limit=20&access_token=${token}`
+        `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,message,story,created_time,attachments{type},likes.summary(true),comments.summary(true),shares&limit=20&access_token=${token}`
       );
       const postsData = await postsRes.json();
       posts = postsData.data || [];
     } catch {}
 
-    // ── 4. Post Engagement (likes, comments, shares) ──────────────
-    const topPosts: any[] = [];
-    for (const post of posts.slice(0, 5)) {
-      try {
-        const postInsRes = await fetch(
-          `https://graph.facebook.com/v21.0/${post.id}?fields=likes.summary(true),comments.summary(true),shares&access_token=${token}`
-        );
-        const pd = await postInsRes.json();
-        topPosts.push({
-          id: post.id,
-          message: (post.message || post.story || "Post")?.substring(0, 80),
-          type: post.attachments?.data?.[0]?.type || "status",
-          likes: pd.likes?.summary?.total_count || 0,
-          comments: pd.comments?.summary?.total_count || 0,
-          shares: pd.shares?.count || 0,
-          created: post.created_time,
-        });
-      } catch {}
-    }
+    // ── 4. Build top posts from combined data ─────────────────────
+    const topPosts: any[] = posts.slice(0, 5).map((post: any) => ({
+      id: post.id,
+      message: (post.message || post.story || "Post")?.substring(0, 80),
+      type: post.attachments?.data?.[0]?.type || "status",
+      likes: post.likes?.summary?.total_count || 0,
+      comments: post.comments?.summary?.total_count || 0,
+      shares: post.shares?.count || 0,
+      created: post.created_time,
+    }));
 
     // ── 5. Fan growth (last 30 days) ──────────────────────────────
     let fanGrowthChart: { date: string; fans: number }[] = [];

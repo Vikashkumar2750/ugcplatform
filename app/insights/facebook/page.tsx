@@ -220,14 +220,22 @@ export default function FacebookInsightsPage() {
         </div>
       )}
 
-      {/* Info note */}
-      {(data.totalReach === 0 && data.totalEngaged === 0) && (
+      {/* Info note — only show if insights metrics are ALL missing */}
+      {data.totalReach === 0 && data.totalEngaged === 0 && data.topPosts.length === 0 && (
         <div className="p-4 rounded-xl border border-border bg-muted/30 flex items-start gap-2.5">
           <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Reach & Engagement data missing:</span> Facebook Page Insights API mein
-            {" "}<code className="text-amber-600">pages_read_engagement</code> permission tha — agar data empty hai to
-            verify karo ki page admin role sahi se connected hai. Reconnect try karo.
+            <span className="font-medium text-foreground">No data found:</span>{" "}
+            Page se koi bhi data nahi aa raha. Facebook se reconnect karo ya check karo ki page admin role theek hai.
+          </p>
+        </div>
+      )}
+      {/* Soft note when posts loaded but reach metrics are 0 */}
+      {data.totalReach === 0 && data.topPosts.length > 0 && (
+        <div className="p-3 rounded-xl border border-border bg-muted/20 flex items-start gap-2">
+          <AlertCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">
+            Reach & Impressions metrics ke liye Meta App Review approval required hai. Posts aur fans data available hai ✓
           </p>
         </div>
       )}
