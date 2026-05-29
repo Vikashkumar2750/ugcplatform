@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { metaFetch } from "@/lib/meta-rate-limit";
 
 export async function GET() {
   try {
@@ -7,7 +8,6 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // Get connected Facebook account from DB
     const { data: account } = await supabase
       .from("connected_accounts")
       .select("*")
@@ -20,46 +20,66 @@ export async function GET() {
 
     const pageId = account.platform_user_id;
     const token = account.access_token;
+    const tokenId = `fb:${account.id}`;
+    const cachePrefix = `fb:${account.id}`;
 
-    // ── 1. Page Basic Info ────────────────────────────────────────
-    const pageRes = await fetch(
-      `https://graph.facebook.com/v21.0/${pageId}?fields=id,name,fan_count,followers_count,category,about,website&access_token=${token}`
+    // ── 1. Page Info (cached 30min) ───────────────────────────────
+    const { data: page } = await metaFetch(
+      `https://graph.facebook.com/v21.0/${pageId}?fields=id,name,fan_count,followers_count,category,about,website&access_token=${token}`,
+      { cacheKey: `${cachePrefix}:page`, cacheTtlMs: 30 * 60 * 1000, tokenId }
     );
-    const page = await pageRes.json();
 
-    // ── 2. Page Insights (reach, impressions, views) ─────────────
+    if (page?.error) {
+      const code = page.error.code;
+      return NextResponse.json({
+        error: code === 190 ? "Access token expired — reconnect Facebook" : page.error.message,
+        code,
+      }, { status: 400 });
+    }
+
+    // ── 2. Page Insights — single combined call (cached 1hr) ──────
     const since = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
     const until = Math.floor(Date.now() / 1000);
     let totalReach = 0, totalImpressions = 0, totalViews = 0, totalEngaged = 0;
+    let fanGrowthChart: { date: string; fans: number }[] | null = null;
 
     try {
-      const insRes = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_impressions,page_reach,page_views_total,page_engaged_users&period=day&since=${since}&until=${until}&access_token=${token}`
+      const { data: insData } = await metaFetch(
+        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_impressions,page_reach,page_views_total,page_engaged_users,page_fans&period=day&since=${since}&until=${until}&access_token=${token}`,
+        { cacheKey: `${cachePrefix}:insights`, cacheTtlMs: 60 * 60 * 1000, tokenId }
       );
-      const insData = await insRes.json();
-      for (const m of (insData.data || [])) {
+      for (const m of (insData?.data || [])) {
         const total = (m.values || []).reduce((s: number, v: any) => s + (v.value || 0), 0);
         if (m.name === "page_reach") totalReach = total;
         if (m.name === "page_impressions") totalImpressions = total;
         if (m.name === "page_views_total") totalViews = total;
         if (m.name === "page_engaged_users") totalEngaged = total;
+        if (m.name === "page_fans" && m.values?.length > 1) {
+          fanGrowthChart = m.values
+            .filter((_: any, i: number) => i % 5 === 0)
+            .map((v: any) => ({
+              date: new Date(v.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+              fans: v.value,
+            }));
+        }
       }
-    } catch {}
+    } catch (e: any) {
+      console.warn("[FB Insights] insights failed:", e.message);
+    }
 
-    // ── 3. Recent Posts with Engagement (single call) ─────────────
+    // ── 3. Recent Posts (cached 15min) ────────────────────────────
     let posts: any[] = [];
     try {
-      const postsRes = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,message,story,created_time,attachments{type},likes.summary(true),comments.summary(true),shares&limit=20&access_token=${token}`
+      const { data: postsData } = await metaFetch(
+        `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,message,story,created_time,attachments{type},likes.summary(true),comments.summary(true),shares&limit=15&access_token=${token}`,
+        { cacheKey: `${cachePrefix}:posts`, cacheTtlMs: 15 * 60 * 1000, tokenId }
       );
-      const postsData = await postsRes.json();
-      posts = postsData.data || [];
+      posts = postsData?.data || [];
     } catch {}
 
-    // ── 4. Build top posts from combined data ─────────────────────
-    const topPosts: any[] = posts.slice(0, 5).map((post: any) => ({
+    const topPosts = posts.slice(0, 5).map((post: any) => ({
       id: post.id,
-      message: (post.message || post.story || "Post")?.substring(0, 80),
+      message: (post.message || post.story || "Post")?.substring(0, 100),
       type: post.attachments?.data?.[0]?.type || "status",
       likes: post.likes?.summary?.total_count || 0,
       comments: post.comments?.summary?.total_count || 0,
@@ -67,28 +87,9 @@ export async function GET() {
       created: post.created_time,
     }));
 
-    // ── 5. Fan growth (last 30 days) ──────────────────────────────
-    let fanGrowthChart: { date: string; fans: number }[] = [];
-    try {
-      const fgRes = await fetch(
-        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_fans&period=day&since=${since}&until=${until}&access_token=${token}`
-      );
-      const fgData = await fgRes.json();
-      const fanMetric = fgData.data?.find((d: any) => d.name === "page_fans");
-      if (fanMetric?.values?.length) {
-        fanGrowthChart = fanMetric.values
-          .filter((_: any, i: number) => i % 5 === 0)
-          .map((v: any) => ({
-            date: new Date(v.end_time).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-            fans: v.value,
-          }));
-      }
-    } catch {}
-
     const fans = page.fan_count || page.followers_count || 0;
     const engagementRate = fans > 0 && totalEngaged > 0
-      ? ((totalEngaged / fans) * 100).toFixed(2)
-      : "0.00";
+      ? ((totalEngaged / fans) * 100).toFixed(2) : "0.00";
 
     return NextResponse.json({
       connected: true,
@@ -104,12 +105,15 @@ export async function GET() {
       engagementRate: parseFloat(engagementRate),
       postsCount: posts.length,
       topPosts,
-      fanGrowthChart: fanGrowthChart.length > 0 ? fanGrowthChart : null,
+      fanGrowthChart: fanGrowthChart && fanGrowthChart.length > 1 ? fanGrowthChart : null,
       connectedAt: account.connected_at,
     });
 
   } catch (err: any) {
-    console.error("[/api/insights/facebook]", err);
+    console.error("[/api/insights/facebook]", err.message);
+    if (err.message?.includes("Rate limit") || err.message?.includes("rate limit")) {
+      return NextResponse.json({ error: err.message, retryAfter: 3600 }, { status: 429 });
+    }
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
