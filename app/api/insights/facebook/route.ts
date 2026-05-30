@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { metaFetch } from "@/lib/meta-rate-limit";
+import { getDailyCache, setDailyCache } from "@/lib/insights-cache";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const force = request.nextUrl.searchParams.get("force") === "true";
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -17,6 +19,13 @@ export async function GET() {
       .single();
 
     if (!account) return NextResponse.json({ error: "not_connected" }, { status: 404 });
+
+    // ── Daily cache (skip Meta API if already fetched today IST) ──
+    const cached = await getDailyCache(supabase, user.id, "facebook", force);
+    if (cached) {
+      console.log("[FB Insights] Serving daily cache");
+      return NextResponse.json({ ...cached.data, _fromCache: true });
+    }
 
     const pageId = account.platform_user_id;
     const token = account.access_token;
@@ -91,7 +100,7 @@ export async function GET() {
     const engagementRate = fans > 0 && totalEngaged > 0
       ? ((totalEngaged / fans) * 100).toFixed(2) : "0.00";
 
-    return NextResponse.json({
+    const responseData = {
       connected: true,
       pageName: page.name || account.platform_name,
       pageId,
@@ -107,7 +116,9 @@ export async function GET() {
       topPosts,
       fanGrowthChart: fanGrowthChart && fanGrowthChart.length > 1 ? fanGrowthChart : null,
       connectedAt: account.connected_at,
-    });
+    };
+    await setDailyCache(supabase, user.id, "facebook", responseData);
+    return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });
 
   } catch (err: any) {
     console.error("[/api/insights/facebook]", err.message);

@@ -273,14 +273,17 @@ export default function InstagramInsightsPage() {
   const [notConnected, setNotConnected] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "audience">("overview");
+  const [fromCache, setFromCache] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
+      const url = isRefresh ? "/api/insights/instagram?force=true" : "/api/insights/instagram";
       const [insRes, taskRes, histRes] = await Promise.all([
-        fetch("/api/insights/instagram"),
+        fetch(url),
         fetch("/api/insights/tasks?platform=instagram"),
         fetch("/api/insights/tasks/history?platform=instagram"),
       ]);
@@ -289,6 +292,8 @@ export default function InstagramInsightsPage() {
       if (insRes.status === 429) { setError(`Rate limited: ${insJson.error}. Wait ~1 hour.`); return; }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
       setData(insJson);
+      setFromCache(insJson._fromCache === true);
+      setFetchedAt(insJson._fetchedAt || null);
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
     } catch { setError("Network error — please retry"); }
@@ -372,9 +377,25 @@ export default function InstagramInsightsPage() {
         <button onClick={() => fetchAll(true)} disabled={refreshing}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60 transition">
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "..." : "Refresh"}
+          {refreshing ? "Fetching..." : "Refresh"}
         </button>
       </div>
+      {/* Cache status badge */}
+      {fetchedAt && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {fromCache ? (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border border-border">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              Cached today · {new Date(fetchedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border border-border">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              Live from Meta · {new Date(fetchedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl bg-muted/40 border border-border w-fit">

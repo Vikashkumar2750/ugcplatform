@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { metaFetch } from "@/lib/meta-rate-limit";
+import { getDailyCache, setDailyCache } from "@/lib/insights-cache";
 
 // Helper: unix timestamp N days ago
 const daysAgo = (n: number) => Math.floor(Date.now() / 1000) - n * 86400;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const force = request.nextUrl.searchParams.get("force") === "true";
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -20,6 +22,13 @@ export async function GET() {
       .single();
 
     if (!account) return NextResponse.json({ error: "not_connected" }, { status: 404 });
+
+    // ── Daily cache check (skip Meta API if already fetched today IST) ──
+    const cached = await getDailyCache(supabase, user.id, "instagram", force);
+    if (cached) {
+      console.log("[IG Insights] Serving daily cache from Supabase");
+      return NextResponse.json({ ...cached.data, _fromCache: true });
+    }
 
     const igId = account.platform_user_id;
     const token = account.access_token;
@@ -243,7 +252,7 @@ export async function GET() {
       timestamp: p.timestamp,
     }));
 
-    return NextResponse.json({
+    const responseData = {
       connected: true,
       handle: `@${profile.username || account.platform_username}`,
       name: profile.name || account.platform_name,
@@ -251,7 +260,6 @@ export async function GET() {
       followers,
       following: profile.follows_count || 0,
       mediaCount: profile.media_count || 0,
-      // 30-day stats
       avgReach,
       avgImpressions: impressions30d > 0 ? Math.round(impressions30d / 30) : 0,
       engagementRate: er30d,
@@ -263,17 +271,15 @@ export async function GET() {
       postsAnalyzed: posts.length,
       posts30dCount: posts30d.length,
       posts7dCount: posts7d.length,
-      // Comparison data
       comparison7d,
-      // Charts
       followerGrowthChart: followerGrowthChart && followerGrowthChart.length > 1 ? followerGrowthChart : null,
-      // Audience
       audienceDemographics: demographics,
-      // Top posts
       topPosts,
       accountType: account.account_type,
       connectedAt: account.connected_at,
-    });
+    };
+    await setDailyCache(supabase, user.id, "instagram", responseData);
+    return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });
 
   } catch (err: any) {
     console.error("[/api/insights/instagram]", err.message);
