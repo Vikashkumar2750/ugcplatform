@@ -5,18 +5,12 @@
       "maxDuration": 30
     },
     "app/api/automation/schedule/publish/route.ts": {
-      "maxDuration": 180
+      "maxDuration": 120
     },
     "app/api/cron/publish-scheduled/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 120
     }
   },
-  "crons": [
-    {
-      "path": "/api/cron/publish-scheduled",
-      "schedule": "*/5 * * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",
