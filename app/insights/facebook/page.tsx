@@ -1,244 +1,410 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  TrendingUp, TrendingDown, Share2, RefreshCw,
-  Loader2, AlertCircle, Heart, MessageCircle, Users, Eye
+  TrendingUp, TrendingDown, Share2, RefreshCw, Loader2, AlertCircle,
+  Heart, MessageCircle, Users, Eye, BarChart3, Camera, ThumbsUp,
+  ThumbsDown, Zap, Trophy, Plus, Circle, CheckCircle2, SkipForward, X,
+  Clock, ArrowUpRight
 } from "lucide-react";
 
+// ── Types ──────────────────────────────────────────────────────────
 interface FBInsightsData {
-  connected: boolean;
-  pageName: string;
-  fans: number;
-  followers: number;
-  category: string;
-  totalReach: number;
-  totalImpressions: number;
-  totalViews: number;
-  totalEngaged: number;
-  engagementRate: number;
+  connected: boolean; pageName: string; fans: number; followers: number;
+  category: string; totalReach: number; totalImpressions: number;
+  totalViews: number; totalEngaged: number; engagementRate: number;
   postsCount: number;
   topPosts: { id: string; message: string; type: string; likes: number; comments: number; shares: number; created: string }[];
   fanGrowthChart: { date: string; fans: number }[] | null;
 }
+interface Task {
+  id: string; title: string; description: string;
+  type: "weekly" | "monthly"; status: "pending" | "done" | "skipped";
+  auto_generated: boolean; period_key: string; completed_at: string | null;
+}
+interface TasksData { monthKey: string; weekKey: string; monthly: Task[]; weekly: Task[]; }
+interface HistoryRecord { period_key: string; tasks_total: number; tasks_done: number; }
 
-function StatCard({ label, value, subLabel, trend }: { label: string; value: string; subLabel?: string; trend?: number }) {
+function fmt(n: number) {
+  if (!n && n !== 0) return "—";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return n.toLocaleString("en-IN");
+}
+
+// ── Stat Card ──────────────────────────────────────────────────────
+function StatCard({ label, value, sub, icon: Icon, up, highlight }: {
+  label: string; value: string; sub?: string; icon?: any; up?: boolean | null; highlight?: boolean;
+}) {
   return (
-    <div className="p-5 rounded-2xl border border-border bg-card">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
-      <p className="font-heading text-2xl font-bold">{value}</p>
-      {subLabel && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${trend && trend > 0 ? "text-green-500" : trend && trend < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-          {trend && trend > 0 ? <TrendingUp className="w-3 h-3" /> : trend && trend < 0 ? <TrendingDown className="w-3 h-3" /> : null}
-          {subLabel}
+    <div className={`p-4 rounded-2xl border bg-card flex flex-col gap-2 ${highlight ? "border-blue-400/50 bg-blue-400/5" : "border-border"}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+        {Icon && <Icon className={`w-3.5 h-3.5 ${highlight ? "text-blue-500" : "text-muted-foreground/40"}`} />}
+      </div>
+      <p className="font-heading text-xl font-bold tracking-tight">{value}</p>
+      {sub && (
+        <p className={`text-[11px] flex items-center gap-1 ${up === true ? "text-green-500" : up === false ? "text-red-400" : "text-muted-foreground"}`}>
+          {up === true && <TrendingUp className="w-3 h-3" />}
+          {up === false && <TrendingDown className="w-3 h-3" />}
+          {sub}
         </p>
       )}
     </div>
   );
 }
 
-function SimpleBarChart({ data }: { data: { date: string; fans: number }[] }) {
+// ── Bar chart ─────────────────────────────────────────────────────
+function BarChart({ data }: { data: { date: string; fans: number }[] }) {
   const max = Math.max(...data.map(d => d.fans)) || 1;
   return (
     <div className="flex items-end gap-1.5 h-24">
       {data.map((d, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
-          <div
-            className="w-full rounded-t amber-gradient opacity-80"
-            style={{ height: `${(d.fans / max) * 88}px` }}
-          />
+          <div className="w-full rounded-t amber-gradient opacity-80" style={{ height: `${(d.fans / max) * 88}px` }} />
+          <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.date}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function fmt(n: number) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
-  return n.toLocaleString("en-IN");
+// ── Insight ───────────────────────────────────────────────────────
+function Insight({ type, text }: { type: "up" | "down" | "tip"; text: string }) {
+  const cfg = {
+    up:  { bg: "bg-green-500/8 border-green-500/20",  I: ThumbsUp,  ic: "text-green-500",  tc: "text-green-600 dark:text-green-400" },
+    down:{ bg: "bg-red-500/8 border-red-500/20",      I: ThumbsDown,ic: "text-red-400",    tc: "text-red-500 dark:text-red-400" },
+    tip: { bg: "bg-amber-500/8 border-amber-500/20",  I: Zap,       ic: "text-amber-500",  tc: "text-amber-600 dark:text-amber-400" },
+  }[type];
+  return (
+    <div className={`flex items-start gap-2.5 p-3 rounded-xl border ${cfg.bg}`}>
+      <cfg.I className={`w-3.5 h-3.5 ${cfg.ic} flex-shrink-0 mt-0.5`} />
+      <p className={`text-xs leading-relaxed ${cfg.tc}`}>{text}</p>
+    </div>
+  );
 }
 
+// ── Task item ─────────────────────────────────────────────────────
+function TaskItem({ task, onToggle }: { task: Task; onToggle: (id: string, status: Task["status"]) => void }) {
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-xl transition-all ${task.status === "done" ? "opacity-60 bg-muted/20" : "bg-card border border-border hover:border-blue-400/30"}`}>
+      <button onClick={() => onToggle(task.id, task.status === "done" ? "pending" : "done")} className="flex-shrink-0 mt-0.5">
+        {task.status === "done" ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5 text-muted-foreground/40 hover:text-blue-500 transition" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>{task.title}</p>
+        {task.description && <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>}
+        {!task.auto_generated && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-medium mt-1 inline-block">Custom</span>}
+      </div>
+      {task.status !== "done" && (
+        <button onClick={() => onToggle(task.id, "skipped")} className="text-muted-foreground/40 hover:text-muted-foreground">
+          <SkipForward className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Add Task Modal ────────────────────────────────────────────────
+function AddTaskModal({ onAdd, onClose }: { onAdd: (t: any) => void; onClose: () => void }) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [type, setType] = useState<"weekly" | "monthly">("weekly");
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-base">Add Custom Task</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Task title *"
+          className="w-full px-3 py-2.5 rounded-xl border border-border bg-input text-sm focus:outline-none focus:border-blue-500" />
+        <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" rows={2}
+          className="w-full px-3 py-2.5 rounded-xl border border-border bg-input text-sm focus:outline-none focus:border-blue-500 resize-none" />
+        <div className="flex gap-2">
+          {(["weekly", "monthly"] as const).map(t => (
+            <button key={t} onClick={() => setType(t)}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${type === t ? "border-blue-400 bg-blue-400/10 text-blue-600 dark:text-blue-400" : "border-border text-muted-foreground"}`}>
+              {t === "weekly" ? "Weekly" : "Monthly"}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { if (title.trim()) { onAdd({ title, description: desc, type, platform: "facebook" }); onClose(); }}}
+          className="w-full py-2.5 rounded-xl bg-blue-500 text-white font-bold text-sm hover:bg-blue-600 transition">
+          Add Task
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ──────────────────────────────────────────────────────
 export default function FacebookInsightsPage() {
   const [data, setData] = useState<FBInsightsData | null>(null);
+  const [tasks, setTasks] = useState<TasksData | null>(null);
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "tasks">("overview");
 
-  const fetchInsights = async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/insights/facebook");
-      const json = await res.json();
-      if (res.status === 404 && json.error === "not_connected") {
-        setNotConnected(true);
-      } else if (!res.ok) {
-        setError(json.error || "Failed to load Facebook insights");
-      } else {
-        setData(json);
-        setNotConnected(false);
-      }
-    } catch {
-      setError("Network error — please retry");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+      const [insRes, taskRes, histRes] = await Promise.all([
+        fetch("/api/insights/facebook"),
+        fetch("/api/insights/tasks?platform=facebook"),
+        fetch("/api/insights/tasks/history?platform=facebook"),
+      ]);
+      const insJson = await insRes.json();
+      if (insRes.status === 404 && insJson.error === "not_connected") { setNotConnected(true); return; }
+      if (insRes.status === 429) { setError(`Rate limited: ${insJson.error}`); return; }
+      if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
+      setData(insJson);
+      if (taskRes.ok) setTasks(await taskRes.json());
+      if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
+    } catch { setError("Network error"); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const handleTaskToggle = async (id: string, newStatus: Task["status"]) => {
+    await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: newStatus }) });
+    fetchAll(true);
+  };
+  const handleAddTask = async (taskData: any) => {
+    await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskData) });
+    fetchAll(true);
   };
 
-  useEffect(() => { fetchInsights(); }, []);
-
-  if (loading) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="mt-16 text-center space-y-4">
-          <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500" />
-          <p className="text-muted-foreground text-sm">Facebook se real data fetch ho raha hai...</p>
-        </div>
+  if (loading) return (
+    <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[60vh]">
+      <div className="text-center space-y-3">
+        <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500" />
+        <p className="text-muted-foreground text-sm">Fetching Facebook Page data...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (notConnected) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto mt-12 text-center space-y-4">
+  if (notConnected) return (
+    <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[60vh]">
+      <div className="text-center space-y-4">
         <Share2 className="w-14 h-14 mx-auto text-muted-foreground/30" />
-        <h2 className="font-heading text-xl font-bold">Connect Facebook to see Page insights</h2>
-        <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          Connect your Facebook Business Page to see reach, engagement, post performance, and audience data.
-        </p>
-        <Link href="/connect" className="btn-amber px-6 py-3 rounded-xl text-sm font-bold inline-flex items-center gap-2">
-          <Share2 className="w-4 h-4" /> Connect Facebook Page
+        <h2 className="font-heading text-xl font-bold">Facebook Connect Nahi Hai</h2>
+        <Link href="/connect" className="px-6 py-3 rounded-xl bg-blue-500 text-white text-sm font-bold inline-flex items-center gap-2">
+          <Share2 className="w-4 h-4" /> Connect Facebook
         </Link>
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (error || !data) {
-    return (
-      <div className="p-6 max-w-4xl mx-auto mt-12 text-center space-y-4">
-        <AlertCircle className="w-12 h-12 mx-auto text-amber-500/50" />
-        <h2 className="font-heading text-lg font-bold">Insights load nahi hue</h2>
+  if (error || !data) return (
+    <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[60vh]">
+      <div className="text-center space-y-4">
+        <AlertCircle className="w-12 h-12 mx-auto text-blue-500/50" />
         <p className="text-muted-foreground text-sm">{error}</p>
-        <button onClick={() => { setLoading(true); fetchInsights(); }}
-          className="btn-amber px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center gap-2">
+        <button onClick={() => fetchAll(true)} className="px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-bold inline-flex items-center gap-2">
           <RefreshCw className="w-4 h-4" /> Retry
         </button>
       </div>
-    );
-  }
+    </div>
+  );
+
+  const er = data.engagementRate;
+  const positives: string[] = [], negatives: string[] = [], tips: string[] = [];
+  if (er >= 5) positives.push(`Page engagement rate ${er}% excellent hai! Facebook average 0.5-1% hai.`);
+  else if (er >= 1) positives.push(`Engagement rate ${er}% above Facebook average (0.5-1%) ✓`);
+  else negatives.push(`Engagement rate ${er}% bahut low hai. Video + polls + questions try karo.`);
+  if (data.totalReach > data.fans * 0.5) positives.push(`Reach ${fmt(data.totalReach)} — posts followers se bahar bhi ja rahe hain ✓`);
+  if (data.postsCount < 8) negatives.push(`Sirf ${data.postsCount} posts in 30 days — 10-15 posts/month target karo.`);
+  else positives.push(`${data.postsCount} posts this month — good consistency ✓`);
+  tips.push("Facebook Reels post karo — organic reach best milti hai currently.");
+  tips.push("Polls aur questions se engagement boost hoti hai.");
 
   const chartData = data.fanGrowthChart || [
-    { date: "Week 1", fans: Math.round(data.fans * 0.95) },
-    { date: "Week 2", fans: Math.round(data.fans * 0.97) },
-    { date: "Week 3", fans: Math.round(data.fans * 0.99) },
+    { date: "W1", fans: Math.round(data.fans * 0.95) },
+    { date: "W2", fans: Math.round(data.fans * 0.97) },
+    { date: "W3", fans: Math.round(data.fans * 0.99) },
     { date: "Now", fans: data.fans },
   ];
 
+  const allTasks = [...(tasks?.weekly || []), ...(tasks?.monthly || [])];
+  const doneTasks = allTasks.filter(t => t.status === "done").length;
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 max-w-5xl mx-auto pb-16 space-y-5">
+
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-heading text-2xl font-bold">Facebook Page Insights</h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            {data.pageName} · {data.category} · Last 30 days
-          </p>
+          <h1 className="font-heading text-xl font-bold">{data.pageName}</h1>
+          <p className="text-muted-foreground text-xs">{data.category} · {data.postsCount} posts analyzed</p>
         </div>
-        <button onClick={() => fetchInsights(true)} disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-sm hover:bg-muted/60 transition">
-          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Refreshing..." : "Refresh"}
+        <button onClick={() => fetchAll(true)} disabled={refreshing}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60 transition">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "..." : "Refresh"}
         </button>
       </div>
 
-      {/* Key stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Page Fans" value={fmt(data.fans)} subLabel={`${data.postsCount} posts found`} />
-        <StatCard label="30-Day Reach" value={data.totalReach > 0 ? fmt(data.totalReach) : "—"}
-          subLabel={data.totalReach > 0 ? "unique people" : "requires page role"} />
-        <StatCard label="Engaged Users" value={data.totalEngaged > 0 ? fmt(data.totalEngaged) : "—"}
-          subLabel={data.totalEngaged > 0 ? "last 30 days" : "requires page insights"} />
-        <StatCard label="Page Views" value={data.totalViews > 0 ? fmt(data.totalViews) : "—"}
-          subLabel={data.totalViews > 0 ? "last 30 days" : "requires page insights"} />
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-xl bg-muted/40 border border-border w-fit">
+        {(["overview", "tasks"] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition capitalize ${activeTab === tab ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            {tab === "tasks" ? `Tasks (${doneTasks}/${allTasks.length})` : "Overview"}
+          </button>
+        ))}
       </div>
 
-      {/* Secondary stats */}
-      {data.totalImpressions > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <StatCard label="Total Impressions" value={fmt(data.totalImpressions)} subLabel="last 30 days" />
-          <StatCard label="Engagement Rate" value={`${data.engagementRate}%`}
-            subLabel={data.engagementRate >= 1 ? "good for a Page" : "below average"}
-            trend={data.engagementRate >= 1 ? 1 : -1} />
-          <StatCard label="Followers" value={fmt(data.followers)} subLabel="current" />
-        </div>
-      )}
-
-      {/* Fan growth chart */}
-      <div className="p-5 rounded-2xl border border-border bg-card">
-        <p className="text-sm font-semibold mb-1">Fan Growth</p>
-        <p className="text-xs text-muted-foreground mb-4">
-          {data.fanGrowthChart ? "Real data from Facebook API" : "Estimated trend"}
-        </p>
-        <SimpleBarChart data={chartData} />
-        <div className="flex justify-between text-xs text-muted-foreground mt-3">
-          {chartData.map(d => <span key={d.date}>{d.date}</span>)}
-        </div>
-      </div>
-
-      {/* Top posts */}
-      {data.topPosts.length > 0 ? (
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <p className="font-semibold text-sm">Recent Posts (by Engagement)</p>
+      {activeTab === "overview" && (
+        <div className="space-y-5">
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Page Fans" value={fmt(data.fans)} sub="total followers" icon={Users} />
+            <StatCard label="Engagement Rate" value={`${er}%`}
+              sub={er >= 1 ? "Above FB avg (1%) ✓" : "Below avg — boost posts"}
+              up={er >= 1} highlight={er >= 1} icon={BarChart3} />
+            <StatCard label="30d Reach" value={data.totalReach > 0 ? fmt(data.totalReach) : "—"} sub="unique accounts" icon={Eye} />
+            <StatCard label="30d Impressions" value={data.totalImpressions > 0 ? fmt(data.totalImpressions) : "—"} sub="total views" icon={ArrowUpRight} />
           </div>
-          <div className="divide-y divide-border">
-            {data.topPosts.map((post, i) => (
-              <div key={post.id} className="px-5 py-4 flex items-center gap-4">
-                <span className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{post.message || "Post"}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 capitalize">{post.type?.replace(/_/g, " ")}</p>
-                </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
-                  <span className="flex items-center gap-1"><Heart className="w-3 h-3" />{fmt(post.likes)}</span>
-                  <span className="flex items-center gap-1"><MessageCircle className="w-3 h-3" />{post.comments}</span>
-                  <span className="flex items-center gap-1"><Share2 className="w-3 h-3" />{post.shares}</span>
-                </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <StatCard label="Page Views" value={data.totalViews > 0 ? fmt(data.totalViews) : "—"} sub="30 days" icon={Eye} />
+            <StatCard label="Engaged Users" value={data.totalEngaged > 0 ? fmt(data.totalEngaged) : "—"} sub="30 days" icon={Users} />
+            <StatCard label="Posts This Month" value={String(data.postsCount)} sub="published" icon={Camera} up={data.postsCount >= 10} />
+          </div>
+
+          {/* Analysis */}
+          <div className="p-5 rounded-2xl border border-border bg-card space-y-3">
+            <p className="font-semibold text-sm">Page Analysis</p>
+            {positives.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-green-500 uppercase tracking-wider">✅ Strengths</p>
+                {positives.map((t, i) => <Insight key={i} type="up" text={t} />)}
               </div>
-            ))}
+            )}
+            {negatives.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-bold text-red-400 uppercase tracking-wider">⚠️ Improvements</p>
+                {negatives.map((t, i) => <Insight key={i} type="down" text={t} />)}
+              </div>
+            )}
+            {tips.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">💡 Tips</p>
+                {tips.map((t, i) => <Insight key={i} type="tip" text={t} />)}
+              </div>
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="p-5 rounded-2xl border border-border bg-card text-center">
-          <p className="text-sm text-muted-foreground">Koi recent posts nahi mili. Page pe kuch post karo!</p>
+
+          {/* Fan growth chart */}
+          <div className="p-5 rounded-2xl border border-border bg-card">
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-semibold text-sm">Fan Growth</p>
+              <span className="text-xs text-muted-foreground px-2 py-0.5 rounded-full bg-muted">
+                {data.fanGrowthChart ? "Live API" : "Estimated"}
+              </span>
+            </div>
+            <BarChart data={chartData} />
+          </div>
+
+          {/* Top posts */}
+          {data.topPosts.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-border">
+                <p className="font-semibold text-sm">Top Posts</p>
+              </div>
+              <div className="divide-y divide-border">
+                {data.topPosts.map((post, i) => (
+                  <div key={post.id} className="px-4 py-3 flex items-start gap-3 hover:bg-muted/20 transition">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5 ${i === 0 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{post.message}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{new Date(post.created).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground flex-shrink-0">
+                      <span className="flex items-center gap-1"><Heart className="w-3 h-3" />{fmt(post.likes)}</span>
+                      <span className="flex items-center gap-1"><MessageCircle className="w-3 h-3" />{fmt(post.comments)}</span>
+                      <span className="flex items-center gap-1"><Share2 className="w-3 h-3" />{fmt(post.shares)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Info note — only show if insights metrics are ALL missing */}
-      {data.totalReach === 0 && data.totalEngaged === 0 && data.topPosts.length === 0 && (
-        <div className="p-4 rounded-xl border border-border bg-muted/30 flex items-start gap-2.5">
-          <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">No data found:</span>{" "}
-            Page se koi bhi data nahi aa raha. Facebook se reconnect karo ya check karo ki page admin role theek hai.
-          </p>
+      {activeTab === "tasks" && (
+        <div className="space-y-5">
+          <div className="p-4 rounded-2xl border border-border bg-card flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold">Progress this period</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{doneTasks} of {allTasks.length} tasks completed</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${allTasks.length > 0 ? (doneTasks / allTasks.length) * 100 : 0}%` }} />
+              </div>
+              <button onClick={() => setAddingTask(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition">
+                <Plus className="w-3 h-3" /> Add
+              </button>
+            </div>
+          </div>
+
+          {tasks?.weekly && tasks.weekly.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-blue-500" />
+                <p className="font-semibold text-sm">Weekly Tasks</p>
+                <span className="text-xs text-muted-foreground ml-auto">{tasks.weekKey}</span>
+              </div>
+              {tasks.weekly.filter(t => t.status !== "skipped").map(task => (
+                <TaskItem key={task.id} task={task} onToggle={handleTaskToggle} />
+              ))}
+            </div>
+          )}
+
+          {tasks?.monthly && tasks.monthly.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-blue-500" />
+                <p className="font-semibold text-sm">Monthly Goals</p>
+                <span className="text-xs text-muted-foreground ml-auto">{tasks.monthKey}</span>
+              </div>
+              {tasks.monthly.filter(t => t.status !== "skipped").map(task => (
+                <TaskItem key={task.id} task={task} onToggle={handleTaskToggle} />
+              ))}
+            </div>
+          )}
+
+          {history.length > 0 && (
+            <div className="p-5 rounded-2xl border border-border bg-card space-y-3">
+              <p className="font-semibold text-sm">Past 3 Months</p>
+              {history.map(h => {
+                const pct = h.tasks_total > 0 ? Math.round((h.tasks_done / h.tasks_total) * 100) : 0;
+                return (
+                  <div key={h.period_key} className="flex items-center gap-3 py-2 border-b border-border/50 last:border-0">
+                    <span className="text-xs font-medium text-muted-foreground w-20">{h.period_key}</span>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-blue-500" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs font-bold text-blue-500">{h.tasks_done}/{h.tasks_total}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
-      {/* Soft note when posts loaded but reach metrics are 0 */}
-      {data.totalReach === 0 && data.topPosts.length > 0 && (
-        <div className="p-3 rounded-xl border border-border bg-muted/20 flex items-start gap-2">
-          <AlertCircle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-muted-foreground">
-            Reach & Impressions metrics ke liye Meta App Review approval required hai. Posts aur fans data available hai ✓
-          </p>
-        </div>
-      )}
+
+      {addingTask && <AddTaskModal onAdd={handleAddTask} onClose={() => setAddingTask(false)} />}
     </div>
   );
 }
