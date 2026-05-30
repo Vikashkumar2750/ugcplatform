@@ -397,7 +397,12 @@ export default function SchedulerPage() {
       body: JSON.stringify(post),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Publish failed");
+    if (!res.ok) {
+      const msg = data.retryAfterHours
+        ? `${data.error} (retry after ${data.retryAfterHours}h)`
+        : (data.error || "Publish failed");
+      throw new Error(msg);
+    }
     await load();
   };
 

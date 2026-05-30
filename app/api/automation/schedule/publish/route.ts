@@ -2,6 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { publishToInstagram, publishToFacebook } from "@/lib/meta-publisher";
 
+// Parse Meta API error codes into user-friendly messages
+function parseMetaError(errorMsg: string): { message: string; retryAfterHours?: number } {
+  if (errorMsg.includes("80002") || errorMsg.includes("too many calls")) {
+    return { message: "Instagram publishing rate limit reached (25 posts/24hrs). Wait ~24 hours and try again.", retryAfterHours: 24 };
+  }
+  if (errorMsg.includes("32") || errorMsg.includes("Page request limit")) {
+    return { message: "Facebook Page API rate limit reached. Wait 1 hour.", retryAfterHours: 1 };
+  }
+  if (errorMsg.includes("200") || errorMsg.includes("Permission") || errorMsg.includes("permission")) {
+    return { message: "Permission denied. Reconnect your Instagram/Facebook account with publish permissions." };
+  }
+  if (errorMsg.includes("190") || errorMsg.includes("token") || errorMsg.includes("expired")) {
+    return { message: "Access token expired. Please reconnect your account from Settings → Connected Accounts." };
+  }
+  if (errorMsg.includes("media_url") || errorMsg.includes("image_url") || errorMsg.includes("video_url")) {
+    return { message: "Media URL is not publicly accessible. Make sure your uploaded file is public." };
+  }
+  return { message: errorMsg };
+}
+
 /**
  * POST /api/automation/schedule/publish
  * Body: { post_id: string }  — publish a saved scheduled post immediately
@@ -84,7 +104,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error || "Publish failed" }, { status: 500 });
+      const parsed = parseMetaError(result.error || "Publish failed");
+      const statusCode = parsed.retryAfterHours ? 429 : 500;
+      return NextResponse.json(
+        { error: parsed.message, retryAfterHours: parsed.retryAfterHours },
+        { status: statusCode }
+      );
     }
 
     return NextResponse.json({ success: true, postId: result.postId });
