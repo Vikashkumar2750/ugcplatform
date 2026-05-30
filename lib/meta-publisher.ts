@@ -19,7 +19,7 @@ export interface IGPublishParams {
 async function pollIGStatus(containerId: string, token: string, maxWaitMs = 60000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise<void>(resolve => setTimeout(resolve, 5000));
     const res = await fetch(`${GRAPH}/${containerId}?fields=status_code,status&access_token=${token}`);
     const data = await res.json();
     if (data.status_code === "FINISHED" || data.status === "FINISHED") return true;
