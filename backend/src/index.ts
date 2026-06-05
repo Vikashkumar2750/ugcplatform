@@ -7,6 +7,7 @@ import creditsRouter from "./routes/credits";
 import analyzeRouter from "./routes/analyze";
 import insightsRouter from "./routes/insights";
 import adminRouter from "./routes/admin";
+import automationRouter from "./routes/automation";
 
 // ─────────────────────────────────────────────
 // Config validation
@@ -50,6 +51,7 @@ app.use("/api/credits", creditsRouter);
 app.use("/api/analyze", analyzeRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/automation", automationRouter);
 
 // ─── Worker trigger endpoints (internal — protected by WORKER_SECRET) ─────────
 function requireWorkerSecret(
