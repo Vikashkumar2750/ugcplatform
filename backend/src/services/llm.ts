@@ -317,14 +317,20 @@ async function callOpenAI(
   };
 }
 
-async function callBedrock(
+// Active Bedrock models (in order of preference — Nova models are always active)
+const BEDROCK_MODELS = [
+  "us.amazon.nova-lite-v1:0",         // Amazon Nova Lite — fast, cheap, always active
+  "us.amazon.nova-micro-v1:0",        // Amazon Nova Micro — smallest, always active
+  "us.anthropic.claude-3-5-haiku-20241022-v1:0",  // Claude 3.5 Haiku — latest Claude
+  "anthropic.claude-3-haiku-20240307-v1:0",       // Claude 3 Haiku — older fallback
+];
+
+async function callBedrockModel(
   bearerToken: string,
+  model: string,
   prompt: string,
-  systemPrompt: string | undefined,
-  _source: string
+  systemPrompt: string | undefined
 ): Promise<LLMResponse> {
-  // AWS Bedrock with IAM Identity Center bearer token
-  const model = "anthropic.claude-3-haiku-20240307-v1:0";
   const region = process.env.AWS_REGION || "us-east-1";
 
   const body: any = {
@@ -332,7 +338,19 @@ async function callBedrock(
     max_tokens: 2048,
     messages: [{ role: "user", content: prompt }],
   };
-  if (systemPrompt) body.system = systemPrompt;
+
+  // Amazon Nova uses different body format
+  const isNova = model.includes("nova");
+  const requestBody = isNova
+    ? {
+        messages: [{ role: "user", content: [{ text: prompt }] }],
+        inferenceConfig: { maxTokens: 2048 },
+        ...(systemPrompt ? { system: [{ text: systemPrompt }] } : {}),
+      }
+    : {
+        ...body,
+        ...(systemPrompt ? { system: systemPrompt } : {}),
+      };
 
   const res = await fetch(
     `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(model)}/invoke`,
@@ -343,27 +361,70 @@ async function callBedrock(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     }
   );
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Bedrock error ${res.status}: ${text}`);
+    const errText = await res.text();
+    throw new Error(`Bedrock error ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
-  const text = data.content?.[0]?.text || "";
+
+  // Nova response format differs from Claude
+  const text = isNova
+    ? (data.output?.message?.content?.[0]?.text || "")
+    : (data.content?.[0]?.text || "");
+
   const usage = data.usage || {};
 
   return {
     text,
     provider: "bedrock",
     model,
-    tokensInput: usage.input_tokens || 0,
-    tokensOutput: usage.output_tokens || 0,
+    tokensInput: usage.inputTokens || usage.input_tokens || 0,
+    tokensOutput: usage.outputTokens || usage.output_tokens || 0,
   };
 }
+
+async function callBedrock(
+  bearerToken: string,
+  prompt: string,
+  systemPrompt: string | undefined,
+  _source: string
+): Promise<LLMResponse> {
+  let lastError: Error | null = null;
+
+  for (const model of BEDROCK_MODELS) {
+    try {
+      const result = await callBedrockModel(bearerToken, model, prompt, systemPrompt);
+      console.log(`[LLM] Bedrock success with model: ${model}`);
+      return result;
+    } catch (err: any) {
+      const isSkippable =
+        err.message?.includes("Legacy") ||
+        err.message?.includes("deprecated") ||
+        err.message?.includes("not found") ||
+        err.message?.includes("Access denied") ||
+        err.message?.includes("404") ||
+        err.message?.includes("throttl") ||
+        err.message?.includes("quota");
+
+      if (isSkippable) {
+        console.warn(`[LLM] Bedrock ${model} skipped: ${err.message?.slice(0, 80)}`);
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error(
+    `All Bedrock models failed. Last error: ${lastError?.message?.slice(0, 100)}`
+  );
+}
+
 
 // ─── Cost estimation ──────────────────────────────────────────────────────────
 
