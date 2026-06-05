@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +19,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "userId required" }, { status: 400 });
     }
 
-    const txnId = `CE-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const txnId = `CE-${Date.now()}-${globalThis.crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
     // Save pending payment to DB
     const { error: dbErr } = await supabase.from("payments").insert({
