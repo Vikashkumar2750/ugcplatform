@@ -1,6 +1,8 @@
-﻿"use client";
+"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   Zap, ArrowRight, Star, Shield, CheckCircle2, TrendingUp,
@@ -22,8 +24,20 @@ const SAMPLE_REPORT = {
 
 export default function LandingPage() {
   const t = useTranslations();
+  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [sampleOpen, setSampleOpen] = useState(false);
+
+  // Redirect logged-in users to dashboard
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) router.replace("/dashboard");
+    });
+  }, [router]);
 
   const openModal = () => setModalOpen(true);
 

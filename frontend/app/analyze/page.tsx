@@ -1,11 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import {
   ChevronRight, ChevronLeft, Zap, Camera, PlayCircle, Share2,
   Search, CheckCircle2, Loader2, AlertCircle, Lightbulb, Brain,
   Clock, FileText, TrendingUp, BarChart3, Target, Plus, Trash2
 } from "lucide-react";
+
+// Singleton browser supabase client (reads cookies = works after login)
+const supabaseBrowser = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const NICHES = ["Fitness", "Finance", "Travel", "Tech", "Food", "Beauty", "Gaming", "Education", "Lifestyle", "Comedy", "Motivation", "Fashion"];
 
@@ -99,17 +106,12 @@ export default function AnalyzePage() {
     // Get Supabase auth token — backend uses this to identify user and fetch their API keys
     let authToken = "";
     try {
-      const { createClient } = await import("@supabase/supabase-js");
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabaseBrowser.auth.getSession();
       authToken = session?.access_token || "";
     } catch {}
 
     if (!authToken) {
-      alert("Please login to use the analyze feature.");
+      window.location.href = "/login?next=/analyze";
       setRunning(false);
       return;
     }
