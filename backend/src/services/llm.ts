@@ -104,12 +104,13 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
 // ─── Provider implementations ─────────────────────────────────────────────────
 
-// Gemini models tried in order when quota exceeded
+// Models tried in order — each has its own independent quota bucket
 const GEMINI_MODELS = [
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
-  "gemini-1.5-pro",
+  "gemini-2.5-flash-preview-05-20",   // Latest — highest quota
+  "gemini-2.0-flash",                 // Stable fallback
+  "gemini-2.0-flash-lite",            // Lighter model
+  "gemini-1.5-flash",                 // Older stable
+  "gemini-1.5-flash-8b",             // Smallest — usually has remaining quota
 ];
 
 async function callGeminiModel(
@@ -153,6 +154,20 @@ async function callGeminiModel(
   };
 }
 
+// Returns true for errors that mean "try another model"
+function isSkippableGeminiError(msg: string): boolean {
+  return (
+    msg.includes("quota") ||
+    msg.includes("RESOURCE_EXHAUSTED") ||
+    msg.includes("429") ||
+    msg.includes("not found") ||
+    msg.includes("not supported") ||
+    msg.includes("not_found") ||
+    msg.includes("deprecated") ||
+    msg.includes("limit")
+  );
+}
+
 async function callGemini(
   apiKey: string,
   prompt: string,
@@ -164,27 +179,24 @@ async function callGemini(
   for (const model of GEMINI_MODELS) {
     try {
       const result = await callGeminiModel(apiKey, model, prompt, systemPrompt);
+      console.log(`[LLM] Gemini success with model: ${model}`);
       return result;
     } catch (err: any) {
-      const isQuota =
-        err.message?.includes("quota") ||
-        err.message?.includes("RESOURCE_EXHAUSTED") ||
-        err.message?.includes("rate") ||
-        err.message?.includes("429");
-
-      if (isQuota) {
-        console.warn(`[LLM] Gemini ${model} quota exceeded — trying next model`);
+      if (isSkippableGeminiError(err.message || "")) {
+        console.warn(`[LLM] Gemini ${model} skipped: ${err.message?.slice(0, 80)}`);
         lastError = err;
         continue;
       }
-      // Non-quota error — throw immediately (wrong key, etc.)
+      // Auth error or other fatal — stop immediately
       throw err;
     }
   }
 
-  throw lastError || new Error("All Gemini models quota exceeded. Add your own API key in Settings.");
+  throw new Error(
+    "All Gemini models are unavailable (quota/not-found). " +
+    "Please add your own Gemini API key in Settings → API Keys."
+  );
 }
-
 
 async function callAnthropic(
   apiKey: string,
