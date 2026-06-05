@@ -112,26 +112,29 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
   // 5. Determine key source for logging
   const keySource = userKeys[response.provider] ? "user_own" : "platform";
 
-  // 6. Log usage
-  await supabase.from("api_usage_logs").insert({
-    user_id: userId,
-    provider: response.provider,
-    endpoint,
-    key_source: keySource,
-    tokens_input: response.tokensInput,
-    tokens_output: response.tokensOutput,
-    tokens_total: response.tokensInput + response.tokensOutput,
-    cost_usd: estimateCost(response.provider, response.tokensInput, response.tokensOutput),
-  }).catch(() => {}); // non-fatal
+  // 6. Log usage (non-fatal)
+  try {
+    await supabase.from("api_usage_logs").insert({
+      user_id: userId,
+      provider: response.provider,
+      endpoint,
+      key_source: keySource,
+      tokens_input: response.tokensInput,
+      tokens_output: response.tokensOutput,
+      tokens_total: response.tokensInput + response.tokensOutput,
+      cost_usd: estimateCost(response.provider, response.tokensInput, response.tokensOutput),
+    });
+  } catch { /* non-fatal */ }
 
-  // 7. Update last_used_at for the key used
+  // 7. Update last_used_at for the key used (non-fatal)
   if (keySource === "user_own") {
-    await supabase
-      .from("user_api_keys")
-      .update({ last_used_at: new Date().toISOString() })
-      .eq("user_id", userId)
-      .eq("provider", response.provider)
-      .catch(() => {});
+    try {
+      await supabase
+        .from("user_api_keys")
+        .update({ last_used_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("provider", response.provider);
+    } catch { /* non-fatal */ }
   }
 
   return response;
