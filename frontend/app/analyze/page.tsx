@@ -88,6 +88,7 @@ export default function AnalyzePage() {
   const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>({ audit: "idle", competitors: "idle", trends: "idle", pipeline: "idle" });
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [phaseModels, setPhaseModels] = useState<Record<string, { provider: string; model: string }>>({});
+  const [phaseResults, setPhaseResults] = useState<Record<string, unknown>>({});
 
   // Fetch connected accounts and auto-fill URL
   useEffect(() => {
@@ -199,7 +200,12 @@ export default function AnalyzePage() {
         if (data._meta?.provider) {
           setPhaseModels(prev => ({ ...prev, [phase]: { provider: data._meta.provider, model: data._meta.model } }));
         }
+        // Save real result data
+        const resultKey = phase === "audit" ? "audit" : phase === "competitors" ? "competitors" : phase === "trends" ? "trends" : "pipeline";
+        const resultData = data[resultKey] || data;
+        setPhaseResults(prev => ({ ...prev, [phase]: resultData }));
         setPhaseStatus(p => ({ ...p, [phase]: "done" }));
+        return { data, resultData };
       } catch (err: any) {
         console.error(`Phase ${phase} failed:`, err.message);
         setPhaseStatus(p => ({ ...p, [phase]: "failed" }));
@@ -207,12 +213,30 @@ export default function AnalyzePage() {
     };
 
     try {
-      await runPhase("audit", "audit");
-      await runPhase("competitors", "competitors");
-      await runPhase("trends", "trends");
-      await runPhase("pipeline", "pipeline");
+      // Run phases sequentially (each phase is independent but sequential is cleaner)
+      const auditRes = await runPhase("audit", "audit");
+      const compRes = await runPhase("competitors", "competitors");
+      const trendsRes = await runPhase("trends", "trends");
+      const pipeRes = await runPhase("pipeline", "pipeline");
 
+      // Build full analysis object and save to localStorage for results page
       const id = `analysis_${Date.now()}`;
+      const fullAnalysis = {
+        id,
+        profileUrl,
+        platform: platformDetected,
+        niche,
+        language,
+        createdAt: new Date().toISOString(),
+        // Each runPhase returns { data, resultData } or undefined
+        audit: (auditRes as any)?.resultData || null,
+        competitors: (compRes as any)?.resultData || null,
+        trends: (trendsRes as any)?.resultData || null,
+        pipeline: (pipeRes as any)?.resultData || null,
+        _meta: (auditRes as any)?.data?._meta || null,
+      };
+
+      localStorage.setItem(`analysis_${id}`, JSON.stringify(fullAnalysis));
       setAnalysisId(id);
     } catch {
       setRunning(false);

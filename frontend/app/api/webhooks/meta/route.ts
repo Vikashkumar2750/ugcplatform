@@ -248,24 +248,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
   console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId}`);
 
-  // ── Dedup Layer 1: Has this exact comment already been processed? ─────
-  if (commentId) {
-    const { data: existingEvent } = await supabase
-      .from("webhook_events")
-      .select("id, processed")
-      .eq("event_type", "comments")
-      .eq("sender_id", commentorId)
-      .filter("payload->id", "eq", commentId)
-      .eq("processed", true)
-      .maybeSingle();
-
-    if (existingEvent) {
-      console.log(`[Webhook] Comment ${commentId} already processed — skipping`);
-      return;
-    }
+  if (!commentId) {
+    console.warn("[Webhook] Comment has no ID — skipping");
+    return;
   }
 
-  // Get all active comment rules with account token
+  // ── Atomic Dedup: Mark comment as "being processed" FIRST ──────────────────
+  // Using a dedicated table with UNIQUE(comment_id, rule_id) to prevent
+  // duplicate processing even when Meta sends the webhook multiple times.
+  // We insert BEFORE acting — if duplicate, the insert fails → skip.
+
+  // Get all active comment rules
   const { data: rules } = await supabase
     .from("automation_rules")
     .select("*, connected_accounts(access_token, platform_user_id)")
@@ -288,22 +281,26 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     if (!matched) continue;
 
-    // ── Dedup Layer 2: Has this user already triggered THIS rule? ────────
-    // Prevents same user spamming keyword to get multiple replies
-    if (commentorId) {
-      const { data: alreadyTriggered } = await supabase
-        .from("webhook_events")
-        .select("id")
-        .eq("event_type", "comments")
-        .eq("sender_id", commentorId)
-        .eq("processed", true)
-        .filter("payload->rule_id", "eq", rule.id)
-        .maybeSingle();
+    // ── ATOMIC DEDUP: try to insert a processed_comment record ────────────────
+    // UNIQUE constraint on (comment_id, rule_id) — duplicate insert will fail
+    const { error: dedupError } = await supabase
+      .from("processed_comments")
+      .insert({
+        comment_id: commentId,
+        rule_id: rule.id,
+        commentor_id: commentorId || null,
+        media_id: mediaId || null,
+        processed_at: new Date().toISOString(),
+      });
 
-      if (alreadyTriggered) {
-        console.log(`[Webhook] User ${commentorId} already triggered rule ${rule.name} — skipping`);
+    if (dedupError) {
+      // Unique violation = already processed
+      if (dedupError.code === "23505") {
+        console.log(`[Webhook] Comment ${commentId} already processed for rule ${rule.name} — skipping`);
         continue;
       }
+      console.warn(`[Webhook] Dedup insert error: ${dedupError.message}`);
+      // Don't skip on other errors — still try to process
     }
 
     // Get token — from joined connected_accounts
@@ -325,7 +322,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       continue;
     }
 
-    // Execute action
+    // ── Execute action ────────────────────────────────────────────────────────
     if (rule.type === "comment_reply" && rule.action_config?.reply_text) {
       console.log(`[Webhook] Replying to comment ${commentId}`);
       const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
@@ -353,14 +350,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         body: JSON.stringify({ is_hidden: true, access_token: token }),
       });
     }
-
-    // Mark this comment as processed WITH rule_id in payload for dedup layer 2
-    await supabase
-      .from("webhook_events")
-      .update({ processed: true, payload: { ...payload, rule_id: rule.id } })
-      .eq("event_type", "comments")
-      .eq("sender_id", commentorId)
-      .filter("payload->id", "eq", commentId);
 
     // Update trigger count
     await supabase.from("automation_rules").update({
