@@ -52,25 +52,24 @@ export default function ResultsPage() {
     const id = params?.id as string;
     if (!id) { setLoading(false); return; }
 
-    // Load from localStorage (set by analyze page after each phase)
-    const stored = localStorage.getItem(`analysis_${id}`);
-    const meta = localStorage.getItem(`analysis_meta_${id}`);
+    // Try multiple key patterns to handle old/new format:
+    // params.id = 'analysis_1780...' (from URL /results/analysis_1780...)
+    // We save as: key='analysis_1780...' (new) or 'analysis_analysis_1780...' (compat copy)
+    const keysToTry = [
+      `analysis_${id}`,    // if id = 'analysis_1780' → 'analysis_analysis_1780' (old compat)
+      id,                   // if id = 'analysis_1780' → 'analysis_1780' (new format)
+      `analysis_meta_${id}`,
+    ];
 
-    if (stored) {
-      try {
-        setData(JSON.parse(stored));
-        setLoading(false);
-        return;
-      } catch {}
-    }
-
-    if (meta) {
-      try {
-        const metaData = JSON.parse(meta);
-        setData(metaData);
-        setLoading(false);
-        return;
-      } catch {}
+    for (const key of keysToTry) {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        try {
+          setData(JSON.parse(stored));
+          setLoading(false);
+          return;
+        } catch {}
+      }
     }
 
     setLoading(false);

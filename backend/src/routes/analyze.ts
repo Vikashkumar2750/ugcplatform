@@ -360,25 +360,24 @@ Return JSON:
   }
 });
 
-
 // ─── POST /api/analyze/trends ─────────────────────────────────────────────────
 router.post("/trends", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { platform, niche, language } = req.body;
+  const { platform, niche, language, competitors } = req.body;
+  const effectiveNiche = niche || "General / Auto-detect from context";
 
   try {
     let trendData: unknown[] = [];
     try {
       if (platform === "youtube") {
         trendData = await runApifyActor("streamers/youtube-scraper", {
-          searchKeywords: [`${niche} India 2025`],
+          searchKeywords: [`${effectiveNiche} India 2025`],
           maxResults: 10,
         });
       } else {
+        const tag = (niche || "india").toLowerCase().replace(/\s/g, "");
         trendData = await runApifyActor("apify/instagram-scraper", {
-          directUrls: [
-            `https://www.instagram.com/explore/tags/${(niche || "India").toLowerCase().replace(/\s/g, "")}/`,
-          ],
+          directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
           resultsLimit: 15,
         });
       }
@@ -388,37 +387,52 @@ router.post("/trends", async (req: Request, res: Response) => {
 
     const isHindi = language === "hi";
     const systemPrompt = isHindi
-      ? "Tu Indian social media trend expert hai. Hinglish mein examples do. SIRF valid JSON return kar."
-      : "You are an Indian social media trend expert. Return ONLY valid JSON.";
+      ? `Tu Indian social media trend expert hai. Hinglish mein specific examples do. SIRF valid JSON return kar — koi extra text nahi.`
+      : `You are an Indian social media trend expert. Give SPECIFIC trending content examples with real numbers. Return ONLY valid JSON.`;
 
     const currentMonth = new Date().toLocaleString("en-IN", { month: "long", year: "numeric" });
+    const competitorContext = competitors?.length
+      ? `Competitor accounts being analyzed: ${competitors.join(", ")}`
+      : "";
 
-    const prompt = `Analyze trending content for ${platform} creators in India in the ${niche} niche (${currentMonth}):
+    const prompt = `Analyze current trending content for ${platform} creators in India in the "${effectiveNiche}" niche (${currentMonth}).
+${competitorContext}
 
 ${trendData.length > 0
-  ? `Scraped Trend Data: ${JSON.stringify(trendData.slice(0, 10), null, 2).substring(0, 2000)}`
-  : `No scraped data — use your knowledge of current Indian ${platform} trends for ${niche} niche.`
+  ? `Scraped trending data: ${JSON.stringify(trendData.slice(0, 8), null, 2).substring(0, 2000)}`
+  : `No scraped data available. Use your knowledge of June 2025 Indian ${platform} trends for ${effectiveNiche} niche. Be specific with real examples.`
 }
 
-Return JSON:
+IMPORTANT: If niche is "auto-detect", infer it from the competitor context or default to Digital Creator / Content Creator niche.
+
+Return ONLY this JSON (no extra text, no markdown wrapper):
 {
+  "detectedNiche": "${niche || "inferred niche name"}",
   "trendingFormats": [
-    { "format": "format name", "growth": "+X%", "type": "Reel/Carousel/Short/Video", "whyItWorks": "brief" }
+    { "format": "specific format name", "growth": "+X%", "type": "Reel/Carousel/Post", "whyItWorks": "specific reason with Indian context" }
   ],
   "trendingTopics": [
-    { "topic": "topic name", "searchVolume": "High/Medium/Low", "competition": "High/Medium/Low" }
+    { "topic": "specific topic name in ${effectiveNiche}", "searchVolume": "High/Medium/Low", "competition": "High/Medium/Low", "contentAngle": "specific angle to take" }
   ],
-  "trendingHashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
-  "trendingAudio": ["audio name 1 (if applicable)", "audio name 2"],
-  "seasonalOpportunity": "current ${currentMonth} specific opportunity for Indian ${niche} creators",
+  "trendingHashtags": ["#HashTag1", "#HashTag2", "#HashTag3", "#HashTag4", "#HashTag5", "#HashTag6", "#HashTag7", "#HashTag8"],
+  "trendingAudio": ["Audio trend 1 for Reels", "Audio trend 2"],
+  "seasonalOpportunity": "Specific ${currentMonth} opportunity — e.g. festival, exam season, weather event relevant to Indian ${effectiveNiche} creators",
   "viralHookFormulas": [
-    { "formula": "hook formula", "example": "Hinglish example", "emotion": "Curiosity/Fear/Relatability/etc" }
+    { "formula": "exact hook structure", "example": "Example hook in ${isHindi ? "Hinglish" : "English"} for ${effectiveNiche}", "emotion": "Curiosity/Fear/Relatability/Inspiration" },
+    { "formula": "second hook formula", "example": "Another example", "emotion": "emotion type" },
+    { "formula": "third hook formula", "example": "Third example", "emotion": "emotion type" }
   ],
-  "contentIdeas": ["idea 1 specific to ${niche}", "idea 2", "idea 3"]
+  "contentIdeas": [
+    "Specific viral idea 1 for ${effectiveNiche} with hook line",
+    "Specific viral idea 2 based on current trend",
+    "Specific viral idea 3 — collaboration or challenge format",
+    "Specific viral idea 4 — educational or informational",
+    "Specific viral idea 5 — trending format applied to ${effectiveNiche}"
+  ]
 }`;
 
     const llmResult = await callLLM({ userId, endpoint: "trends", prompt, systemPrompt });
-    const data = extractJSON(llmResult.text) || { raw: llmResult.text };
+    const data = extractJSON(llmResult.text) || { raw: llmResult.text, trendingFormats: [], trendingTopics: [], trendingHashtags: [], viralHookFormulas: [], contentIdeas: [] };
 
     return res.json({
       success: true,
@@ -431,10 +445,11 @@ Return JSON:
   }
 });
 
-// ─── POST /api/analyze/pipeline ──────────────────────────────────────────────
+// ─── POST /api/analyze/pipeline ──────────────────────────────────────────────────
 router.post("/pipeline", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { platform, niche, language, profileUrl, competitors } = req.body;
+  const effectiveNiche = niche || "Digital Creator";
 
   try {
     // Get real data for personalized pipeline
@@ -457,7 +472,7 @@ router.post("/pipeline", async (req: Request, res: Response) => {
 - Best posts: ${ownData.posts.sort((a, b) => b.likes - a.likes).slice(0, 3).map(p => `"${(p.caption || "").substring(0, 80)}" (${p.likes}L, ${p.comments}C)`).join(" | ")}`
       : `Platform: ${platform}, Niche: ${niche || "General"}`;
 
-    const prompt = `Create a COMPLETE 30-day content pipeline for a ${platform} ${niche} creator.
+    const prompt = `Create a COMPLETE 30-day content pipeline for a ${platform} ${effectiveNiche} creator.
 
 ${dataSection}
 Competitors: ${Array.isArray(competitors) ? competitors.join(", ") : "None"}
@@ -468,7 +483,8 @@ CRITICAL RULES:
 3. For REEL: write complete scene-by-scene script with actual dialogues
 4. For POST/CAROUSEL: write complete text content with positioning
 5. Every post MUST have: full caption (150+ words), 15 hashtags, and a pin_comment
-6. Content must be specific to ${niche} niche, Indian audience, in ${isHindi ? "Hinglish" : "English"}
+6. Content must be specific to ${effectiveNiche} niche, Indian audience, in ${isHindi ? "Hinglish" : "English"}
+7. Base content topics on what works in the ${effectiveNiche} niche — be specific, not generic
 
 Return this EXACT JSON structure (no deviation):
 {

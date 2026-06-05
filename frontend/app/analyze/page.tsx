@@ -171,7 +171,7 @@ export default function AnalyzePage() {
       return;
     }
 
-    const runPhase = async (phase: keyof PhaseStatus, endpoint: string) => {
+    const runPhase = async (phase: keyof PhaseStatus, endpoint: string, extraBody?: Record<string, unknown>) => {
       if (!selectedPhases.includes(phase)) return;
       setPhaseStatus(p => ({ ...p, [phase]: "running" }));
       try {
@@ -189,6 +189,7 @@ export default function AnalyzePage() {
             competitors: competitorMode === "known" ? competitorUrls.filter(Boolean) : [],
             profession: competitorMode === "discover" ? profession : "",
             resume: competitorMode === "discover" ? resume : "",
+            ...extraBody,
           }),
         });
         if (!res.ok) {
@@ -200,9 +201,8 @@ export default function AnalyzePage() {
         if (data._meta?.provider) {
           setPhaseModels(prev => ({ ...prev, [phase]: { provider: data._meta.provider, model: data._meta.model } }));
         }
-        // Save real result data
-        const resultKey = phase === "audit" ? "audit" : phase === "competitors" ? "competitors" : phase === "trends" ? "trends" : "pipeline";
-        const resultData = data[resultKey] || data;
+        // Save real result data — each endpoint returns data under its own key
+        const resultData = data[phase === "pipeline" ? "pipeline" : phase] || data;
         setPhaseResults(prev => ({ ...prev, [phase]: resultData }));
         setPhaseStatus(p => ({ ...p, [phase]: "done" }));
         return { data, resultData };
@@ -213,22 +213,34 @@ export default function AnalyzePage() {
     };
 
     try {
-      // Run phases sequentially (each phase is independent but sequential is cleaner)
+      // Run phases sequentially — competitor analysis first to detect niche
       const auditRes = await runPhase("audit", "audit");
       const compRes = await runPhase("competitors", "competitors");
-      const trendsRes = await runPhase("trends", "trends");
-      const pipeRes = await runPhase("pipeline", "pipeline");
+
+      // Extract AI-detected niche from competitor analysis (if user didn't select one)
+      const detectedNiche = (compRes as any)?.resultData?.detectedNiche || niche || "";
+      const knownCompetitors = competitorMode === "known" ? competitorUrls.filter(Boolean) : [];
+
+      // Pass detected niche + competitors to trends and pipeline for richer context
+      const trendsRes = await runPhase("trends", "trends", {
+        niche: detectedNiche,
+        competitors: knownCompetitors,
+      });
+      const pipeRes = await runPhase("pipeline", "pipeline", {
+        niche: detectedNiche,
+        competitors: knownCompetitors,
+      });
 
       // Build full analysis object and save to localStorage for results page
-      const id = `analysis_${Date.now()}`;
+      const timestamp = Date.now();
+      const storageKey = `analysis_${timestamp}`;
       const fullAnalysis = {
-        id,
+        id: storageKey,
         profileUrl,
         platform: platformDetected,
-        niche,
+        niche: detectedNiche || niche,
         language,
         createdAt: new Date().toISOString(),
-        // Each runPhase returns { data, resultData } or undefined
         audit: (auditRes as any)?.resultData || null,
         competitors: (compRes as any)?.resultData || null,
         trends: (trendsRes as any)?.resultData || null,
@@ -236,8 +248,11 @@ export default function AnalyzePage() {
         _meta: (auditRes as any)?.data?._meta || null,
       };
 
-      localStorage.setItem(`analysis_${id}`, JSON.stringify(fullAnalysis));
-      setAnalysisId(id);
+      // Save with single prefix — results page: params.id = timestamp → key = analysis_${timestamp}
+      localStorage.setItem(storageKey, JSON.stringify(fullAnalysis));
+      // Also save a copy with the full id for compatibility
+      localStorage.setItem(`analysis_${storageKey}`, JSON.stringify({ ...fullAnalysis, id: `analysis_${storageKey}` }));
+      setAnalysisId(storageKey);
     } catch {
       setRunning(false);
     }

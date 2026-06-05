@@ -418,17 +418,34 @@ async function sendInstagramDM(
     delete body.message.text;
   }
 
-  const res = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/messages`, {
+  // Instagram DM API: use /me/messages with messaging_product: 'instagram'
+  // The access_token must have instagram_manage_messages permission
+  const dmBody: any = {
+    messaging_product: "instagram",
+    recipient: { id: recipientId },
+    message: { text: messageText },
+  };
+
+  // Optional: Add quick reply buttons if configured
+  if (actionConfig?.quick_replies?.length) {
+    dmBody.message.quick_replies = actionConfig.quick_replies.map((qr: string) => ({
+      content_type: "text",
+      title: qr.substring(0, 20),
+      payload: qr,
+    }));
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${accessToken}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, access_token: accessToken }),
+    body: JSON.stringify(dmBody),
   });
 
   const data = await res.json();
   if (!res.ok) {
-    console.error(`[Webhook] DM send failed: ${JSON.stringify(data)}`);
+    console.error(`[Webhook] DM send failed to ${recipientId}: code=${data.error?.code} msg="${data.error?.message}" fbtrace=${data.error?.fbtrace_id}`);
   } else {
-    console.log(`[Webhook] DM sent ✓ to ${recipientId}`);
+    console.log(`[Webhook] ✅ DM sent to ${recipientId}, message_id=${data.message_id}`);
   }
   return data;
 }
