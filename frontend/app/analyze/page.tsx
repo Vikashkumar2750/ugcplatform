@@ -87,6 +87,7 @@ export default function AnalyzePage() {
   const [running, setRunning] = useState(false);
   const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>({ audit: "idle", competitors: "idle", trends: "idle", pipeline: "idle" });
   const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [phaseModels, setPhaseModels] = useState<Record<string, { provider: string; model: string }>>({});
 
   // Fetch connected accounts and auto-fill URL
   useEffect(() => {
@@ -193,6 +194,11 @@ export default function AnalyzePage() {
           const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
           throw new Error(err.error || `Phase ${phase} failed`);
         }
+        const data = await res.json();
+        // Capture which AI model was used
+        if (data._meta?.provider) {
+          setPhaseModels(prev => ({ ...prev, [phase]: { provider: data._meta.provider, model: data._meta.model } }));
+        }
         setPhaseStatus(p => ({ ...p, [phase]: "done" }));
       } catch (err: any) {
         console.error(`Phase ${phase} failed:`, err.message);
@@ -262,8 +268,21 @@ export default function AnalyzePage() {
                     {phase.label}
                     {status === "running" && " chal raha hai..."}
                     {status === "done" && " ✓"}
+                    {status === "failed" && " ✗"}
                   </p>
                   <p className="text-xs text-muted-foreground">{phase.desc}</p>
+                  {/* Real-time AI model badge */}
+                  {(status === "done" || status === "running") && phaseModels[phase.id] && (
+                    <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-muted border border-border text-muted-foreground">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      {phaseModels[phase.id].provider} · {phaseModels[phase.id].model.split("-").slice(0, 3).join("-")}
+                    </span>
+                  )}
+                  {status === "running" && !phaseModels[phase.id] && (
+                    <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-400/10 border border-amber-400/20 text-amber-600 dark:text-amber-400">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" /> AI soch raha hai...
+                    </span>
+                  )}
                 </div>
               </div>
             );

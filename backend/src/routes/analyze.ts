@@ -84,7 +84,11 @@ Provide a JSON response with:
     const llmResult = await callLLM({ userId, endpoint: "audit", prompt, systemPrompt });
     const auditData = extractJSON(llmResult.text) || { raw: llmResult.text };
 
-    return res.json({ success: true, audit: auditData });
+    return res.json({
+      success: true,
+      audit: auditData,
+      _meta: { provider: llmResult.provider, model: llmResult.model }
+    });
   } catch (err: any) {
     console.error("[/api/analyze/audit]", err.message);
     return res.status(500).json({ error: err.message });
@@ -158,7 +162,7 @@ Provide JSON:
     const llmResult = await callLLM({ userId, endpoint: "competitors", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
 
-    return res.json({ success: true, competitors: data });
+    return res.json({ success: true, competitors: data, _meta: { provider: llmResult.provider, model: llmResult.model } });
   } catch (err: any) {
     console.error("[/api/analyze/competitors]", err.message);
     return res.status(500).json({ error: err.message });
@@ -220,7 +224,7 @@ Provide JSON:
     const llmResult = await callLLM({ userId, endpoint: "trends", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
 
-    return res.json({ success: true, trends: data });
+    return res.json({ success: true, trends: data, _meta: { provider: llmResult.provider, model: llmResult.model } });
   } catch (err: any) {
     console.error("[/api/analyze/trends]", err.message);
     return res.status(500).json({ error: err.message });
@@ -257,7 +261,7 @@ Provide JSON:
     const llmResult = await callLLM({ userId, endpoint: "pipeline", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
 
-    return res.json({ success: true, pipeline: data });
+    return res.json({ success: true, pipeline: data, _meta: { provider: llmResult.provider, model: llmResult.model } });
   } catch (err: any) {
     console.error("[/api/analyze/pipeline]", err.message);
     return res.status(500).json({ error: err.message });
