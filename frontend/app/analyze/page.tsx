@@ -93,58 +93,23 @@ export default function AnalyzePage() {
   const runAnalysis = async () => {
     setRunning(true);
 
-    // ── Load API keys from localStorage (new + old format) ──
-    let llmKey = "";
-    let llmProvider = "anthropic";
-    let scraperKey = "";
-    let scraperProvider = "apify";
+    // Get backend URL from env
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
 
+    // Get Supabase auth token — backend uses this to identify user and fetch their API keys
+    let authToken = "";
     try {
-      const raw = localStorage.getItem("ce_settings_v2");
-      if (raw) {
-        // New format
-        const data = JSON.parse(atob(raw));
-        const llmPriority: string[] = data.llmPriority || ["anthropic", "openai", "gemini", "kimi", "ollama"];
-        const llmEnabled: Record<string, boolean> = data.llmEnabled || {};
-        const llmKeys: Record<string, string> = data.llmKeys || {};
-        // Pick first enabled LLM with a key
-        for (const id of llmPriority) {
-          if (llmEnabled[id] !== false && llmKeys[id]) {
-            llmKey = llmKeys[id];
-            llmProvider = id;
-            break;
-          }
-        }
-        const scraperPriority: string[] = data.scraperPriority || ["apify", "rapidapi"];
-        const scraperEnabled: Record<string, boolean> = data.scraperEnabled || {};
-        const scraperKeys: Record<string, string> = data.scraperKeys || {};
-        for (const id of scraperPriority) {
-          if (scraperEnabled[id] !== false && scraperKeys[id]) {
-            scraperKey = scraperKeys[id];
-            scraperProvider = id;
-            break;
-          }
-        }
-      } else {
-        // Fallback: old format
-        const old = localStorage.getItem("ugc_keys");
-        if (old) {
-          const keys = JSON.parse(atob(old));
-          llmKey = keys.anthropic || "";
-          llmProvider = "anthropic";
-          scraperKey = keys.apify || "";
-          scraperProvider = "apify";
-        }
-      }
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data: { session } } = await supabase.auth.getSession();
+      authToken = session?.access_token || "";
     } catch {}
 
-    if (!llmKey) {
-      alert("Settings mein koi bhi ek AI API key add karo (Claude, OpenAI, Gemini, Kimi, ya Ollama)");
-      setRunning(false);
-      return;
-    }
-    if (!scraperKey) {
-      alert("Settings mein koi bhi ek Scraping API key add karo (Apify ya RapidAPI)");
+    if (!authToken) {
+      alert("Please login to use the analyze feature.");
       setRunning(false);
       return;
     }
@@ -153,9 +118,12 @@ export default function AnalyzePage() {
       if (!selectedPhases.includes(phase)) return;
       setPhaseStatus(p => ({ ...p, [phase]: "running" }));
       try {
-        const res = await fetch(endpoint, {
+        const res = await fetch(`${backendUrl}/api/analyze/${endpoint}`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`,
+          },
           body: JSON.stringify({
             profileUrl,
             platform: platformDetected,
@@ -164,27 +132,24 @@ export default function AnalyzePage() {
             competitors: competitorMode === "known" ? competitorUrls.filter(Boolean) : [],
             profession: competitorMode === "discover" ? profession : "",
             resume: competitorMode === "discover" ? resume : "",
-            llmKey,
-            llmProvider,
-            scraperKey,
-            scraperProvider,
-            // Legacy compat
-            anthropicKey: llmProvider === "anthropic" ? llmKey : llmKey,
-            apifyKey: scraperProvider === "apify" ? scraperKey : "",
           }),
         });
-        if (!res.ok) throw new Error(`Phase ${phase} failed`);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+          throw new Error(err.error || `Phase ${phase} failed`);
+        }
         setPhaseStatus(p => ({ ...p, [phase]: "done" }));
-      } catch {
+      } catch (err: any) {
+        console.error(`Phase ${phase} failed:`, err.message);
         setPhaseStatus(p => ({ ...p, [phase]: "failed" }));
       }
     };
 
     try {
-      await runPhase("audit", "/api/analyze/audit");
-      await runPhase("competitors", "/api/analyze/competitors");
-      await runPhase("trends", "/api/analyze/trends");
-      await runPhase("pipeline", "/api/analyze/pipeline");
+      await runPhase("audit", "audit");
+      await runPhase("competitors", "competitors");
+      await runPhase("trends", "trends");
+      await runPhase("pipeline", "pipeline");
 
       const id = `analysis_${Date.now()}`;
       setAnalysisId(id);
@@ -590,7 +555,7 @@ export default function AnalyzePage() {
 
           <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-400/8 border border-amber-400/20 text-xs text-muted-foreground">
             <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
-            Analysis ~90 seconds mein complete hogi. API keys localStorage mein use hongi.
+            Analysis ~90 seconds mein complete hogi. API keys securely server pe stored hain — koi bhi key network mein nahi jayegi.
           </div>
 
           <button
