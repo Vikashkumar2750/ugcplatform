@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import {
   ChevronRight, ChevronLeft, Zap, Camera, PlayCircle, Share2,
@@ -36,6 +36,17 @@ function detectPlatform(url: string) {
   return null;
 }
 
+function buildProfileUrl(platform: string, username: string): string {
+  if (!username) return "";
+  const handle = username.startsWith("@") ? username.slice(1) : username;
+  switch (platform) {
+    case "instagram": return `https://www.instagram.com/${handle}/`;
+    case "youtube":   return `https://www.youtube.com/@${handle}`;
+    case "facebook":  return `https://www.facebook.com/${handle}`;
+    default:          return "";
+  }
+}
+
 type AnalysisPhase = "idle" | "running" | "done" | "failed";
 
 interface PhaseStatus {
@@ -45,11 +56,19 @@ interface PhaseStatus {
   pipeline: AnalysisPhase;
 }
 
+interface ConnectedAccount {
+  platform: string;
+  platform_username: string;
+  platform_user_id: string;
+  profile_url?: string;
+}
+
 export default function AnalyzePage() {
   const [step, setStep] = useState(1);
   const [profileUrl, setProfileUrl] = useState("");
   const [platformDetected, setPlatformDetected] = useState<string | null>(null);
   const [urlError, setUrlError] = useState("");
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
 
   // Competitors
   const [competitorMode, setCompetitorMode] = useState<"known" | "discover" | "skip">("discover");
@@ -69,10 +88,44 @@ export default function AnalyzePage() {
   const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>({ audit: "idle", competitors: "idle", trends: "idle", pipeline: "idle" });
   const [analysisId, setAnalysisId] = useState<string | null>(null);
 
+  // Fetch connected accounts and auto-fill URL
+  useEffect(() => {
+    supabaseBrowser.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const { data: accounts } = await supabaseBrowser
+        .from("connected_accounts")
+        .select("platform, platform_username, platform_user_id")
+        .eq("user_id", session.user.id)
+        .eq("is_active", true);
+
+      if (!accounts || accounts.length === 0) return;
+      setConnectedAccounts(accounts);
+
+      // Auto-fill: if only one account connected, fill it directly
+      if (accounts.length === 1) {
+        const acc = accounts[0];
+        const url = buildProfileUrl(acc.platform, acc.platform_username);
+        if (url) {
+          setProfileUrl(url);
+          setPlatformDetected(acc.platform);
+        }
+      }
+    });
+  }, []);
+
   const handleUrlChange = (url: string) => {
     setProfileUrl(url);
     setPlatformDetected(detectPlatform(url));
     setUrlError("");
+  };
+
+  const fillConnectedAccount = (acc: ConnectedAccount) => {
+    const url = buildProfileUrl(acc.platform, acc.platform_username);
+    if (url) {
+      setProfileUrl(url);
+      setPlatformDetected(acc.platform);
+      setUrlError("");
+    }
   };
 
   const validateStep1 = () => {
@@ -285,21 +338,62 @@ export default function AnalyzePage() {
             )}
           </div>
 
+          {/* Connected accounts — quick select */}
+          {connectedAccounts.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Connected Accounts — click karke fill karo:</p>
+              <div className="flex flex-wrap gap-2">
+                {connectedAccounts.map((acc) => {
+                  const Icon = acc.platform === "instagram" ? Camera : acc.platform === "youtube" ? PlayCircle : Share2;
+                  const isSelected = platformDetected === acc.platform && profileUrl.includes(acc.platform_username || "");
+                  return (
+                    <button
+                      key={acc.platform}
+                      onClick={() => fillConnectedAccount(acc)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
+                        isSelected
+                          ? "border-amber-400 bg-amber-400/10 text-amber-600 dark:text-amber-400"
+                          : "border-border bg-muted/30 hover:border-amber-400/50 hover:bg-amber-400/5"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span className="capitalize">{acc.platform}</span>
+                      {acc.platform_username && (
+                        <span className="text-muted-foreground">@{acc.platform_username}</span>
+                      )}
+                      {isSelected && <CheckCircle2 className="w-3 h-3 text-amber-500" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Platform quick-fill buttons (always shown) */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { platform: "Instagram", icon: Camera, example: "instagram.com/handle" },
-              { platform: "YouTube", icon: PlayCircle, example: "youtube.com/@channel" },
-              { platform: "Facebook", icon: Share2, example: "facebook.com/page" },
-            ].map((p) => (
-              <button
-                key={p.platform}
-                onClick={() => handleUrlChange(`https://www.${p.example}`)}
-                className="p-3 rounded-xl border border-border bg-muted/30 hover:border-foreground/30 text-center transition-all text-xs"
-              >
-                <p.icon className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
-                <p className="font-medium">{p.platform}</p>
-              </button>
-            ))}
+              { platform: "instagram", label: "Instagram", icon: Camera, example: "instagram.com/handle" },
+              { platform: "youtube", label: "YouTube", icon: PlayCircle, example: "youtube.com/@channel" },
+              { platform: "facebook", label: "Facebook", icon: Share2, example: "facebook.com/page" },
+            ].map((p) => {
+              const isConnected = connectedAccounts.some(a => a.platform === p.platform);
+              return (
+                <button
+                  key={p.platform}
+                  onClick={() => handleUrlChange(`https://www.${p.example}`)}
+                  className={`relative p-3 rounded-xl border text-center transition-all text-xs ${
+                    isConnected ? "border-amber-400/40 bg-amber-400/5" : "border-border bg-muted/30 hover:border-foreground/30"
+                  }`}
+                >
+                  {isConnected && (
+                    <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-green-500 border-2 border-background" />
+                  )}
+                  <p.icon className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
+                  <p className="font-medium">{p.label}</p>
+                  {isConnected && <p className="text-[10px] text-amber-600 dark:text-amber-400">Connected</p>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
