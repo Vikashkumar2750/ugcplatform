@@ -85,13 +85,14 @@ export default function ResultsPage() {
 
   // PDF export — opens print dialog with formatted content
   const exportPDF = () => {
+    if (!data) return;
     const printContent = buildPrintableContent(data);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     printWindow.document.write(`
       <html>
       <head>
-        <title>Content Analysis — ${data.profileUrl || data.platform}</title>
+        <title>Content Analysis — ${data?.profileUrl || data?.platform || "Analysis"}</title>
         <style>
           body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #111; line-height: 1.6; }
           h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.25rem; }
@@ -119,6 +120,7 @@ export default function ResultsPage() {
 
   // Google Doc export — opens a new Google Doc pre-filled with content
   const exportGoogleDoc = () => {
+    if (!data) return;
     const text = buildPlainText(data);
     // Save to clipboard then open Google Docs — user pastes
     navigator.clipboard.writeText(text).then(() => {
@@ -130,6 +132,7 @@ export default function ResultsPage() {
 
   // Google Sheet export — post to user's saved sheet (from settings)
   const exportToSheet = async () => {
+    if (!data) return;
     const sheetUrl = localStorage.getItem("ce_export_sheet_url");
     if (!sheetUrl) {
       alert("Settings mein pehle Google Sheet URL save karo!");
