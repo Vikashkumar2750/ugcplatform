@@ -32,7 +32,8 @@ export interface ProfileInfo {
 // ─── Instagram ────────────────────────────────────────────────────────────────
 
 export async function scrapeInstagramProfile(username: string): Promise<ScrapeResult> {
-  const res = await fetch("https://instagram120.p.rapidapi.com/api/instagram/posts", {
+  // Fetch posts
+  const postsRes = await fetch("https://instagram120.p.rapidapi.com/api/instagram/posts", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -42,20 +43,62 @@ export async function scrapeInstagramProfile(username: string): Promise<ScrapeRe
     body: JSON.stringify({ username, maxId: "" }),
   });
 
-  if (!res.ok) throw new Error(`Instagram scrape failed: ${res.status}`);
-  const data = await res.json();
+  if (!postsRes.ok) throw new Error(`Instagram posts scrape failed: ${postsRes.status}`);
+  const postsData = await postsRes.json();
 
-  const posts: ScrapedPost[] = (data.data?.items || []).map((item: any) => ({
+  const posts: ScrapedPost[] = (postsData.data?.items || []).map((item: any) => ({
     id: item.id || item.pk,
     caption: item.caption?.text,
-    likes: item.like_count,
-    comments: item.comment_count,
-    views: item.view_count,
+    likes: item.like_count || 0,
+    comments: item.comment_count || 0,
+    views: item.view_count || item.play_count || 0,
     timestamp: item.taken_at ? new Date(item.taken_at * 1000).toISOString() : undefined,
     mediaUrl: item.image_versions2?.candidates?.[0]?.url,
+    url: `https://www.instagram.com/p/${item.code || item.shortcode}/`,
   }));
 
-  return { posts };
+  // Fetch profile info separately
+  let profile: ProfileInfo | undefined;
+  try {
+    const profileRes = await fetch(`https://instagram120.p.rapidapi.com/api/instagram/profile?username=${username}`, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-host": "instagram120.p.rapidapi.com",
+        "x-rapidapi-key": RAPID_API_KEY,
+      },
+    });
+    if (profileRes.ok) {
+      const profileData = await profileRes.json();
+      const u = profileData.data?.user || profileData.data || profileData;
+      profile = {
+        username: u.username || username,
+        followers: u.follower_count || u.followers || u.edge_followed_by?.count || 0,
+        following: u.following_count || u.following || u.edge_follow?.count || 0,
+        posts: u.media_count || u.posts || u.edge_owner_to_timeline_media?.count || posts.length,
+        bio: u.biography || u.bio || "",
+      };
+    }
+  } catch (profileErr: any) {
+    console.warn(`[scraper] Profile info fetch failed: ${profileErr.message}`);
+  }
+
+  return { posts, profile };
+}
+
+// Full profile scrape: profile info + posts sorted by views (most viral first)
+export async function scrapeInstagramProfileFull(username: string): Promise<{
+  profile: ProfileInfo;
+  topPosts: ScrapedPost[];
+  recentPosts: ScrapedPost[];
+}> {
+  const { posts, profile } = await scrapeInstagramProfile(username);
+  const topPosts = [...posts].sort((a, b) => ((b.views || b.likes || 0) - (a.views || a.likes || 0)));
+  const recentPosts = [...posts].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+  return {
+    profile: profile || { username, followers: 0 },
+    topPosts: topPosts.slice(0, 10),
+    recentPosts: recentPosts.slice(0, 10),
+  };
 }
 
 // ─── Facebook ─────────────────────────────────────────────────────────────────

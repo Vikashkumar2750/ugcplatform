@@ -200,75 +200,149 @@ router.post("/competitors", async (req: Request, res: Response) => {
       ownData = data;
     }
 
-    // Scrape competitor data via RapidAPI
-    let competitorData: any[] = [];
-    if (competitors?.length) {
-      try {
-        if (platform === "instagram") {
-          const usernames = competitors.map((url: string) => extractUsername(url, "instagram")).filter(Boolean);
-          const results = await Promise.allSettled(
-            usernames.slice(0, 3).map((u: string) => scrapeInstagramProfile(u))
-          );
-          competitorData = results
-            .filter(r => r.status === "fulfilled")
-            .flatMap((r: any) => r.value.posts.slice(0, 5));
-        } else if (platform === "youtube") {
-          try {
-            competitorData = await runApifyActor("streamers/youtube-channel-scraper", {
-              startUrls: competitors.slice(0, 3).map((url: string) => ({ url })),
-              resultsLimit: 5,
-            });
-          } catch (apifyErr: any) {
-            console.warn("[competitors] Apify skipped:", apifyErr.message);
-          }
-        }
-      } catch (scrapeErr: any) {
-        console.warn(`[competitors] Scrape skipped: ${scrapeErr.message}`);
-      }
+    // ── Scrape EACH competitor with full profile + top posts ───────────────
+    interface CompetitorScraped {
+      username: string;
+      profile: { followers: number; following: number; posts: number; bio: string };
+      topPosts: Array<{ caption: string; likes: number; comments: number; views: number; url: string }>;
+      recentPosts: Array<{ caption: string; likes: number; views: number }>;
+    }
+    let scrapedCompetitors: CompetitorScraped[] = [];
+
+    if (competitors?.length && platform === "instagram") {
+      const usernames = competitors
+        .map((url: string) => extractUsername(url, "instagram"))
+        .filter(Boolean)
+        .slice(0, 3);
+
+      const results = await Promise.allSettled(
+        usernames.map(async (u: string) => {
+          const { posts, profile } = await scrapeInstagramProfile(u);
+          // Sort by views (most viral first), then by likes
+          const sorted = [...posts].sort((a, b) => ((b.views || b.likes || 0) - (a.views || a.likes || 0)));
+          const recent = [...posts].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+          return {
+            username: u,
+            profile: {
+              followers: profile?.followers || 0,
+              following: profile?.following || 0,
+              posts: profile?.posts || posts.length,
+              bio: profile?.bio || "",
+            },
+            topPosts: sorted.slice(0, 8).map(p => ({
+              caption: (p.caption || "").substring(0, 150),
+              likes: p.likes || 0,
+              comments: p.comments || 0,
+              views: p.views || 0,
+              url: p.url || "",
+            })),
+            recentPosts: recent.slice(0, 5).map(p => ({
+              caption: (p.caption || "").substring(0, 100),
+              likes: p.likes || 0,
+              views: p.views || 0,
+            })),
+          };
+        })
+      );
+
+      scrapedCompetitors = results
+        .filter(r => r.status === "fulfilled")
+        .map((r: any) => r.value);
+
+      console.log(`[competitors] Scraped ${scrapedCompetitors.length} competitors with profile data`);
     }
 
     const isHindi = language === "hi";
     const systemPrompt = isHindi
-      ? "Tu expert social media analyst hai. Hinglish mein jawab de. SIRF valid JSON return kar."
-      : "You are an expert social media analyst. Return ONLY valid JSON.";
+      ? `Tu expert social media analyst hai. SIRF REAL data use kar jo diya gaya hai — koi bhi numbers hallucinate mat karo. Agar real data hai to exactly wahi use karo. Hinglish mein jawab de. SIRF valid JSON return kar.`
+      : `You are an expert social media analyst. Use ONLY the REAL scraped data provided — do NOT invent or hallucinate numbers. Use exact follower counts, likes, views from the data. Return ONLY valid JSON.`;
 
     const ownSection = ownData
-      ? `USER'S OWN ACCOUNT (${ownData.username}): ${ownData.followers} followers, ${ownData.engagementRate}% ER, ${ownData.avgLikes} avg likes`
-      : `User's platform: ${platform}, Niche: ${niche}`;
+      ? `USER'S ACCOUNT (@${ownData.username}):
+- Followers: ${ownData.followers.toLocaleString()}
+- Avg Likes: ${ownData.avgLikes} | Avg Comments: ${ownData.avgComments}
+- Engagement Rate: ${ownData.engagementRate}%
+- Bio: "${ownData.biography || ""}"`
+      : `User platform: ${platform} | Niche: ${niche || "unknown"}`;
 
-    const competitorSection = competitorData.length > 0
-      ? `SCRAPED COMPETITOR DATA: ${JSON.stringify(competitorData.slice(0, 10), null, 2).substring(0, 2000)}`
-      : `Known Competitor URLs: ${competitors?.join(", ") || "None provided"}\nProfession/Context: ${profession || "Not specified"}`;
+    // Build competitor data section with REAL numbers
+    const competitorSection = scrapedCompetitors.length > 0
+      ? scrapedCompetitors.map((c, i) => `
+COMPETITOR ${i + 1}: @${c.username}
+- REAL Followers: ${c.profile.followers.toLocaleString()}
+- Bio: "${c.profile.bio}"
+- Total Posts: ${c.profile.posts}
 
-    const prompt = `Analyze competitors for this ${platform} creator in the ${niche} niche:
+TOP VIRAL POSTS (sorted by views — most viral first):
+${c.topPosts.map((p, pi) => `  #${pi + 1}: Views: ${p.views.toLocaleString()} | Likes: ${p.likes.toLocaleString()} | Comments: ${p.comments} | Caption: "${p.caption}"`).join("\n")}
+
+MOST RECENT POSTS:
+${c.recentPosts.map((p, pi) => `  #${pi + 1}: Views: ${p.views.toLocaleString()} | Likes: ${p.likes.toLocaleString()} | Caption: "${p.caption}"`).join("\n")}
+`).join("\n---\n")
+      : `Competitor URLs provided: ${competitors?.join(", ") || "None"}\n(No scraped data — use AI knowledge about these creators)`;
+
+    // Auto-detect niche from competitor data if not provided
+    const nicheSection = niche
+      ? `Content Niche: ${niche}`
+      : `NICHE NOT SPECIFIED — Detect niche from competitor bio/content above and fill "detectedNiche" field`;
+
+    const prompt = `Analyze these ${platform} competitors and provide ACCURATE analysis using ONLY the real data provided:
 
 ${ownSection}
 
 ${competitorSection}
 
+${nicheSection}
+
+IMPORTANT RULES:
+1. Use the EXACT follower numbers from the scraped data (e.g., if data says ${scrapedCompetitors[0]?.profile?.followers?.toLocaleString() || "X"} followers, use that)
+2. Calculate engagement rate from real data: (avg likes + avg comments) / followers * 100
+3. Identify which content topics got the MOST views — base all strategy on those
+4. Find patterns in the top viral posts' captions — what hooks/topics work
+5. Strategy must be based on what ACTUALLY went viral for the competitor
+
 Return JSON:
 {
+  "detectedNiche": "${niche || "auto-detect from competitor content"}",
   "competitors": [
     {
-      "username": "@handle",
-      "estimatedFollowers": "number",
-      "engagementRate": "X%",
-      "postingFrequency": "X/week",
-      "hookStyle": "description of their hook strategy",
-      "contentStyle": "description",
-      "captionStyle": "short/long/etc",
-      "topHashtags": ["#tag1", "#tag2"]
+      "username": "@handle (exact from data)",
+      "realFollowers": "exact number from scraped data",
+      "estimatedFollowers": "same as realFollowers",
+      "engagementRate": "calculated from real likes/followers",
+      "postingFrequency": "estimated from post count",
+      "hookStyle": "pattern observed in their TOP VIRAL post captions",
+      "contentStyle": "based on top viral posts",
+      "captionStyle": "short/long/question-based/story-based",
+      "topHashtags": ["hashtags found in their viral posts"],
+      "viralTopics": ["topic from top post 1", "topic from top post 2", "topic from top post 3"],
+      "viralHook": "exact hook formula from their most viral post",
+      "avgViralViews": "average views of top 3 posts"
     }
   ],
-  "keyInsights": ["insight based on real comparison", "insight 2", "insight 3"],
-  "gapsToExploit": ["gap where user can win", "gap 2"],
+  "keyInsights": [
+    "insight based on REAL viral content analysis",
+    "what content format gets most views for these competitors",
+    "what topics drive highest engagement"
+  ],
+  "gapsToExploit": [
+    "specific content gap not covered by competitors",
+    "topic that is trending but competitors aren't covering",
+    "format that works elsewhere but not used here"
+  ],
   "userVsCompetitor": {
-    "userStrength": "where user is ahead",
-    "userWeakness": "where competitors are better",
-    "quickWin": "one thing user can copy immediately"
+    "userStrength": "based on real ER and follower comparison",
+    "userWeakness": "what competitors do better based on viral content",
+    "quickWin": "single most viral content type to copy immediately with topic suggestion"
   },
-  "recommendedNiche": "${niche || "suggested niche"}",
-  "recommendedSubNiche": "more specific sub-niche"
+  "viralContentBlueprint": {
+    "topPerformingFormat": "Reel/Carousel/Post",
+    "topPerformingTopic": "most common topic in viral posts",
+    "topPerformingHook": "hook structure that gets most views",
+    "optimalLength": "seconds for reels or slides for carousel"
+  },
+  "recommendedNiche": "${niche || "detected niche"}",
+  "recommendedSubNiche": "specific sub-niche to own"
 }`;
 
     const llmResult = await callLLM({ userId, endpoint: "competitors", prompt, systemPrompt });
@@ -277,6 +351,7 @@ Return JSON:
     return res.json({
       success: true,
       competitors: data,
+      scrapedCount: scrapedCompetitors.length,
       _meta: { provider: llmResult.provider, model: llmResult.model }
     });
   } catch (err: any) {
@@ -284,6 +359,7 @@ Return JSON:
     return res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── POST /api/analyze/trends ─────────────────────────────────────────────────
 router.post("/trends", async (req: Request, res: Response) => {

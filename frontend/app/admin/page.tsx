@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, BarChart3, FileText, IndianRupee, TrendingUp, Activity, Clock, CheckCircle2, AlertCircle, LifeBuoy, ArrowUpRight, ArrowDownRight, RefreshCw, Database } from "lucide-react";
+import { Users, BarChart3, FileText, IndianRupee, TrendingUp, Activity, Clock, CheckCircle2, AlertCircle, LifeBuoy, ArrowUpRight, ArrowDownRight, RefreshCw, Database, Zap, Globe, Bot } from "lucide-react";
 
 interface Stats {
   demo: boolean;
@@ -17,6 +17,17 @@ interface Stats {
   connectedAccounts: { instagram: number; youtube: number; facebook: number };
   planBreakdown: { lifetime: number; monthly: number; yearly: number; free: number };
   recentActivity: any[];
+}
+
+interface ApiUsage {
+  providers: Array<{
+    id: string; label: string; color: string;
+    dailyRequests: number; dailyLimit: number; dailyPct: number;
+    monthlyTokens: number; monthlyTokenLimit: number; monthlyPct: number;
+    totalMonth: number; errors: number;
+  }>;
+  meta: { label: string; webhooksToday: number; webhooksMonth: number; hourlyLimit: number };
+  totalMonth: number;
 }
 
 const EMPTY: Stats = {
@@ -39,6 +50,136 @@ function DemoBanner() {
       <a href="/admin/setup" className="ml-auto text-xs px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 transition font-medium whitespace-nowrap">
         Setup Guide →
       </a>
+    </div>
+  );
+}
+
+function UsageBar({ label, used, limit, pct, color, sub }: {
+  label: string; used: number | string; limit: number | string; pct: number; color: string; sub?: string;
+}) {
+  const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : color;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-zinc-300 font-medium">{label}</span>
+        <span className={`font-bold ${pct >= 90 ? "text-red-400" : pct >= 70 ? "text-amber-400" : "text-zinc-200"}`}>
+          {used} / {limit}
+          {pct >= 90 && <span className="ml-1 text-red-400">⚠</span>}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct || 0}%` }} />
+      </div>
+      {sub && <p className="text-[10px] text-zinc-600">{sub}</p>}
+    </div>
+  );
+}
+
+function ApiUsageSection() {
+  const [usage, setUsage] = useState<ApiUsage | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUsage = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/api-usage");
+      if (res.ok) setUsage(await res.json());
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchUsage(); }, []);
+
+  const colorMap: Record<string, string> = {
+    blue: "bg-blue-500", orange: "bg-orange-500", purple: "bg-purple-500", green: "bg-green-500",
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+      <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-amber-400" />
+          <h2 className="font-semibold text-sm text-zinc-100">AI & API Usage — Real Time</h2>
+        </div>
+        <button onClick={fetchUsage} disabled={loading}
+          className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition disabled:opacity-40">
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} /> Refresh
+        </button>
+      </div>
+
+      <div className="p-5 space-y-6">
+        {loading ? (
+          <div className="text-center py-8 text-zinc-600 text-sm">Loading usage data...</div>
+        ) : !usage ? (
+          <div className="text-center py-8 text-zinc-600 text-sm">
+            Could not load usage. Make sure api_usage_logs table exists.
+          </div>
+        ) : (
+          <>
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <p className="text-lg font-bold text-zinc-100">{usage.totalMonth}</p>
+                <p className="text-[10px] text-zinc-500">API calls this month</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <p className="text-lg font-bold text-zinc-100">{usage.meta.webhooksToday}</p>
+                <p className="text-[10px] text-zinc-500">Meta webhooks today</p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                <p className="text-lg font-bold text-zinc-100">{usage.providers.reduce((s, p) => s + p.errors, 0)}</p>
+                <p className="text-[10px] text-zinc-500">Errors this month</p>
+              </div>
+            </div>
+
+            {/* LLM Providers */}
+            <div>
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">AI Model Usage (Daily Requests)</p>
+              <div className="space-y-4">
+                {usage.providers.map(p => (
+                  <div key={p.id} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${colorMap[p.color] || "bg-zinc-500"}`} />
+                      <span className="text-xs font-medium text-zinc-200">{p.label}</span>
+                      {p.errors > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">{p.errors} errors</span>
+                      )}
+                    </div>
+                    <UsageBar
+                      label="Daily Requests"
+                      used={p.dailyRequests}
+                      limit={p.dailyLimit}
+                      pct={p.dailyPct}
+                      color={colorMap[p.color] || "bg-zinc-500"}
+                      sub={`${p.totalMonth} calls this month · ${(p.monthlyTokens / 1000).toFixed(0)}K tokens`}
+                    />
+                    <UsageBar
+                      label="Monthly Tokens"
+                      used={`${(p.monthlyTokens / 1000).toFixed(0)}K`}
+                      limit={`${(p.monthlyTokenLimit / 1000).toFixed(0)}K`}
+                      pct={p.monthlyPct}
+                      color={colorMap[p.color] || "bg-zinc-500"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Meta Graph API */}
+            <div>
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Meta Graph API (Webhooks)</p>
+              <UsageBar
+                label="Webhooks Today"
+                used={usage.meta.webhooksToday}
+                limit="∞"
+                pct={Math.min(100, Math.round((usage.meta.webhooksToday / 1000) * 100))}
+                color="bg-blue-500"
+                sub={`${usage.meta.webhooksMonth} webhooks this month`}
+              />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -176,6 +317,9 @@ export default function AdminOverviewPage() {
         </div>
       </div>
 
+      {/* ── AI & API Usage ────────────────────────────────────────────── */}
+      <ApiUsageSection />
+
       {/* Quick links */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -193,3 +337,4 @@ export default function AdminOverviewPage() {
     </div>
   );
 }
+

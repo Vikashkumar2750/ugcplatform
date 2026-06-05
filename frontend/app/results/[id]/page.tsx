@@ -83,6 +83,76 @@ export default function ResultsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // PDF export — opens print dialog with formatted content
+  const exportPDF = () => {
+    const printContent = buildPrintableContent(data);
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+      <head>
+        <title>Content Analysis — ${data.profileUrl || data.platform}</title>
+        <style>
+          body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #111; line-height: 1.6; }
+          h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.25rem; }
+          h2 { font-size: 1rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.75rem; border-bottom: 2px solid #f59e0b; padding-bottom: 0.25rem; color: #b45309; }
+          h3 { font-size: 0.875rem; font-weight: 700; color: #555; margin: 1rem 0 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
+          p, li { font-size: 0.9rem; }
+          ul { padding-left: 1.2rem; }
+          .meta { color: #888; font-size: 0.8rem; margin-bottom: 2rem; }
+          .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
+          .stat { background: #fef9c3; padding: 0.75rem; border-radius: 8px; text-align: center; }
+          .stat-val { font-size: 1.4rem; font-weight: 800; color: #b45309; }
+          .stat-label { font-size: 0.7rem; color: #888; }
+          .section { margin: 1.5rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid #f59e0b; }
+          .tag { display: inline-block; background: #fef3c7; color: #92400e; padding: 0.2rem 0.6rem; border-radius: 100px; font-size: 0.75rem; margin: 0.2rem; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>${printContent}</body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 500);
+  };
+
+  // Google Doc export — opens a new Google Doc pre-filled with content
+  const exportGoogleDoc = () => {
+    const text = buildPlainText(data);
+    // Save to clipboard then open Google Docs — user pastes
+    navigator.clipboard.writeText(text).then(() => {
+      const docUrl = "https://docs.google.com/document/create";
+      window.open(docUrl, "_blank");
+      alert("Content copied to clipboard! Google Docs tab khul gaya — Ctrl+V se paste karo");
+    });
+  };
+
+  // Google Sheet export — post to user's saved sheet (from settings)
+  const exportToSheet = async () => {
+    const sheetUrl = localStorage.getItem("ce_export_sheet_url");
+    if (!sheetUrl) {
+      alert("Settings mein pehle Google Sheet URL save karo!");
+      router.push("/settings");
+      return;
+    }
+    // Try Google Apps Script webhook if set
+    const webhookUrl = localStorage.getItem("ce_export_webhook_url");
+    if (webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data, timestamp: new Date().toISOString() }),
+        });
+        alert("Sheet mein export ho gaya!");
+      } catch { alert("Sheet export failed — manually copy karo"); }
+    } else {
+      window.open(sheetUrl, "_blank");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen gap-3 text-muted-foreground">
@@ -262,18 +332,49 @@ export default function ResultsPage() {
               <EmptyState tab="Competitor Analysis" />
             ) : (
               <>
+                {/* Detected niche banner */}
+                {competitors.detectedNiche && (
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm">
+                    <span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span>
+                    <span className="font-semibold">{competitors.detectedNiche}</span>
+                  </div>
+                )}
+
                 {/* Competitor cards */}
                 {(competitors.competitors || []).map((comp: any, i: number) => (
                   <div key={i} className="p-5 rounded-2xl border border-border bg-card">
-                    <div className="flex items-center gap-3 mb-3">
+                    <div className="flex items-center gap-3 mb-4">
                       <div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">
                         {i + 1}
                       </div>
                       <div>
                         <p className="font-semibold">{comp.username || `Competitor ${i + 1}`}</p>
-                        <p className="text-xs text-muted-foreground">{comp.estimatedFollowers} followers · {comp.engagementRate} ER</p>
+                        <p className="text-xs text-muted-foreground">
+                          {comp.realFollowers || comp.estimatedFollowers} followers · {comp.engagementRate} ER · Avg {comp.avgViralViews} views
+                        </p>
                       </div>
                     </div>
+
+                    {/* Viral topics */}
+                    {comp.viralTopics?.length > 0 && (
+                      <div className="mb-3">
+                        <p className="text-xs font-bold text-red-500 mb-1.5">🔥 VIRAL TOPICS (from real posts)</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {comp.viralTopics.map((topic: string, ti: number) => (
+                            <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 font-medium">{topic}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Viral hook */}
+                    {comp.viralHook && (
+                      <div className="mb-3 p-3 rounded-xl bg-amber-400/5 border border-amber-400/20">
+                        <p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK FORMULA</p>
+                        <p className="text-sm italic">"{comp.viralHook}"</p>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       {comp.hookStyle && <div><p className="text-muted-foreground">Hook Style</p><p className="font-medium">{comp.hookStyle}</p></div>}
                       {comp.postingFrequency && <div><p className="text-muted-foreground">Posting Freq</p><p className="font-medium">{comp.postingFrequency}</p></div>}
@@ -289,6 +390,26 @@ export default function ResultsPage() {
                     )}
                   </div>
                 ))}
+
+                {/* Viral Content Blueprint */}
+                {competitors.viralContentBlueprint && (
+                  <div className="p-5 rounded-2xl border border-red-500/20 bg-red-500/5">
+                    <p className="text-sm font-bold text-red-500 mb-4">🎯 Viral Content Blueprint (Competitor ke winning formula se)</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: "Top Format", value: competitors.viralContentBlueprint.topPerformingFormat },
+                        { label: "Top Topic", value: competitors.viralContentBlueprint.topPerformingTopic },
+                        { label: "Top Hook", value: competitors.viralContentBlueprint.topPerformingHook },
+                        { label: "Optimal Length", value: competitors.viralContentBlueprint.optimalLength },
+                      ].filter(i => i.value).map(item => (
+                        <div key={item.label} className="p-3 rounded-xl bg-card border border-border">
+                          <p className="text-xs text-muted-foreground">{item.label}</p>
+                          <p className="text-sm font-semibold mt-0.5">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* User vs Competitor */}
                 {competitors.userVsCompetitor && (
@@ -553,14 +674,18 @@ export default function ResultsPage() {
       <div className="sticky bottom-0 border-t border-border bg-card/95 backdrop-blur-sm px-6 py-3">
         <div className="max-w-4xl mx-auto flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground font-medium mr-1">Export:</span>
-          {[
-            { label: "Google Doc", icon: ExternalLink },
-            { label: "PDF", icon: Download },
-          ].map((exp) => (
-            <button key={exp.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition">
-              <exp.icon className="w-3.5 h-3.5" /> {exp.label}
-            </button>
-          ))}
+          <button onClick={exportGoogleDoc}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition">
+            <ExternalLink className="w-3.5 h-3.5" /> Google Doc
+          </button>
+          <button onClick={exportPDF}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition">
+            <Download className="w-3.5 h-3.5" /> PDF
+          </button>
+          <button onClick={exportToSheet}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium hover:bg-green-500/10 transition">
+            <ExternalLink className="w-3.5 h-3.5" /> Google Sheet
+          </button>
           <button onClick={copyAll} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted/50 transition ml-auto">
             {copied ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Sab copy karo</>}
           </button>
@@ -774,4 +899,96 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-xs">{value}</span>
     </div>
   );
+}
+
+// ── Export helpers ────────────────────────────────────────────────────────────
+function buildPrintableContent(data: any): string {
+  const audit = data.audit || {};
+  const competitors = data.competitors || {};
+  const trends = data.trends || {};
+  const pipeline = data.pipeline || {};
+  const date = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+
+  let html = `
+    <h1>Content Strategy Analysis</h1>
+    <p class="meta">${data.platform || ""} · ${data.niche || "General"} · ${date}</p>
+  `;
+
+  // AUDIT
+  if (audit.followerCount || audit.engagementRate) {
+    html += `<h2>📊 Profile Audit</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="stat-val">${audit.engagementRate || "—"}</div><div class="stat-label">Engagement Rate</div></div>
+      <div class="stat"><div class="stat-val">${audit.followerCount || "—"}</div><div class="stat-label">Followers</div></div>
+      <div class="stat"><div class="stat-val">${audit.avgLikes || "—"}</div><div class="stat-label">Avg Likes</div></div>
+    </div>`;
+    if (audit.strengths?.length) html += `<h3>Strengths</h3><ul>${audit.strengths.map((s: string) => `<li>${s}</li>`).join("")}</ul>`;
+    if (audit.weaknesses?.length) html += `<h3>Weaknesses</h3><ul>${audit.weaknesses.map((s: string) => `<li>${s}</li>`).join("")}</ul>`;
+    if (audit.topRecommendation) html += `<div class="section"><strong>Top Recommendation:</strong> ${audit.topRecommendation}</div>`;
+  }
+
+  // COMPETITORS
+  if (competitors.competitors?.length) {
+    html += `<h2>🔍 Competitor Analysis</h2>`;
+    for (const comp of competitors.competitors) {
+      html += `<div class="section"><strong>${comp.username}</strong> — ${comp.realFollowers || comp.estimatedFollowers} followers · ${comp.engagementRate} ER<br/>`;
+      if (comp.viralTopics?.length) html += `<br/>🔥 Viral Topics: ${comp.viralTopics.join(", ")}`;
+      if (comp.viralHook) html += `<br/>💡 Viral Hook: <em>${comp.viralHook}</em>`;
+      html += `</div>`;
+    }
+    if (competitors.viralContentBlueprint) {
+      const b = competitors.viralContentBlueprint;
+      html += `<div class="section"><strong>Viral Blueprint:</strong> ${b.topPerformingFormat} · ${b.topPerformingTopic} · ${b.topPerformingHook}</div>`;
+    }
+  }
+
+  // PIPELINE
+  if (pipeline.contentCalendar?.length) {
+    html += `<h2>📅 4-Week Content Pipeline</h2>`;
+    for (const week of pipeline.contentCalendar) {
+      html += `<h3>${week.week}: ${week.theme}</h3>`;
+      for (const post of (week.posts || [])) {
+        html += `<div class="section"><strong>[${post.day}] ${post.format}: ${post.topic}</strong><br/><em>Hook: ${post.hook}</em><br/>${post.caption?.substring(0, 200) || ""}</div>`;
+      }
+    }
+  }
+
+  return html;
+}
+
+function buildPlainText(data: any): string {
+  const audit = data.audit || {};
+  const competitors = data.competitors || {};
+  const trends = data.trends || {};
+  const pipeline = data.pipeline || {};
+  let text = `CONTENT STRATEGY ANALYSIS\n${'='.repeat(50)}\nPlatform: ${data.platform || ""}\nNiche: ${data.niche || "General"}\nDate: ${new Date().toLocaleDateString("en-IN")}\n\n`;
+
+  if (audit.followerCount) {
+    text += `PROFILE AUDIT\n${'-'.repeat(30)}\nFollowers: ${audit.followerCount}\nEngagement Rate: ${audit.engagementRate}\nAvg Likes: ${audit.avgLikes}\n\n`;
+    if (audit.strengths?.length) text += `Strengths:\n${audit.strengths.map((s: string) => `• ${s}`).join("\n")}\n\n`;
+    if (audit.weaknesses?.length) text += `Weaknesses:\n${audit.weaknesses.map((s: string) => `• ${s}`).join("\n")}\n\n`;
+    if (audit.topRecommendation) text += `Top Recommendation: ${audit.topRecommendation}\n\n`;
+  }
+
+  if (competitors.competitors?.length) {
+    text += `COMPETITOR ANALYSIS\n${'-'.repeat(30)}\n`;
+    for (const c of competitors.competitors) {
+      text += `${c.username} — ${c.realFollowers || c.estimatedFollowers} followers · ${c.engagementRate} ER\n`;
+      if (c.viralTopics?.length) text += `  Viral Topics: ${c.viralTopics.join(", ")}\n`;
+      if (c.viralHook) text += `  Viral Hook: "${c.viralHook}"\n`;
+      text += "\n";
+    }
+  }
+
+  if (pipeline.contentCalendar?.length) {
+    text += `4-WEEK CONTENT PIPELINE\n${'-'.repeat(30)}\n`;
+    for (const week of pipeline.contentCalendar) {
+      text += `\n${week.week}: ${week.theme}\n`;
+      for (const post of (week.posts || [])) {
+        text += `  [${post.day}] ${post.format}: ${post.topic}\n  Hook: ${post.hook}\n  Caption: ${post.caption?.substring(0, 150) || ""}...\n  Hashtags: ${post.hashtags?.join(" ") || ""}\n\n`;
+      }
+    }
+  }
+
+  return text;
 }

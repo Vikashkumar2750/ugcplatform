@@ -424,24 +424,92 @@ export default function SettingsPage() {
 
       {/* ── Account Tab ── */}
       {activeTab === "account" && (
-        <div className="p-5 rounded-2xl border border-border bg-card space-y-5">
-          <h2 className="font-heading font-semibold">Account</h2>
-          <div className="space-y-3">
-            {[
-              { label: "Email",        value: userInfo?.email || "Loading..." },
-              { label: "Name",         value: userInfo?.name  || "Loading..." },
-            ].map((field) => (
-              <div key={field.label} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                <span className="text-sm text-muted-foreground">{field.label}</span>
-                <span className="text-sm font-medium">{field.value}</span>
-              </div>
-            ))}
+        <div className="space-y-5">
+          <div className="p-5 rounded-2xl border border-border bg-card space-y-5">
+            <h2 className="font-heading font-semibold">Account</h2>
+            <div className="space-y-3">
+              {[
+                { label: "Email",        value: userInfo?.email || "Loading..." },
+                { label: "Name",         value: userInfo?.name  || "Loading..." },
+              ].map((field) => (
+                <div key={field.label} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                  <span className="text-sm text-muted-foreground">{field.label}</span>
+                  <span className="text-sm font-medium">{field.value}</span>
+                </div>
+              ))}
+            </div>
+            <a href="/api/auth/logout" className="block w-full text-center py-3 rounded-xl border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition">
+              Sign Out
+            </a>
           </div>
-          <a href="/api/auth/logout" className="block w-full text-center py-3 rounded-xl border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition">
-            Sign Out
-          </a>
+
+          {/* ── Export Destinations ── */}
+           <ExportDestinationsSection />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Export Destinations Section ───────────────────────────────────────────────
+function ExportDestinationsSection() {
+  const [sheetUrl, setSheetUrl] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setSheetUrl(localStorage.getItem("ce_export_sheet_url") || "");
+    setWebhookUrl(localStorage.getItem("ce_export_webhook_url") || "");
+  }, []);
+
+  const saveExportSettings = () => {
+    if (sheetUrl) localStorage.setItem("ce_export_sheet_url", sheetUrl);
+    else localStorage.removeItem("ce_export_sheet_url");
+    if (webhookUrl) localStorage.setItem("ce_export_webhook_url", webhookUrl);
+    else localStorage.removeItem("ce_export_webhook_url");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="p-5 rounded-2xl border border-border bg-card space-y-5">
+      <div>
+        <h2 className="font-heading font-semibold">📤 Export Destinations</h2>
+        <p className="text-sm text-muted-foreground mt-1">Analysis results Google Sheet mein auto-save karo</p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Google Sheet URL</label>
+        <p className="text-xs text-muted-foreground">Apni Google Sheet ka URL paste karo — results export tab se wahan jaayenge</p>
+        <div className="flex gap-2">
+          <input type="url" value={sheetUrl} onChange={e => setSheetUrl(e.target.value)}
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            className="flex-1 px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/50" />
+          {sheetUrl && (
+            <a href={sheetUrl} target="_blank" rel="noopener noreferrer"
+              className="px-3 py-2 rounded-xl border border-border text-xs hover:bg-muted/50 transition flex items-center gap-1.5">
+              <ExternalLink className="w-3.5 h-3.5" /> Open
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">
+          Google Apps Script Webhook <span className="text-xs font-normal text-muted-foreground">(optional — automatic append)</span>
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Results automatically sheet mein append karne ke liye Apps Script web app URL paste karo.
+        </p>
+        <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
+          placeholder="https://script.google.com/macros/s/.../exec"
+          className="w-full px-3 py-2 text-sm rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/50" />
+      </div>
+
+      <button onClick={saveExportSettings}
+        className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+        {saved ? <><CheckCircle2 className="w-4 h-4" /> Saved!</> : "Save Export Settings"}
+      </button>
     </div>
   );
 }
