@@ -1,7 +1,7 @@
-import { Router, Response } from "express";
+import { Router, Request, Response } from "express";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
 import { callLLM } from "../services/llm";
-import { runApifyActor, scrapeInstagramProfile, scrapeYouTubeChannel } from "../services/scraper";
+import { runApifyActor, scrapeInstagramProfile } from "../services/scraper";
 
 const router = Router();
 router.use(requireAuth);
@@ -21,7 +21,7 @@ function extractJSON(text: string): unknown {
 }
 
 // ─── POST /api/analyze/audit ──────────────────────────────────────────────────
-router.post("/audit", async (req, res: Response) => {
+router.post("/audit", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { profileUrl, platform, niche, language } = req.body;
 
@@ -92,7 +92,7 @@ Provide a JSON response with:
 });
 
 // ─── POST /api/analyze/competitors ───────────────────────────────────────────
-router.post("/competitors", async (req, res: Response) => {
+router.post("/competitors", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { platform, niche, language, competitors, profession } = req.body;
 
@@ -166,7 +166,7 @@ Provide JSON:
 });
 
 // ─── POST /api/analyze/trends ─────────────────────────────────────────────────
-router.post("/trends", async (req, res: Response) => {
+router.post("/trends", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { platform, niche, language } = req.body;
 
@@ -228,7 +228,7 @@ Provide JSON:
 });
 
 // ─── POST /api/analyze/pipeline ──────────────────────────────────────────────
-router.post("/pipeline", async (req, res: Response) => {
+router.post("/pipeline", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { platform, niche, language, profileUrl, competitors } = req.body;
 

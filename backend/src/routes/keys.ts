@@ -9,7 +9,7 @@ const router = Router();
 router.use(requireAuth);
 
 // GET /api/keys — list user's saved providers (never returns actual key)
-router.get("/", async (req, res: Response) => {
+router.get("/", async (req: import("express").Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
 
   const { data, error } = await supabase
@@ -24,7 +24,7 @@ router.get("/", async (req, res: Response) => {
 });
 
 // POST /api/keys — add or replace a key for a provider
-router.post("/", async (req, res: Response) => {
+router.post("/", async (req: import("express").Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { provider, key, label } = req.body as {
     provider: string;
@@ -62,7 +62,7 @@ router.post("/", async (req, res: Response) => {
 });
 
 // DELETE /api/keys/:provider — remove a provider's key
-router.delete("/:provider", async (req, res: Response) => {
+router.delete("/:provider", async (req: import("express").Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
   const { provider } = req.params;
 
@@ -77,9 +77,9 @@ router.delete("/:provider", async (req, res: Response) => {
 });
 
 // POST /api/keys/:provider/test — validate a key works (minimal API call)
-router.post("/:provider/test", async (req, res: Response) => {
+router.post("/:provider/test", async (req: import("express").Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { provider } = req.params;
+  const provider = String(req.params.provider);
 
   // Fetch the user's stored key
   const { data: keyRow, error: dbError } = await supabase
@@ -102,6 +102,7 @@ router.post("/:provider/test", async (req, res: Response) => {
     return res.status(400).json({ success: false, error: err.message });
   }
 });
+
 
 // ─── Internal helpers ──────────────────────────────────────────────────────────
 

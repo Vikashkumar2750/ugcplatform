@@ -1,4 +1,5 @@
-import { Router, Response } from "express";
+import { Router, Request, Response } from "express";
+import { supabase } from "../lib/supabase";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
 
 const router = Router();
@@ -6,7 +7,7 @@ router.use(requireAuth);
 
 // GET /api/insights/:platform/:accountId
 // Proxy for Meta Graph API insights — keeps access tokens server-side
-router.get("/:platform/:accountId", async (req, res: Response) => {
+router.get("/:platform/:accountId", async (req: Request, res: Response) => {
   const { platform, accountId } = req.params;
   const { userId } = req as AuthenticatedRequest;
   const { metric, period } = req.query;
@@ -14,10 +15,6 @@ router.get("/:platform/:accountId", async (req, res: Response) => {
   if (platform !== "instagram" && platform !== "facebook") {
     return res.status(400).json({ error: "Unsupported platform" });
   }
-
-  // Get user's connected account token from Supabase
-  const { createClient } = await import("@supabase/supabase-js");
-  const { supabase } = await import("../lib/supabase");
 
   const { data: account, error: accountError } = await supabase
     .from("connected_accounts")

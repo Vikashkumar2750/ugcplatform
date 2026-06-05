@@ -6,7 +6,7 @@ const router = Router();
 router.use(requireAuth);
 
 // GET /api/credits — token usage summary for current user
-router.get("/", async (req, res: Response) => {
+router.get("/", async (req: import("express").Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

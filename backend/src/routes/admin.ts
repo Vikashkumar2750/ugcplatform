@@ -7,7 +7,7 @@ const router = Router();
 router.use(requireAuth, requireAdmin);
 
 // GET /api/admin/users — list all users with platform API status + usage
-router.get("/users", async (_req, res: Response) => {
+router.get("/users", async (_req: import("express").Request, res: Response) => {
   const { data: profiles, error } = await supabase
     .from("profiles")
     .select("id, email, full_name, platform_api_allowed, platform_api_disabled_reason, created_at")
@@ -40,7 +40,7 @@ router.get("/users", async (_req, res: Response) => {
 });
 
 // PATCH /api/admin/users/:id/platform-api — toggle platform API access
-router.patch("/users/:id/platform-api", async (req, res: Response) => {
+router.patch("/users/:id/platform-api", async (req: import("express").Request, res: Response) => {
   const { id } = req.params;
   const { allowed, reason } = req.body as { allowed: boolean; reason?: string };
 

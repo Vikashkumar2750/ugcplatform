@@ -6,9 +6,6 @@
     },
     "app/api/automation/schedule/publish/route.ts": {
       "maxDuration": 120
-    },
-    "app/api/cron/publish-scheduled/route.ts": {
-      "maxDuration": 120
     }
   },
   "headers": [
