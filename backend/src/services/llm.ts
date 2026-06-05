@@ -104,15 +104,21 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
 // ─── Provider implementations ─────────────────────────────────────────────────
 
-async function callGemini(
-  apiKey: string,
-  prompt: string,
-  systemPrompt: string | undefined,
-  _source: string
-): Promise<LLMResponse> {
-  const model = "gemini-2.0-flash-lite";
-  const contents: any[] = [];
+// Gemini models tried in order when quota exceeded
+const GEMINI_MODELS = [
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro",
+];
 
+async function callGeminiModel(
+  apiKey: string,
+  model: string,
+  prompt: string,
+  systemPrompt: string | undefined
+): Promise<LLMResponse> {
+  const contents: any[] = [];
   if (systemPrompt) {
     contents.push({ role: "user", parts: [{ text: systemPrompt }] });
     contents.push({ role: "model", parts: [{ text: "Understood." }] });
@@ -130,7 +136,8 @@ async function callGemini(
 
   if (!res.ok) {
     const err = await res.json();
-    throw new Error(`Gemini error: ${err.error?.message || res.status}`);
+    const msg = err.error?.message || String(res.status);
+    throw new Error(`Gemini error: ${msg}`);
   }
 
   const data = await res.json();
@@ -145,6 +152,39 @@ async function callGemini(
     tokensOutput: usage.candidatesTokenCount || 0,
   };
 }
+
+async function callGemini(
+  apiKey: string,
+  prompt: string,
+  systemPrompt: string | undefined,
+  _source: string
+): Promise<LLMResponse> {
+  let lastError: Error | null = null;
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      const result = await callGeminiModel(apiKey, model, prompt, systemPrompt);
+      return result;
+    } catch (err: any) {
+      const isQuota =
+        err.message?.includes("quota") ||
+        err.message?.includes("RESOURCE_EXHAUSTED") ||
+        err.message?.includes("rate") ||
+        err.message?.includes("429");
+
+      if (isQuota) {
+        console.warn(`[LLM] Gemini ${model} quota exceeded — trying next model`);
+        lastError = err;
+        continue;
+      }
+      // Non-quota error — throw immediately (wrong key, etc.)
+      throw err;
+    }
+  }
+
+  throw lastError || new Error("All Gemini models quota exceeded. Add your own API key in Settings.");
+}
+
 
 async function callAnthropic(
   apiKey: string,
