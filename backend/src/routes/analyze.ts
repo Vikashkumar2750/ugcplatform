@@ -370,60 +370,137 @@ router.post("/pipeline", async (req: Request, res: Response) => {
 
     const isHindi = language === "hi";
     const systemPrompt = isHindi
-      ? "Tu expert content strategist hai. Personalized content pipeline bana based on REAL data. SIRF valid JSON return kar."
-      : "You are an expert content strategist. Build personalized pipeline using REAL data. Return ONLY valid JSON.";
+      ? "Tu expert Indian content strategist hai. Har post ke liye POORI script, poora caption, hashtags aur pin comment de. SIRF valid JSON return kar — no extra text, no markdown outside JSON."
+      : "You are an expert Indian content strategist. For EVERY post give COMPLETE script/content, full caption, hashtags, and pin comment. Return ONLY valid JSON.";
 
     const dataSection = ownData
-      ? `USER'S REAL DATA:
-- Username: @${ownData.username}
-- Followers: ${ownData.followers.toLocaleString()}
-- Current Engagement Rate: ${ownData.engagementRate}%
-- Best performing content: ${ownData.posts.sort((a, b) => b.likes - a.likes).slice(0, 3).map(p => `"${(p.caption || "").substring(0, 60)}" (${p.likes} likes)`).join(", ")}
-- Posting patterns: ${ownData.posts.map(p => new Date(p.timestamp).toLocaleDateString("en-IN", { weekday: "short" })).slice(0, 10).join(", ")}`
-      : `Platform: ${platform}, Niche: ${niche}`;
+      ? `USER REAL DATA:
+- @${ownData.username} | ${ownData.followers.toLocaleString()} followers | ${ownData.engagementRate}% ER
+- Avg likes: ${ownData.avgLikes} | Avg comments: ${ownData.avgComments}
+- Bio: "${ownData.biography || "Not set"}"
+- Best posts: ${ownData.posts.sort((a, b) => b.likes - a.likes).slice(0, 3).map(p => `"${(p.caption || "").substring(0, 80)}" (${p.likes}L, ${p.comments}C)`).join(" | ")}`
+      : `Platform: ${platform}, Niche: ${niche || "General"}`;
 
-    const prompt = `Create a personalized 30-day content pipeline:
+    const prompt = `Create a COMPLETE 30-day content pipeline for a ${platform} ${niche} creator.
 
 ${dataSection}
-Known Competitors: ${Array.isArray(competitors) ? competitors.join(", ") : "None"}
-Niche: ${niche || "General"}
-Platform: ${platform}
+Competitors: ${Array.isArray(competitors) ? competitors.join(", ") : "None"}
 
-Return JSON:
+CRITICAL RULES:
+1. ALL 4 WEEKS must have posts — do NOT leave any week empty
+2. Each week has exactly 3 posts: Mon(Reel), Wed(Carousel), Fri(Post/Reel)
+3. For REEL: write complete scene-by-scene script with actual dialogues
+4. For POST/CAROUSEL: write complete text content with positioning
+5. Every post MUST have: full caption (150+ words), 15 hashtags, and a pin_comment
+6. Content must be specific to ${niche} niche, Indian audience, in ${isHindi ? "Hinglish" : "English"}
+
+Return this EXACT JSON structure (no deviation):
 {
   "contentCalendar": [
     {
       "week": 1,
-      "theme": "Week theme relevant to niche",
+      "theme": "Week 1 theme specific to ${niche}",
       "posts": [
-        { "day": "Mon", "format": "Reel", "topic": "specific topic for ${niche}", "hook": "Hinglish hook line", "cta": "call to action" },
-        { "day": "Wed", "format": "Carousel", "topic": "topic", "hook": "hook", "cta": "cta" },
-        { "day": "Fri", "format": "Post", "topic": "topic", "hook": "hook", "cta": "cta" }
+        {
+          "day": "Mon",
+          "format": "Reel",
+          "topic": "Specific topic for ${niche}",
+          "hook": "First 3-second hook line in ${isHindi ? "Hinglish" : "English"}",
+          "script": {
+            "scene1_hook": "[0:00-0:03] Camera direct pe. Exact dialogue: 'YOUR HOOK HERE' — deliver with energy, point at camera",
+            "scene2_problem": "[0:03-0:15] Show the problem. Dialogue + action: 'Most people do X wrong because...' — use text overlay",
+            "scene3_solution": "[0:15-0:45] Step by step solution. Dialogue for each step with b-roll instructions",
+            "scene4_cta": "[0:45-0:60] CTA scene. Exact words: 'Comment WORD below and I'll send you...' — smile at camera",
+            "voiceover_notes": "Tone: energetic/calm/educational. Pacing: fast cuts every 3s. Background: clean/at gym/outdoor",
+            "text_overlays": ["Text 1 at 0:05", "Text 2 at 0:20", "Text 3 at 0:40"]
+          },
+          "caption": "Full 150+ word caption starting with hook, including story, value, and CTA. Must feel personal and authentic for Indian ${niche} audience. Include emojis naturally.",
+          "hashtags": ["#Hashtag1", "#Hashtag2", "#Hashtag3", "#Hashtag4", "#Hashtag5", "#Hashtag6", "#Hashtag7", "#Hashtag8", "#Hashtag9", "#Hashtag10", "#Hashtag11", "#Hashtag12", "#Hashtag13", "#Hashtag14", "#Hashtag15"],
+          "pin_comment": "Pinned comment text — usually a question to boost engagement or a resource link"
+        },
+        {
+          "day": "Wed",
+          "format": "Carousel",
+          "topic": "Carousel topic for ${niche}",
+          "hook": "Slide 1 hook text",
+          "script": {
+            "slide1": "SLIDE 1 — Hook slide. Big bold text: 'EXACT TEXT'. Subtext: 'explanation'. Background: color/gradient",
+            "slide2": "SLIDE 2 — Point 1. Main text: ''. Supporting text: ''. Visual: icon/image suggestion",
+            "slide3": "SLIDE 3 — Point 2. Main text: ''. Supporting text: ''",
+            "slide4": "SLIDE 4 — Point 3. Main text: ''. Supporting text: ''",
+            "slide5": "SLIDE 5 — Point 4 or Case study. Main text: ''",
+            "slide6": "SLIDE 6 — Summary/Recap. Main text: ''",
+            "slide7": "SLIDE 7 — CTA slide. Text: 'Save this for later' + follow CTA. DM hook if applicable",
+            "design_notes": "Color scheme, font style, overall aesthetic guidance"
+          },
+          "caption": "Full carousel caption — start with question hook, tease the content, end with 'Save karo taaki bhool na jao'",
+          "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4", "#Tag5", "#Tag6", "#Tag7", "#Tag8", "#Tag9", "#Tag10", "#Tag11", "#Tag12", "#Tag13", "#Tag14", "#Tag15"],
+          "pin_comment": "Save karo ye post! Kaunsa point sabse helpful laga? Comment mein batao 👇"
+        },
+        {
+          "day": "Fri",
+          "format": "Post",
+          "topic": "Post topic for ${niche}",
+          "hook": "Caption first line hook",
+          "script": {
+            "image_description": "What should the image show — pose, setting, text overlay, expression, colors",
+            "text_on_image": "Any text that appears on the image itself (bold quote or stat)",
+            "positioning": "How to stand/sit, what to hold, camera angle (eye level/above/below), lighting setup",
+            "expression_direction": "Emotion to convey — confident, relatable, happy, serious",
+            "content_type": "Single image / infographic / quote card / behind-the-scenes"
+          },
+          "caption": "Full post caption — personal story opening, 3-5 value points numbered, end with strong CTA question to drive comments",
+          "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4", "#Tag5", "#Tag6", "#Tag7", "#Tag8", "#Tag9", "#Tag10", "#Tag11", "#Tag12", "#Tag13", "#Tag14", "#Tag15"],
+          "pin_comment": "Comment mein batao: [engaging question related to the post topic]"
+        }
       ]
     },
-    { "week": 2, "theme": "Week 2 theme", "posts": [] },
-    { "week": 3, "theme": "Week 3 theme", "posts": [] },
-    { "week": 4, "theme": "Week 4 theme", "posts": [] }
+    {
+      "week": 2,
+      "theme": "Week 2 different theme for ${niche}",
+      "posts": [
+        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Wed", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Fri", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" }
+      ]
+    },
+    {
+      "week": 3,
+      "theme": "Week 3 theme — community/engagement focus",
+      "posts": [
+        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Wed", "format": "Post", "topic": "", "hook": "", "script": { "image_description": "", "text_on_image": "", "positioning": "", "expression_direction": "", "content_type": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Fri", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" }
+      ]
+    },
+    {
+      "week": 4,
+      "theme": "Week 4 theme — authority/results/transformation",
+      "posts": [
+        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Wed", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
+        { "day": "Fri", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" }
+      ]
+    }
   ],
   "contentPillars": [
-    { "pillar": "pillar name", "percentage": 40, "examples": ["ex1 for ${niche}", "ex2"] }
+    { "pillar": "pillar name", "percentage": 40, "examples": ["example 1", "example 2", "example 3"] }
   ],
-  "batchingStrategy": "how to batch-create for ${platform} efficiently",
-  "repurposingPlan": [
-    { "original": "${platform}", "repurpose": "other platform", "how": "brief steps" }
-  ],
+  "batchingStrategy": "How to batch-create all 12 posts in one day — shooting order, tools needed",
   "postingSchedule": {
-    "frequency": "X posts/week",
-    "bestDays": ["Mon", "Wed", "Fri"],
-    "bestTimes": ["7-9 PM IST"],
-    "reason": "why these times work for Indian audience"
+    "frequency": "3 posts/week",
+    "bestDays": ["Monday", "Wednesday", "Friday"],
+    "bestTimes": ["7:00 PM - 9:00 PM IST"],
+    "reason": "Why this timing works specifically for Indian ${niche} audience"
   },
   "kpis": {
-    "targetER": "${ownData ? ((ownData.engagementRate ?? 0) * 1.5).toFixed(1) : "3.0"}%",
+    "targetER": "${ownData ? ((ownData.engagementRate ?? 0) * 1.5).toFixed(1) : "3.5"}%",
     "postingFrequency": "3/week",
-    "growthTarget": "X followers/month"
+    "growthTarget": "Realistic follower growth target for 30 days"
   }
-}`;
+}
+
+IMPORTANT: Fill in ALL empty string fields with real, specific, detailed content. Every script must have actual dialogues, not placeholders.`;
 
     const llmResult = await callLLM({ userId, endpoint: "pipeline", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
@@ -438,6 +515,7 @@ Return JSON:
     return res.status(500).json({ error: err.message });
   }
 });
+
 
 // ─── POST /api/analyze/save ───────────────────────────────────────────────────
 // Save full analysis result

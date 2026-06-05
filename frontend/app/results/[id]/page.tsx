@@ -582,35 +582,196 @@ function EmptyState({ tab }: { tab: string }) {
 
 function PostCard({ post }: { post: any }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedSection, setCopiedSection] = useState<string | null>(null);
 
-  const copy = () => {
-    navigator.clipboard.writeText(`${post.hook}\n\n${post.topic}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyText = (text: string, section: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedSection(section);
+    setTimeout(() => setCopiedSection(null), 2000);
   };
+
+  const isReel = post.format === "Reel";
+  const isCarousel = post.format === "Carousel";
+  const isPost = post.format === "Post";
+  const script = post.script || {};
+
+  const formatColor = isReel
+    ? "bg-red-500/10 text-red-500 border-red-500/20"
+    : isCarousel
+    ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+    : "bg-green-500/10 text-green-500 border-green-500/20";
 
   return (
     <div className="rounded-xl border border-border overflow-hidden">
-      <div className="p-3 flex items-start gap-3 cursor-pointer hover:bg-muted/20 transition" onClick={() => setExpanded(!expanded)}>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-500 font-medium flex-shrink-0">{post.day}</span>
+      {/* Header — always visible */}
+      <div className="p-4 flex items-start gap-3 cursor-pointer hover:bg-muted/20 transition" onClick={() => setExpanded(!expanded)}>
+        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-500 font-medium flex-shrink-0 mt-0.5">{post.day}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{post.format}</p>
-          <p className="text-sm font-medium truncate">{post.topic}</p>
-          {post.hook && <p className="text-xs text-muted-foreground mt-0.5 italic truncate">"{post.hook}"</p>}
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${formatColor}`}>{post.format}</span>
+          </div>
+          <p className="text-sm font-semibold">{post.topic}</p>
+          {post.hook && <p className="text-xs text-muted-foreground mt-0.5 italic">"{post.hook}"</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); copy(); }} className="text-muted-foreground hover:text-foreground">
-            {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
           {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
         </div>
       </div>
-      {expanded && post.cta && (
-        <div className="border-t border-border p-3 bg-muted/20">
-          <p className="text-xs text-muted-foreground">CTA: <span className="text-foreground">{post.cta}</span></p>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div className="border-t border-border divide-y divide-border">
+
+          {/* REEL SCRIPT */}
+          {isReel && Object.keys(script).length > 0 && (
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-red-500 uppercase tracking-wider">🎬 Reel Script</p>
+                <button onClick={() => copyText(
+                  Object.entries(script).filter(([k]) => !k.includes("text_overlays")).map(([k, v]) => `${k.toUpperCase()}:\n${v}`).join("\n\n"),
+                  "script"
+                )} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {copiedSection === "script" ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copiedSection === "script" ? "Copied!" : "Copy script"}
+                </button>
+              </div>
+              {script.scene1_hook && <ScriptScene label="[0:00-0:03] HOOK" content={script.scene1_hook} color="red" />}
+              {script.scene2_problem && <ScriptScene label="[0:03-0:15] PROBLEM" content={script.scene2_problem} color="amber" />}
+              {script.scene3_solution && <ScriptScene label="[0:15-0:45] SOLUTION" content={script.scene3_solution} color="blue" />}
+              {script.scene4_cta && <ScriptScene label="[0:45-0:60] CTA" content={script.scene4_cta} color="green" />}
+              {script.voiceover_notes && (
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">DIRECTION NOTES</p>
+                  <p className="text-xs">{script.voiceover_notes}</p>
+                </div>
+              )}
+              {Array.isArray(script.text_overlays) && script.text_overlays.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1.5">TEXT OVERLAYS</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {script.text_overlays.map((t: string, i: number) => (
+                      <span key={i} className="text-xs px-2 py-1 rounded bg-muted">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* CAROUSEL SCRIPT */}
+          {isCarousel && Object.keys(script).length > 0 && (
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-blue-400 uppercase tracking-wider">📊 Carousel Slides</p>
+                <button onClick={() => copyText(
+                  Object.entries(script).map(([k, v]) => `${k.toUpperCase()}: ${v}`).join("\n\n"),
+                  "script"
+                )} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {copiedSection === "script" ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copiedSection === "script" ? "Copied!" : "Copy slides"}
+                </button>
+              </div>
+              {["slide1","slide2","slide3","slide4","slide5","slide6","slide7"].filter(k => script[k]).map((key, i) => (
+                <div key={key} className="flex gap-3">
+                  <span className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-400 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i+1}</span>
+                  <p className="text-xs leading-relaxed">{script[key]}</p>
+                </div>
+              ))}
+              {script.design_notes && (
+                <div className="bg-muted/40 rounded-lg p-3">
+                  <p className="text-[10px] font-bold text-muted-foreground mb-1">DESIGN GUIDE</p>
+                  <p className="text-xs">{script.design_notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* POST IMAGE DIRECTION */}
+          {isPost && Object.keys(script).length > 0 && (
+            <div className="p-4 space-y-3">
+              <p className="text-xs font-bold text-green-500 uppercase tracking-wider">📸 Image Direction</p>
+              {script.image_description && <InfoRow label="What to shoot" value={script.image_description} />}
+              {script.text_on_image && <InfoRow label="Text on image" value={script.text_on_image} />}
+              {script.positioning && <InfoRow label="Positioning" value={script.positioning} />}
+              {script.expression_direction && <InfoRow label="Expression" value={script.expression_direction} />}
+              {script.content_type && <InfoRow label="Content type" value={script.content_type} />}
+            </div>
+          )}
+
+          {/* CAPTION */}
+          {post.caption && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-muted-foreground">CAPTION</p>
+                <button onClick={() => copyText(post.caption, "caption")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {copiedSection === "caption" ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copiedSection === "caption" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-xs leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-lg p-3">{post.caption}</p>
+            </div>
+          )}
+
+          {/* HASHTAGS */}
+          {post.hashtags?.length > 0 && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-muted-foreground">HASHTAGS ({post.hashtags.length})</p>
+                <button onClick={() => copyText(post.hashtags.join(" "), "hashtags")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {copiedSection === "hashtags" ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copiedSection === "hashtags" ? "Copied!" : "Copy all"}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {post.hashtags.map((tag: string) => (
+                  <span key={tag} className="text-xs px-2 py-1 rounded-full bg-amber-400/10 text-amber-600 dark:text-amber-400 cursor-pointer hover:bg-amber-400/20 transition"
+                    onClick={() => copyText(tag, tag)}>
+                    {copiedSection === tag ? "✓" : tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* PIN COMMENT */}
+          {post.pin_comment && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-muted-foreground flex items-center gap-1">📌 PIN COMMENT</p>
+                <button onClick={() => copyText(post.pin_comment, "pin")} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                  {copiedSection === "pin" ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copiedSection === "pin" ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-xs bg-amber-400/5 border border-amber-400/20 rounded-lg p-3">{post.pin_comment}</p>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function ScriptScene({ label, content, color }: { label: string; content: string; color: string }) {
+  const colorMap: Record<string, string> = {
+    red: "border-l-red-500 bg-red-500/5",
+    amber: "border-l-amber-500 bg-amber-500/5",
+    blue: "border-l-blue-500 bg-blue-500/5",
+    green: "border-l-green-500 bg-green-500/5",
+  };
+  return (
+    <div className={`border-l-2 pl-3 rounded-r-lg p-2 ${colorMap[color] || ""}`}>
+      <p className="text-[10px] font-bold text-muted-foreground mb-1">{label}</p>
+      <p className="text-xs leading-relaxed">{content}</p>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3">
+      <span className="text-xs text-muted-foreground w-24 flex-shrink-0">{label}</span>
+      <span className="text-xs">{value}</span>
     </div>
   );
 }

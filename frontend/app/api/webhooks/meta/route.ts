@@ -245,18 +245,39 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   const commentId = payload?.id;
   const mediaId = payload?.media?.id;
   const commentorId = payload?.from?.id;
+  const parentId = payload?.parent_id;  // Set when this IS a reply to a comment
 
-  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId}`);
+  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId} parent=${parentId}`);
 
   if (!commentId) {
     console.warn("[Webhook] Comment has no ID — skipping");
     return;
   }
 
+  // ── CRITICAL: Skip replies to comments (parent_id set = it's a reply, not a root comment) ──
+  // This prevents our auto-reply from triggering another auto-reply → infinite loop
+  if (parentId) {
+    console.log(`[Webhook] Skipping reply-to-comment (parent_id=${parentId}) to prevent infinite loop`);
+    return;
+  }
+
+  // ── Skip if commentor is our own account (sanity check) ──────────────────
+  // Get our own account's IG user ID
+  const { data: ownAccount } = await supabase
+    .from("connected_accounts")
+    .select("platform_user_id")
+    .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (ownAccount?.platform_user_id && commentorId === ownAccount.platform_user_id) {
+    console.log(`[Webhook] Skipping own account comment — not triggering auto-reply on our own reply`);
+    return;
+  }
+
   // ── Atomic Dedup: Mark comment as "being processed" FIRST ──────────────────
-  // Using a dedicated table with UNIQUE(comment_id, rule_id) to prevent
-  // duplicate processing even when Meta sends the webhook multiple times.
-  // We insert BEFORE acting — if duplicate, the insert fails → skip.
+  // UNIQUE(comment_id, rule_id) — same comment never gets 2 replies from same rule.
+  // New comment from same user = new comment_id = allowed.
 
   // Get all active comment rules
   const { data: rules } = await supabase
@@ -282,7 +303,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     if (!matched) continue;
 
     // ── ATOMIC DEDUP: try to insert a processed_comment record ────────────────
-    // UNIQUE constraint on (comment_id, rule_id) — duplicate insert will fail
+    // UNIQUE constraint on (comment_id, rule_id) — duplicate insert will fail with 23505
     const { error: dedupError } = await supabase
       .from("processed_comments")
       .insert({
@@ -294,13 +315,19 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       });
 
     if (dedupError) {
-      // Unique violation = already processed
       if (dedupError.code === "23505") {
+        // Unique violation = already processed this comment with this rule
         console.log(`[Webhook] Comment ${commentId} already processed for rule ${rule.name} — skipping`);
         continue;
       }
-      console.warn(`[Webhook] Dedup insert error: ${dedupError.message}`);
-      // Don't skip on other errors — still try to process
+      if (dedupError.code === "42P01") {
+        // Table doesn't exist yet — SKIP to prevent infinite processing
+        console.error(`[Webhook] processed_comments table missing! Run migration. Skipping rule ${rule.id} to prevent infinite loop.`);
+        continue;
+      }
+      // Any other error — also skip (fail safe)
+      console.warn(`[Webhook] Dedup insert error (${dedupError.code}): ${dedupError.message} — skipping to be safe`);
+      continue;
     }
 
     // Get token — from joined connected_accounts
