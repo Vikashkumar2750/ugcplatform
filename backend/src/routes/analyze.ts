@@ -419,7 +419,7 @@ Return JSON:
     "reason": "why these times work for Indian audience"
   },
   "kpis": {
-    "targetER": "${ownData ? (ownData.engagementRate * 1.5).toFixed(1) : "3.0"}%",
+    "targetER": "${ownData ? ((ownData.engagementRate ?? 0) * 1.5).toFixed(1) : "3.0"}%",
     "postingFrequency": "3/week",
     "growthTarget": "X followers/month"
   }
