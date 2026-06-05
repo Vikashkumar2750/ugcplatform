@@ -24,7 +24,7 @@ export interface LLMResponse {
 export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
   const { userId, endpoint, prompt, systemPrompt } = req;
 
-  // 1. Check if user has own keys (preferred)
+  // 1. Fetch user's own API keys (decrypted)
   const { data: keyRows } = await supabase
     .from("user_api_keys")
     .select("provider, encrypted_key")
@@ -33,11 +33,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
   const userKeys: Record<string, string> = {};
   for (const row of keyRows || []) {
-    try {
-      userKeys[row.provider] = decrypt(row.encrypted_key);
-    } catch {
-      // Skip corrupted keys
-    }
+    try { userKeys[row.provider] = decrypt(row.encrypted_key); } catch {}
   }
 
   // 2. Check platform API permission
@@ -45,62 +41,102 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     .from("profiles")
     .select("platform_api_allowed")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
   const platformAllowed = profile?.platform_api_allowed !== false;
 
-  // 3. Provider priority: user's own key → platform Gemini → blocked
-  let response: LLMResponse;
+  // 3. Build ordered list of (key, provider, source) to try
+  const attempts: Array<() => Promise<LLMResponse>> = [];
 
-  if (userKeys.gemini && (req.preferProvider === "gemini" || !req.preferProvider)) {
-    response = await callGemini(userKeys.gemini, prompt, systemPrompt, "user_own");
-  } else if (userKeys.anthropic && req.preferProvider === "anthropic") {
-    response = await callAnthropic(userKeys.anthropic, prompt, systemPrompt, "user_own");
-  } else if (userKeys.openai && req.preferProvider === "openai") {
-    response = await callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own");
-  } else if (userKeys.bedrock && req.preferProvider === "bedrock") {
-    response = await callBedrock(userKeys.bedrock, prompt, systemPrompt, "user_own");
-  } else if (userKeys.gemini) {
-    // Fallback to user's gemini even if another provider was preferred
-    response = await callGemini(userKeys.gemini, prompt, systemPrompt, "user_own");
-  } else if (platformAllowed && process.env.GEMINI_API_KEY) {
-    // Platform fallback — use platform's Gemini key
-    response = await callGemini(
-      process.env.GEMINI_API_KEY,
-      prompt,
-      systemPrompt,
-      "platform"
-    );
-  } else {
+  // ── User's own keys (highest priority) ───────────────────────────────────
+  // If user prefers a provider, try that first
+  if (req.preferProvider === "anthropic" && userKeys.anthropic) {
+    attempts.push(() => callAnthropic(userKeys.anthropic, prompt, systemPrompt, "user_own"));
+  }
+  if (req.preferProvider === "openai" && userKeys.openai) {
+    attempts.push(() => callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own"));
+  }
+  if (req.preferProvider === "bedrock" && userKeys.bedrock) {
+    attempts.push(() => callBedrock(userKeys.bedrock, prompt, systemPrompt, "user_own"));
+  }
+  // User Gemini always available as user-key option
+  if (userKeys.gemini) {
+    attempts.push(() => callGemini(userKeys.gemini, prompt, systemPrompt, "user_own"));
+  }
+  // User's other keys as further fallback
+  if (userKeys.anthropic && req.preferProvider !== "anthropic") {
+    attempts.push(() => callAnthropic(userKeys.anthropic, prompt, systemPrompt, "user_own"));
+  }
+  if (userKeys.openai && req.preferProvider !== "openai") {
+    attempts.push(() => callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own"));
+  }
+  if (userKeys.bedrock && req.preferProvider !== "bedrock") {
+    attempts.push(() => callBedrock(userKeys.bedrock, prompt, systemPrompt, "user_own"));
+  }
+
+  // ── Platform keys (if user has no working key / platform allowed) ─────────
+  if (platformAllowed) {
+    if (process.env.GEMINI_API_KEY) {
+      attempts.push(() => callGemini(process.env.GEMINI_API_KEY!, prompt, systemPrompt, "platform"));
+    }
+    if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
+      attempts.push(() => callBedrock(process.env.AWS_BEARER_TOKEN_BEDROCK!, prompt, systemPrompt, "platform"));
+    }
+  }
+
+  if (attempts.length === 0) {
+    throw new Error("No AI provider available. Add your API key in Settings → API Keys.");
+  }
+
+  // 4. Try each provider in order — stop at first success
+  let lastError: Error | null = null;
+  let response: LLMResponse | null = null;
+
+  for (const attempt of attempts) {
+    try {
+      response = await attempt();
+      break; // success
+    } catch (err: any) {
+      console.warn(`[LLM] Provider failed: ${err.message?.slice(0, 100)}`);
+      lastError = err;
+    }
+  }
+
+  if (!response) {
     throw new Error(
-      "Platform AI access is not available for your account. Please add your own API key in Settings."
+      lastError?.message ||
+      "All AI providers failed. Please add your own API key in Settings → API Keys."
     );
   }
 
-  // 4. Log usage
+  // 5. Determine key source for logging
+  const keySource = userKeys[response.provider] ? "user_own" : "platform";
+
+  // 6. Log usage
   await supabase.from("api_usage_logs").insert({
     user_id: userId,
     provider: response.provider,
     endpoint,
-    key_source: response.provider === "gemini" && !userKeys.gemini ? "platform" : "user_own",
+    key_source: keySource,
     tokens_input: response.tokensInput,
     tokens_output: response.tokensOutput,
     tokens_total: response.tokensInput + response.tokensOutput,
     cost_usd: estimateCost(response.provider, response.tokensInput, response.tokensOutput),
-  });
+  }).catch(() => {}); // non-fatal
 
-  // 5. Update last_used_at for the key
-  const usedProvider = response.provider;
-  if (userKeys[usedProvider]) {
+  // 7. Update last_used_at for the key used
+  if (keySource === "user_own") {
     await supabase
       .from("user_api_keys")
       .update({ last_used_at: new Date().toISOString() })
       .eq("user_id", userId)
-      .eq("provider", usedProvider);
+      .eq("provider", response.provider)
+      .catch(() => {});
   }
 
   return response;
 }
+
 
 // ─── Provider implementations ─────────────────────────────────────────────────
 
