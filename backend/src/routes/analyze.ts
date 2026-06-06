@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
 import { callLLM } from "../services/llm";
-import { scrapeInstagramProfile, runApifyActor } from "../services/scraper";
+import { scrapeInstagramProfile, scrapeCompetitorFull, EnhancedCompetitorData, runApifyActor } from "../services/scraper";
 import {
   fetchConnectedInstagramData,
   fetchConnectedFacebookData,
@@ -200,14 +200,8 @@ router.post("/competitors", async (req: Request, res: Response) => {
       ownData = data;
     }
 
-    // ── Scrape EACH competitor with full profile + top posts ───────────────
-    interface CompetitorScraped {
-      username: string;
-      profile: { followers: number; following: number; posts: number; bio: string };
-      topPosts: Array<{ caption: string; likes: number; comments: number; views: number; url: string }>;
-      recentPosts: Array<{ caption: string; likes: number; views: number }>;
-    }
-    let scrapedCompetitors: CompetitorScraped[] = [];
+    // ── ENHANCED: Scrape EACH competitor using BOTH Apify actors ─────────────
+    let enhancedCompetitors: EnhancedCompetitorData[] = [];
 
     if (competitors?.length && platform === "instagram") {
       const usernames = competitors
@@ -215,143 +209,361 @@ router.post("/competitors", async (req: Request, res: Response) => {
         .filter(Boolean)
         .slice(0, 3);
 
+      console.log(`[competitors] Starting enhanced Apify scrape for: ${usernames.join(", ")}`);
+
       const results = await Promise.allSettled(
-        usernames.map(async (u: string) => {
-          const { posts, profile } = await scrapeInstagramProfile(u);
-          // Sort by views (most viral first), then by likes
-          const sorted = [...posts].sort((a, b) => ((b.views || b.likes || 0) - (a.views || a.likes || 0)));
-          const recent = [...posts].sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-          return {
-            username: u,
-            profile: {
-              followers: profile?.followers || 0,
-              following: profile?.following || 0,
-              posts: profile?.posts || posts.length,
-              bio: profile?.bio || "",
-            },
-            topPosts: sorted.slice(0, 8).map(p => ({
-              caption: (p.caption || "").substring(0, 150),
-              likes: p.likes || 0,
-              comments: p.comments || 0,
-              views: p.views || 0,
-              url: p.url || "",
-            })),
-            recentPosts: recent.slice(0, 5).map(p => ({
-              caption: (p.caption || "").substring(0, 100),
-              likes: p.likes || 0,
-              views: p.views || 0,
-            })),
-          };
-        })
+        usernames.map((u: string) => scrapeCompetitorFull(u))
       );
 
-      scrapedCompetitors = results
+      enhancedCompetitors = results
         .filter(r => r.status === "fulfilled")
         .map((r: any) => r.value);
 
-      console.log(`[competitors] Scraped ${scrapedCompetitors.length} competitors with profile data`);
+      console.log(`[competitors] Enhanced scrape complete: ${enhancedCompetitors.length} competitors, total posts: ${enhancedCompetitors.reduce((s, c) => s + c.allPosts.length, 0)}`);
     }
 
     const isHindi = language === "hi";
+
     const systemPrompt = isHindi
-      ? `Tu expert social media analyst hai. SIRF REAL data use kar jo diya gaya hai — koi bhi numbers hallucinate mat karo. Agar real data hai to exactly wahi use karo. Hinglish mein jawab de. SIRF valid JSON return kar.`
-      : `You are an expert social media analyst. Use ONLY the REAL scraped data provided — do NOT invent or hallucinate numbers. Use exact follower counts, likes, views from the data. Return ONLY valid JSON.`;
+      ? `Tu ek elite AI Content Intelligence Engine hai jo expert hai:
+- performance marketing
+- creator economy growth
+- social media psychology  
+- viral content analysis
+- Instagram growth strategy
+- trend forecasting
+
+SIRF real scraped data use karo — koi hallucination nahi. Hinglish mein jawab de. SIRF valid JSON return karo.`
+      : `You are an elite AI Content Intelligence Engine trained in:
+- Performance marketing & creator economy
+- Social media psychology & viral content analysis
+- Instagram growth strategy & trend forecasting
+- Audience retention & engagement optimization
+
+RULES: Use ONLY real scraped data. Never hallucinate metrics. Return ONLY valid JSON.`;
 
     const ownSection = ownData
-      ? `USER'S ACCOUNT (@${ownData.username}):
-- Followers: ${ownData.followers.toLocaleString()}
+      ? `USER's OWN ACCOUNT (@${ownData.username}):
+- Followers: ${ownData.followers.toLocaleString()} | Following: ${ownData.following}
 - Avg Likes: ${ownData.avgLikes} | Avg Comments: ${ownData.avgComments}
 - Engagement Rate: ${ownData.engagementRate}%
-- Bio: "${ownData.biography || ""}"`
-      : `User platform: ${platform} | Niche: ${niche || "unknown"}`;
+- Bio: "${ownData.biography || "Not set"}"
+- Total Posts: ${ownData.mediaCount}`
+      : `User Platform: ${platform} | Niche: ${niche || "to be detected"}`;
 
-    // Build competitor data section with REAL numbers
-    const competitorSection = scrapedCompetitors.length > 0
-      ? scrapedCompetitors.map((c, i) => `
+    // Build rich competitor data section
+    const buildCompetitorSection = (c: EnhancedCompetitorData, i: number) => `
+═══════════════════════════════════════
 COMPETITOR ${i + 1}: @${c.username}
-- REAL Followers: ${c.profile.followers.toLocaleString()}
+═══════════════════════════════════════
+PROFILE:
+- Full Name: ${c.profile.fullName}
+- Followers: ${c.profile.followers.toLocaleString()} | Following: ${c.profile.following}
+- Total Posts: ${c.profile.postsCount}
+- Verified: ${c.profile.verified} | Business: ${c.profile.isBusinessAccount}
 - Bio: "${c.profile.bio}"
-- Total Posts: ${c.profile.posts}
 
-TOP VIRAL POSTS (sorted by views — most viral first):
-${c.topPosts.map((p, pi) => `  #${pi + 1}: Views: ${p.views.toLocaleString()} | Likes: ${p.likes.toLocaleString()} | Comments: ${p.comments} | Caption: "${p.caption}"`).join("\n")}
+ENGAGEMENT STATS (from ${c.engagementStats.totalPostsAnalyzed} posts):
+- Avg Likes: ${c.engagementStats.avgLikes.toLocaleString()}
+- Avg Comments: ${c.engagementStats.avgComments.toLocaleString()}
+- Avg Views: ${c.engagementStats.avgViews.toLocaleString()}
+- Engagement Rate: ${c.engagementStats.engagementRate}%
+- Top Post Views: ${c.engagementStats.topPostViews.toLocaleString()}
 
-MOST RECENT POSTS:
-${c.recentPosts.map((p, pi) => `  #${pi + 1}: Views: ${p.views.toLocaleString()} | Likes: ${p.likes.toLocaleString()} | Caption: "${p.caption}"`).join("\n")}
-`).join("\n---\n")
-      : `Competitor URLs provided: ${competitors?.join(", ") || "None"}\n(No scraped data — use AI knowledge about these creators)`;
+TOP 8 VIRAL POSTS (sorted by views):
+${c.topPosts.map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} Likes:${p.likes.toLocaleString()} Comments:${p.comments}
+   Hook: "${p.hookText.substring(0, 120)}"
+   Hashtags: ${p.hashtags.slice(0, 8).join(" ")}
+   Has CTA: ${p.hasCTA} | Has Question: ${p.hasQuestion} | Caption Length: ${p.captionLength}`).join("\n")}
 
-    // Auto-detect niche from competitor data if not provided
+MOST RECENT 5 POSTS:
+${c.recentPosts.map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} | "${p.hookText.substring(0, 80)}"`).join("\n")}
+
+POST TYPE DISTRIBUTION:
+${(() => {
+  const types = c.allPosts.reduce((acc: Record<string, number>, p) => { acc[p.type || "IMAGE"] = (acc[p.type || "IMAGE"] || 0) + 1; return acc; }, {});
+  return Object.entries(types).map(([t, count]) => `  ${t}: ${count} posts`).join("\n");
+})()}
+
+TOP HASHTAGS USED:
+${[...new Set(c.allPosts.flatMap(p => p.hashtags))].slice(0, 20).join(" ")}
+`;
+
+    const competitorDataSection = enhancedCompetitors.length > 0
+      ? enhancedCompetitors.map((c, i) => buildCompetitorSection(c, i)).join("\n")
+      : `Competitor URLs: ${competitors?.join(", ") || "None provided"}\n(No scraped data available — analyze based on URL and niche knowledge)`;
+
     const nicheSection = niche
-      ? `Content Niche: ${niche}`
-      : `NICHE NOT SPECIFIED — Detect niche from competitor bio/content above and fill "detectedNiche" field`;
+      ? `Confirmed Niche: ${niche}`
+      : `NICHE NOT SPECIFIED — Auto-detect from competitor bios and content above`;
 
-    const prompt = `Analyze these ${platform} competitors and provide ACCURATE analysis using ONLY the real data provided:
+    const prompt = `You are an elite AI Content Intelligence Engine. Perform COMPLETE 20-layer analysis.
 
 ${ownSection}
 
-${competitorSection}
+${competitorDataSection}
 
 ${nicheSection}
 
-IMPORTANT RULES:
-1. Use the EXACT follower numbers from the scraped data (e.g., if data says ${scrapedCompetitors[0]?.profile?.followers?.toLocaleString() || "X"} followers, use that)
-2. Calculate engagement rate from real data: (avg likes + avg comments) / followers * 100
-3. Identify which content topics got the MOST views — base all strategy on those
-4. Find patterns in the top viral posts' captions — what hooks/topics work
-5. Strategy must be based on what ACTUALLY went viral for the competitor
+═══════════════════════════════════════
+PERFORM ALL 20 ANALYSIS TASKS:
+═══════════════════════════════════════
+1. Niche Detection (from bios + content)
+2. Creator Archetype Detection (educator/entertainer/authority/storyteller)
+3. Audience Intent Mapping (what do followers want from this creator)
+4. Hook Pattern Analysis (what opening lines get most views)
+5. Emotional Trigger Analysis (fear/aspiration/curiosity/social proof)
+6. Viral Structure Detection (what content structure appears in top posts)
+7. Content Pillar Classification (main categories of content)
+8. Posting Frequency Analysis (from post count and timing patterns)
+9. Engagement Pattern Analysis (which post types get best ER)
+10. CTA Analysis (what calls-to-action are used)
+11. Audience Pain Point Extraction (from captions + engagement patterns)
+12. Trend Opportunity Detection (topics gaining traction)
+13. Content Gap Analysis (what's missing that would work)
+14. Reel Framework Extraction (structure used in top video content)
+15. Retention Strategy Detection (how they keep watchers engaged)
+16. Thumbnail/Cover Pattern Analysis (visual style from post types)
+17. Comment Sentiment Analysis (based on caption tone + CTA types)
+18. Content Saturation Detection (oversaturated vs fresh angles)
+19. Virality Probability Scoring (which content type is most likely to go viral)
+20. Follower Conversion Analysis (what drives people to follow)
 
-Return JSON:
+ALSO ANALYZE:
+- Competitor BIOS: Identify what makes their bio effective — keywords, CTA, positioning statement
+- Profile Optimization: Based on competitor bios, suggest EXACT improved bio for the user's account
+
+Return ONLY this JSON structure:
 {
-  "detectedNiche": "${niche || "auto-detect from competitor content"}",
+  "detectedNiche": "specific niche detected",
+  "audienceIntelligence": {
+    "primaryAudience": "who follows these creators (age, interest, intent)",
+    "audienceIntent": "what they're looking for (learn/entertain/inspire/buy)",
+    "painPoints": ["pain point 1", "pain point 2", "pain point 3", "pain point 4"],
+    "desiredOutcomes": ["what audience wants to achieve 1", "what audience wants 2"],
+    "confidence": "High/Medium/Low",
+    "evidence": "evidence summary from post captions and engagement"
+  },
   "competitors": [
     {
-      "username": "@handle (exact from data)",
-      "realFollowers": "exact number from scraped data",
-      "estimatedFollowers": "same as realFollowers",
-      "engagementRate": "calculated from real likes/followers",
-      "postingFrequency": "estimated from post count",
-      "hookStyle": "pattern observed in their TOP VIRAL post captions",
-      "contentStyle": "based on top viral posts",
-      "captionStyle": "short/long/question-based/story-based",
-      "topHashtags": ["hashtags found in their viral posts"],
-      "viralTopics": ["topic from top post 1", "topic from top post 2", "topic from top post 3"],
-      "viralHook": "exact hook formula from their most viral post",
-      "avgViralViews": "average views of top 3 posts"
+      "username": "@handle",
+      "realFollowers": "exact number",
+      "engagementRate": "X.XX%",
+      "postingFrequency": "X posts/week (estimated)",
+      "creatorArchetype": "Educator / Entertainer / Authority / Storyteller",
+      "bio": "their actual bio text",
+      "bioStrengths": ["what works in their bio", "keyword strategy", "CTA effectiveness"],
+      "hookStyle": "pattern in their top posts (question/statement/number/shock)",
+      "emotionalTriggers": ["curiosity", "fear of missing out", "aspiration"],
+      "contentPillars": ["pillar 1 - X%", "pillar 2 - X%", "pillar 3 - X%"],
+      "viralStructure": "describe the repeatable structure in their top posts",
+      "topHashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
+      "viralTopics": ["topic 1 with views", "topic 2", "topic 3"],
+      "viralHook": "exact hook pattern from most viral post",
+      "avgViralViews": "average views of top 3 posts",
+      "ctaStrategy": "what CTAs they use most",
+      "retentionStrategy": "how they retain attention",
+      "viralityScore": 85,
+      "viralityReason": "why this content type goes viral",
+      "weaknesses": ["weakness 1", "weakness 2"]
     }
   ],
-  "keyInsights": [
-    "insight based on REAL viral content analysis",
-    "what content format gets most views for these competitors",
-    "what topics drive highest engagement"
-  ],
-  "gapsToExploit": [
-    "specific content gap not covered by competitors",
-    "topic that is trending but competitors aren't covering",
-    "format that works elsewhere but not used here"
-  ],
-  "userVsCompetitor": {
-    "userStrength": "based on real ER and follower comparison",
-    "userWeakness": "what competitors do better based on viral content",
-    "quickWin": "single most viral content type to copy immediately with topic suggestion"
+  "bioOptimization": {
+    "userCurrentBio": "${ownData?.biography || "Not connected"}",
+    "competitorBioInsights": [
+      "what works in competitor bios",
+      "keywords that attract followers",
+      "CTA patterns used"
+    ],
+    "suggestedBio": "Write an EXACT improved bio for the user — max 150 chars, includes value proposition, niche keywords, and CTA. Make it platform-native.",
+    "bioImprovements": [
+      "specific change 1 and why",
+      "specific change 2 and why",
+      "specific change 3 and why"
+    ],
+    "keywordsToAdd": ["keyword1", "keyword2", "keyword3"],
+    "cta": "Suggested CTA line for bio"
   },
   "viralContentBlueprint": {
     "topPerformingFormat": "Reel/Carousel/Post",
-    "topPerformingTopic": "most common topic in viral posts",
-    "topPerformingHook": "hook structure that gets most views",
-    "optimalLength": "seconds for reels or slides for carousel"
+    "topPerformingTopic": "most viral topic category",
+    "topPerformingHook": "the hook structure that gets most views",
+    "optimalLength": "30-60s for reels / 7 slides for carousels",
+    "postingTime": "best time based on audience",
+    "editingStyle": "fast cuts/talking head/B-roll heavy",
+    "viralityProbability": 82,
+    "confidence": "High",
+    "evidence": "based on analysis of X posts"
   },
-  "recommendedNiche": "${niche || "detected niche"}",
-  "recommendedSubNiche": "specific sub-niche to own"
+  "hookFormulas": [
+    {
+      "formula": "exact hook structure",
+      "example": "real example from top post",
+      "emotionalTrigger": "curiosity/fear/aspiration",
+      "avgViews": "estimated avg views when used",
+      "confidence": "High/Medium"
+    },
+    {
+      "formula": "second hook formula",
+      "example": "real example",
+      "emotionalTrigger": "trigger type",
+      "avgViews": "avg views",
+      "confidence": "High/Medium"
+    },
+    {
+      "formula": "third hook formula",
+      "example": "real example",
+      "emotionalTrigger": "trigger type",
+      "avgViews": "avg views",
+      "confidence": "High/Medium"
+    }
+  ],
+  "reelFramework": {
+    "structure": "Hook → Problem → Solution → CTA",
+    "hookDuration": "0-3 seconds — what to show",
+    "problemSection": "3-15s — how to show the pain",
+    "solutionSection": "15-45s — how to deliver value",
+    "ctaSection": "45-60s — what CTA converts best",
+    "textOverlayStrategy": "when and what type of text overlays",
+    "editingPace": "cuts every X seconds",
+    "audioStrategy": "trending/original/voiceover",
+    "confidence": "High",
+    "evidence": "pattern found in top viral posts"
+  },
+  "keyInsights": [
+    "actionable insight 1 with evidence",
+    "actionable insight 2 with evidence",
+    "actionable insight 3 with evidence",
+    "actionable insight 4 with evidence",
+    "actionable insight 5 with evidence"
+  ],
+  "contentGaps": [
+    {
+      "gap": "specific content gap",
+      "opportunity": "why this would work",
+      "viralPotential": "High/Medium",
+      "suggestedTopic": "exact topic to create"
+    },
+    {
+      "gap": "gap 2",
+      "opportunity": "why",
+      "viralPotential": "High/Medium",
+      "suggestedTopic": "exact topic"
+    },
+    {
+      "gap": "gap 3",
+      "opportunity": "why",
+      "viralPotential": "High/Medium",
+      "suggestedTopic": "exact topic"
+    }
+  ],
+  "trendOpportunities": [
+    {
+      "trend": "trending topic/format",
+      "relevance": "why relevant to this niche",
+      "urgency": "act now/this week/this month",
+      "contentIdea": "specific content idea to capitalize"
+    },
+    {
+      "trend": "trend 2",
+      "relevance": "why relevant",
+      "urgency": "timeframe",
+      "contentIdea": "idea"
+    }
+  ],
+  "psychologicalTriggers": [
+    {
+      "trigger": "trigger name (e.g., Social Proof)",
+      "howCompetitorUses": "how they use it",
+      "howToAdapt": "how user can use same trigger uniquely"
+    },
+    {
+      "trigger": "trigger 2",
+      "howCompetitorUses": "usage",
+      "howToAdapt": "adaptation"
+    },
+    {
+      "trigger": "trigger 3",
+      "howCompetitorUses": "usage",
+      "howToAdapt": "adaptation"
+    }
+  ],
+  "userVsCompetitor": {
+    "userStrength": "what user does better based on data comparison",
+    "userWeakness": "what competitors do better",
+    "quickWin": "single fastest action to take right now",
+    "30DayPlan": "high-level 30-day growth strategy"
+  },
+  "growthWeaknesses": [
+    "weakness found in competitor strategy that user can avoid",
+    "weakness 2",
+    "weakness 3"
+  ],
+  "viralContentIdeas": [
+    {
+      "title": "content idea title",
+      "format": "Reel/Carousel/Post",
+      "hook": "exact opening line",
+      "angle": "unique angle vs competitors",
+      "viralPotential": "High",
+      "whyItWorks": "psychological reason"
+    },
+    {
+      "title": "idea 2",
+      "format": "format",
+      "hook": "hook",
+      "angle": "angle",
+      "viralPotential": "High",
+      "whyItWorks": "reason"
+    },
+    {
+      "title": "idea 3",
+      "format": "format",
+      "hook": "hook",
+      "angle": "angle",
+      "viralPotential": "High",
+      "whyItWorks": "reason"
+    }
+  ],
+  "recommendedNiche": "specific niche to own",
+  "recommendedSubNiche": "specific sub-niche for differentiation",
+  "hashtagClusters": {
+    "viral": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
+    "niche": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
+    "community": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"],
+    "small": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
+  },
+  "postingStrategy": {
+    "frequency": "X posts/week",
+    "bestDays": ["Monday", "Wednesday", "Friday"],
+    "bestTimes": ["7:00 PM IST", "8:00 AM IST"],
+    "contentMix": "40% Reels / 40% Carousels / 20% Posts",
+    "reason": "why this works for the detected audience"
+  }
 }`;
 
     const llmResult = await callLLM({ userId, endpoint: "competitors", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
 
+    // Inject actual scraped stats into response for frontend display
+    const scrapedStats = enhancedCompetitors.map(c => ({
+      username: c.username,
+      followers: c.profile.followers,
+      bio: c.profile.bio,
+      verified: c.profile.verified,
+      postsCount: c.profile.postsCount,
+      engagementRate: c.engagementStats.engagementRate,
+      avgViews: c.engagementStats.avgViews,
+      avgLikes: c.engagementStats.avgLikes,
+      topPostViews: c.engagementStats.topPostViews,
+      totalPostsAnalyzed: c.engagementStats.totalPostsAnalyzed,
+    }));
+
     return res.json({
       success: true,
       competitors: data,
-      scrapedCount: scrapedCompetitors.length,
+      scrapedCount: enhancedCompetitors.length,
+      scrapedStats,
       _meta: { provider: llmResult.provider, model: llmResult.model }
     });
   } catch (err: any) {
