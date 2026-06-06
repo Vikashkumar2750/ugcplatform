@@ -876,8 +876,27 @@ export default function ResultsPage() {
           <div className="space-y-5">
             {!pipeline ? (
               <EmptyState tab="Content Pipeline" />
+            ) : pipeline.raw ? (
+              // LLM returned raw text (JSON parse failed) — show it
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
+                  <p className="text-xs font-bold text-amber-500 mb-1">⚠️ AI Response (JSON parse failed)</p>
+                  <p className="text-xs text-muted-foreground mb-2">The AI generated content but it couldn't be structured. Re-run the analysis to get formatted output.</p>
+                </div>
+                <div className="p-5 rounded-2xl border border-border bg-card">
+                  <p className="text-xs font-bold text-muted-foreground mb-3">RAW AI OUTPUT (copy & use manually)</p>
+                  <pre className="text-xs whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">{pipeline.raw}</pre>
+                </div>
+              </div>
             ) : (
               <>
+                {/* Debug: show what keys exist in pipeline */}
+                {process.env.NODE_ENV === "development" && (
+                  <div className="p-3 rounded-xl bg-muted/50 text-xs font-mono">
+                    Pipeline keys: {Object.keys(pipeline).join(", ")} | Calendar weeks: {pipeline.contentCalendar?.length || 0}
+                  </div>
+                )}
+
                 {/* KPIs */}
                 {pipeline.kpis && (
                   <div className="grid grid-cols-3 gap-3">
@@ -895,11 +914,14 @@ export default function ResultsPage() {
                 )}
 
                 {/* Content calendar */}
-                {pipeline.contentCalendar?.length > 0 && (
+                {pipeline.contentCalendar?.length > 0 ? (
                   <div className="space-y-4">
                     {pipeline.contentCalendar.map((week: any) => (
                       <div key={week.week} className="p-5 rounded-2xl border border-border bg-card">
-                        <p className="text-sm font-bold mb-3">Week {week.week}: {week.theme}</p>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="w-7 h-7 rounded-xl bg-amber-400/10 text-amber-500 font-bold text-sm flex items-center justify-center">{week.week}</span>
+                          <p className="text-sm font-bold">{week.theme}</p>
+                        </div>
                         <div className="space-y-3">
                           {(week.posts || []).map((post: any, pi: number) => (
                             <PostCard key={pi} post={post} />
@@ -907,6 +929,21 @@ export default function ResultsPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                ) : (
+                  // Pipeline data exists but calendar is empty — show what we got
+                  <div className="p-5 rounded-2xl border border-amber-400/20 bg-amber-400/5">
+                    <p className="text-sm font-bold text-amber-500 mb-2">⚠️ Content Calendar Empty</p>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      The AI response was received but content calendar wasn't populated. This usually happens when the AI response is too large and gets cut off.
+                    </p>
+                    <p className="text-xs font-bold text-muted-foreground mb-1">Available data:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(pipeline).filter(([k, v]) => v && k !== "contentCalendar").map(([k]) => (
+                        <span key={k} className="text-xs px-2 py-1 rounded bg-muted">{k}</span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">Tip: Re-run analysis with a specific niche selected for better results.</p>
                   </div>
                 )}
 
@@ -932,6 +969,14 @@ export default function ResultsPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Batching strategy */}
+                {pipeline.batchingStrategy && (
+                  <div className="p-4 rounded-xl border border-border bg-card">
+                    <p className="text-xs font-bold text-muted-foreground mb-1.5">📦 Batching Strategy</p>
+                    <p className="text-sm">{pipeline.batchingStrategy}</p>
                   </div>
                 )}
 
