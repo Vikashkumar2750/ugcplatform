@@ -752,110 +752,73 @@ router.post("/pipeline", async (req: Request, res: Response) => {
       { week: 3, theme: "Engagement - Community stories and behind-the-scenes",      formats: ["Reel","Post","Carousel"] },
       { week: 4, theme: "Authority - Results transformation and strong CTA",         formats: ["Reel","Carousel","Reel"] },
     ];
-    const buildWeekPrompt = (wd: { week: number; theme: string; formats: string[] }) => {
+    const buildPostPrompt = (wd: { week: number; theme: string; formats: string[] }, postIdx: number) => {
       const days = ["Monday","Wednesday","Friday"];
-      const isHindi2 = language === "hi";
-      return `You are a world-class Indian content strategist for the "${effectiveNiche}" niche.
+      const day = days[postIdx];
+      const format = wd.formats[postIdx];
+      return `You are a world-class Indian content strategist for "${effectiveNiche}" niche.
 
-CREATOR INFO: ${userContext}
-${competitorInsights}
+CREATOR: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
-LANGUAGE: ${lang}
+POST: ${day} | Format: ${format} | Language: ${lang}
+${competitorInsights}
 
-Generate 3 posts for this week. Output ONLY valid JSON (no explanation, no markdown).
+Generate exactly 1 post. Return ONLY valid JSON (no markdown, no explanation):
 
-JSON structure (fill every field with REAL, SPECIFIC, PUBLICATION-READY content):
 {
-  "week": ${wd.week},
-  "theme": "${wd.theme}",
-  "posts": [
-    {
-      "day": "${days[0]}",
-      "format": "${wd.formats[0]}",
-      "topic": "[Write a specific, compelling content topic relevant to ${effectiveNiche}]",
-      "hook": "[Write the exact opening line — 1-2 sentences that stop scrolling, max 15 words]",
-      "caption": "[Write a full 120+ word ${lang} caption: opening hook, personal story, 3 value points, emotional close, CTA question, emojis. For Indian ${effectiveNiche} audience.]",
-      "hashtags": ["[15 specific hashtags for ${effectiveNiche} — mix viral, niche, community]"],
-      "pin_comment": "[Write an engagement-driving comment to pin (ask a question or offer a resource)]",
-      "script": {
-        "scene1_hook": "[0:00-0:03] Exact spoken words for the hook. Camera direction.",
-        "scene2_problem": "[0:03-0:15] Exact dialogue describing the pain point. Relatable scenario.",
-        "scene3_solution": "[0:15-0:45] 3 specific tips with exact dialogue for each tip.",
-        "scene4_cta": "[0:45-0:60] Exact CTA words — what to comment, save, or follow.",
-        "voiceover_notes": "Tone, pace, energy, background music style.",
-        "text_overlays": ["[Overlay 1 text + timing]", "[Overlay 2 text + timing]", "Save this!"]
-      }
-    },
-    {
-      "day": "${days[1]}",
-      "format": "${wd.formats[1]}",
-      "topic": "[Different specific topic for ${effectiveNiche}]",
-      "hook": "[Different hook — use a different emotion than the first post]",
-      "caption": "[Full ${lang} caption for this post — 120+ words]",
-      "hashtags": ["[15 hashtags — different mix from post 1]"],
-      "pin_comment": "[Different engagement comment]",
-      "script": {
-        "scene1_hook": "[Exact dialogue]",
-        "scene2_problem": "[Exact dialogue]",
-        "scene3_solution": "[3 real tips with exact words]",
-        "scene4_cta": "[Exact CTA]",
-        "voiceover_notes": "[Direction]",
-        "text_overlays": ["[Overlay 1]", "[Overlay 2]", "[Overlay 3]"]
-      }
-    },
-    {
-      "day": "${days[2]}",
-      "format": "${wd.formats[2]}",
-      "topic": "[Third unique topic]",
-      "hook": "[Third hook]",
-      "caption": "[Full caption]",
-      "hashtags": ["[15 hashtags]"],
-      "pin_comment": "[Engagement comment]",
-      "script": {
-        "scene1_hook": "[Exact dialogue]",
-        "scene2_problem": "[Exact dialogue]",
-        "scene3_solution": "[3 real tips]",
-        "scene4_cta": "[Exact CTA]",
-        "voiceover_notes": "[Direction]",
-        "text_overlays": ["[Overlay 1]", "[Overlay 2]", "[Overlay 3]"]
-      }
-    }
-  ]
+  "day": "${day}",
+  "format": "${format}",
+  "topic": "Specific compelling topic for ${effectiveNiche}",
+  "hook": "Opening line (max 15 words, scroll-stopping)",
+  "caption": "Full ${lang} caption: hook + story + 3 value points + CTA (100+ words, emojis, Indian audience)",
+  "hashtags": ["#hashtag1","#hashtag2","#hashtag3","#hashtag4","#hashtag5","#hashtag6","#hashtag7","#hashtag8","#hashtag9","#hashtag10"],
+  "pin_comment": "Engagement comment to pin",
+  "script": {
+    "scene1_hook": "Exact spoken words [0:00-0:03]",
+    "scene2_problem": "Exact dialogue — pain point [0:03-0:15]",
+    "scene3_solution": "3 real tips with exact words [0:15-0:45]",
+    "scene4_cta": "Exact CTA words [0:45-0:60]",
+    "voiceover_notes": "Tone, pace, energy direction",
+    "text_overlays": ["Overlay 1","Overlay 2","Save this!"]
+  }
 }
 
-CRITICAL RULES:
-- Replace EVERY field in brackets [] with real, specific, publication-ready content for ${effectiveNiche}.
-- Do NOT leave any placeholder text. Every word must be usable as-is.
-- Captions must be ${lang}, 120+ words, emotionally engaging.
-- Scripts must be realistic spoken words a real creator would say.
-- Topics must be DIFFERENT from each other (no repetition).
-- Hashtags must be real Instagram hashtags relevant to ${effectiveNiche} in India.
-`;
+RULES: Replace ALL fields with real content. No placeholders. Every word must be publication-ready.`;
     };
-    console.log(`[pipeline] Generating 4 weeks in parallel for: ${effectiveNiche}`);
-    const weekResults = await Promise.allSettled(
-      WEEK_DEFS.map(wd => callLLM({ userId, endpoint: `pipeline_w${wd.week}`, prompt: buildWeekPrompt(wd), systemPrompt }))
-    );
+
+    console.log(`[pipeline] Generating 4 weeks × 3 posts = 12 calls for: ${effectiveNiche}`);
     const contentCalendar: any[] = [];
     let provider = "gemini"; let model = "";
-    for (let i = 0; i < weekResults.length; i++) {
-      const res2 = weekResults[i];
-      if (res2.status === "fulfilled") {
-        const parsed = extractJSON(res2.value.text) as any;
-        if (parsed && Array.isArray(parsed.posts) && parsed.posts.length > 0) {
-          parsed.week = parsed.week || (i + 1);
-          parsed.theme = parsed.theme || WEEK_DEFS[i].theme;
-          contentCalendar.push(parsed);
-          provider = res2.value.provider; model = res2.value.model;
-          console.log(`[pipeline] Week ${i + 1}: ${parsed.posts.length} posts OK`);
+
+    for (let w = 0; w < WEEK_DEFS.length; w++) {
+      const wd = WEEK_DEFS[w];
+      const postPromises = [0,1,2].map(pi =>
+        callLLM({ userId, endpoint: `pipeline_w${wd.week}_p${pi+1}`, prompt: buildPostPrompt(wd, pi), systemPrompt })
+          .then(r => ({ ok: true as const, text: r.text, provider: r.provider, model: r.model }))
+          .catch(e => ({ ok: false as const, error: e.message }))
+      );
+      const postResults = await Promise.all(postPromises);
+      const posts: any[] = [];
+      for (let pi = 0; pi < postResults.length; pi++) {
+        const pr = postResults[pi];
+        if (!pr.ok) { console.warn(`[pipeline] w${w+1} p${pi+1} LLM failed: ${(pr as any).error}`); continue; }
+        const parsed = extractJSON(pr.text) as any;
+        if (parsed && parsed.topic && parsed.hook) {
+          posts.push(parsed);
+          provider = pr.provider; model = pr.model;
         } else {
-          console.warn(`[pipeline] Week ${i + 1}: parse failed`);
-          contentCalendar.push({ week: i + 1, theme: WEEK_DEFS[i].theme, posts: [] });
+          console.warn(`[pipeline] w${w+1} p${pi+1}: JSON parse failed`);
         }
+      }
+      if (posts.length > 0) {
+        contentCalendar.push({ week: w+1, theme: wd.theme, posts });
+        console.log(`[pipeline] Week ${w+1}: ${posts.length}/3 posts OK`);
       } else {
-        contentCalendar.push({ week: i + 1, theme: WEEK_DEFS[i].theme, posts: [] });
+        console.warn(`[pipeline] Week ${w+1}: all posts failed`);
+        contentCalendar.push({ week: w+1, theme: wd.theme, posts: [] });
       }
     }
+
     contentCalendar.sort((a: any, b: any) => (a.week || 0) - (b.week || 0));
     // Cap targetER: micro-accounts can produce inflated ER (e.g. 300 followers, 500 avg likes = 233%).
     // A realistic growth target should be capped at 30% and floored at 3%.

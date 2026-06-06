@@ -41,6 +41,15 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+// ── ER display: cap at 50% for micro-accounts with unrealistic values ──────────
+function formatER(er: number | string | undefined): { display: string; capped: boolean } {
+  if (er === undefined || er === null || er === "") return { display: "—", capped: false };
+  const raw = typeof er === "string" ? parseFloat(er.replace("%", "")) : er;
+  if (isNaN(raw)) return { display: String(er), capped: false };
+  if (raw > 50) return { display: `${(50).toFixed(1)}%`, capped: true };
+  return { display: `${raw.toFixed(2)}%`, capped: false };
+}
+
 export default function ResultsPage() {
   const params = useParams();
   const router = useRouter();
@@ -57,7 +66,6 @@ export default function ResultsPage() {
     setRegenerating(tab);
     setRegenError(null);
     try {
-      // Use @supabase/ssr browser client — correctly reads session from cookies
       const sb = createSupabaseClient();
       const { data: { session } } = await sb.auth.getSession();
       if (!session) throw new Error("Session expired — please refresh the page and try again");
@@ -80,21 +88,26 @@ export default function ResultsPage() {
           competitors: (data.competitors as any)?.competitors?.map((c: any) => c.username).filter(Boolean) || [],
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`Backend error ${res.status}: ${errBody.substring(0, 200)}`);
+      }
       const json = await res.json();
+      if (!json || typeof json !== "object") throw new Error("Invalid response from server");
 
-      // Extract the result key (same as analyze page does)
-      const resultKey = tab === "pipeline" ? "pipeline" : tab;
-      const newTabData = json[resultKey] || json;
+      // Extract the result key — backend wraps in {success, audit/competitors/trends/pipeline}
+      const newTabData = json[tab] ?? json["resultData"] ?? json;
+      if (!newTabData || typeof newTabData !== "object") {
+        throw new Error(`Empty ${tab} data returned. Try again or re-run full analysis.`);
+      }
 
-      // Merge into existing data
-      const updated = { ...data, [tab]: newTabData };
+      // Safe merge into existing data
+      const updated: AnalysisData = { ...data, [tab]: newTabData };
       setData(updated);
 
       // Update localStorage
       const id = params?.id as string;
-      const storageKey = `analysis_${id}`;
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      localStorage.setItem(`analysis_${id}`, JSON.stringify(updated));
       localStorage.setItem(id, JSON.stringify(updated));
     } catch (err: any) {
       setRegenError(err.message || "Regeneration failed");
@@ -339,9 +352,17 @@ export default function ResultsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-1 p-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 space-y-2">
                     <p className="text-xs text-muted-foreground">Engagement Rate</p>
-                    <p className="text-4xl font-heading font-extrabold text-gradient">
-                      {audit.engagementRate || "—"}
-                    </p>
+                    {(() => {
+                      const { display, capped } = formatER(audit.engagementRate);
+                      return (
+                        <>
+                          <p className="text-4xl font-heading font-extrabold text-gradient">{display}</p>
+                          {capped && (
+                            <p className="text-[10px] text-amber-500">⚠ Raw ER &gt;50% — micro-account, capped for display</p>
+                          )}
+                        </>
+                      );
+                    })()}
                     <p className="text-xs text-muted-foreground">{audit.benchmark}</p>
                   </div>
                   <div className="sm:col-span-2 grid grid-cols-2 gap-3">
@@ -592,19 +613,28 @@ export default function ResultsPage() {
                     ))}
                   </div>
                 ) : (
-                  // Pipeline data exists but calendar is empty — show what we got
-                  <div className="p-5 rounded-2xl border border-amber-400/20 bg-amber-400/5">
-                    <p className="text-sm font-bold text-amber-500 mb-2">⚠️ Content Calendar Empty</p>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      The AI response was received but content calendar wasn't populated. This usually happens when the AI response is too large and gets cut off.
+                  // Pipeline data exists but calendar is empty — show Regenerate prompt
+                  <div className="p-5 rounded-2xl border border-amber-400/20 bg-amber-400/5 space-y-3">
+                    <p className="text-sm font-bold text-amber-500">⚠️ Content Calendar Empty</p>
+                    <p className="text-xs text-muted-foreground">
+                      AI ne response diya par weeks parse nahi hue. Yeh aksar tab hota hai jab AI response bahut bada ho jaata hai ya JSON malformed ho.
                     </p>
-                    <p className="text-xs font-bold text-muted-foreground mb-1">Available data:</p>
                     <div className="flex flex-wrap gap-1.5">
                       {Object.entries(pipeline).filter(([k, v]) => v && k !== "contentCalendar").map(([k]) => (
                         <span key={k} className="text-xs px-2 py-1 rounded bg-muted">{k}</span>
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-3">Tip: Re-run analysis with a specific niche selected for better results.</p>
+                    <button
+                      onClick={() => regenerateTab("pipeline")}
+                      disabled={!!regenerating}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-600 dark:text-amber-400 text-sm font-bold hover:bg-amber-400/20 transition disabled:opacity-50"
+                    >
+                      {regenerating === "pipeline" ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> Regenerating...</>
+                      ) : (
+                        <><RefreshCw className="w-4 h-4" /> Regenerate Pipeline</>
+                      )}
+                    </button>
                   </div>
                 )}
 
