@@ -77,6 +77,8 @@ export default function ResultsPage() {
       const endpoint = endpointMap[tab];
       if (!endpoint) throw new Error("Unknown tab");
 
+      const rawCompetitors = (data as any)?.rawCompetitorsData || (data.competitors as any)?.rawCompetitorsData;
+
       const res = await fetch(`${BACKEND}/api/analyze/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
@@ -92,6 +94,7 @@ export default function ResultsPage() {
               ? (data.competitors as any).scrapedStats.map((c: any) => c.username).filter(Boolean)
               : [])
           ),
+          rawCompetitorsData: rawCompetitors || null,
         }),
       });
       if (!res.ok) {
@@ -111,7 +114,13 @@ export default function ResultsPage() {
       }
 
       // Safe merge into existing data
-      const updated: AnalysisData = { ...data, [tab]: newTabData };
+      const updated: AnalysisData = { 
+        ...data, 
+        [tab]: newTabData,
+        rawCompetitorsData: tab === "competitors"
+          ? (json.rawCompetitorsData || (newTabData as any)?.rawCompetitorsData || rawCompetitors)
+          : rawCompetitors
+      } as any;
       setData(updated);
 
       // Update localStorage

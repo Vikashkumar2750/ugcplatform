@@ -254,9 +254,36 @@ router.post("/competitors", async (req: Request, res: Response) => {
 
     // ── ENHANCED: Scrape EACH competitor using BOTH Apify actors ─────────────
     let enhancedCompetitors: EnhancedCompetitorData[] = [];
+    let targetCompetitors = competitors || [];
 
-    if (competitors?.length && platform === "instagram") {
-      const usernames = competitors
+    if (targetCompetitors.length === 0 && platform === "instagram") {
+      const searchNiche = niche || profession || "Digital Creator";
+      console.log(`[competitors] Discover mode. Finding top creators for niche: ${searchNiche}`);
+      const discoveryPrompt = `You are a social media research assistant.
+Find exactly 3 real, popular, and highly active Instagram creators in India in the niche: "${searchNiche}"${profession ? ` (Profession: ${profession})` : ""}.
+Your response must be a JSON array of their exact username handles, without the '@' character and in lowercase.
+Example: ["sharanhegde", "financewithsharan", "warikoo"]
+Return ONLY this JSON array. No markdown, no comments, no extra text.`;
+
+      try {
+        const discoverRes = await callLLM({
+          userId,
+          endpoint: "discover_competitors",
+          prompt: discoveryPrompt,
+          systemPrompt: "You are a precise data retriever. Return ONLY JSON array of strings."
+        });
+        const discovered = extractJSON(discoverRes.text);
+        if (Array.isArray(discovered)) {
+          targetCompetitors = discovered.map(username => `https://instagram.com/${username.trim().replace(/^@/, "")}`);
+          console.log(`[competitors] Discovered competitors: ${targetCompetitors.join(", ")}`);
+        }
+      } catch (err: any) {
+        console.warn(`[competitors] Failed to discover competitors: ${err.message}`);
+      }
+    }
+
+    if (targetCompetitors?.length && platform === "instagram") {
+      const usernames = targetCompetitors
         .map((url: string) => extractUsername(url, "instagram"))
         .filter(Boolean)
         .slice(0, 3);
@@ -625,6 +652,7 @@ Return ONLY this JSON structure:
       competitors: data,
       scrapedCount: enhancedCompetitors.length,
       scrapedStats,
+      rawCompetitorsData: enhancedCompetitors,
       dataQuality,
       dataConfidence,
       totalPostsScraped,
@@ -640,7 +668,7 @@ Return ONLY this JSON structure:
 // ─── POST /api/analyze/trends ─────────────────────────────────────────────────
 router.post("/trends", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { platform, niche, language, competitors } = req.body;
+  const { platform, niche, language, competitors, rawCompetitorsData } = req.body;
   const effectiveNiche = niche || "General / Auto-detect from context";
 
   try {
@@ -674,12 +702,25 @@ router.post("/trends", async (req: Request, res: Response) => {
       ? `Competitor accounts being analyzed: ${competitors.join(", ")}`
       : "";
 
+    let competitorPostsContext = "";
+    if (Array.isArray(rawCompetitorsData) && rawCompetitorsData.length > 0) {
+      competitorPostsContext = "\nREAL SCRAPED COMPETITOR POSTS & PERFORMANCE:\n";
+      for (const comp of rawCompetitorsData) {
+        competitorPostsContext += `\nCreator: @${comp.username} (Followers: ${comp.profile?.followers?.toLocaleString() || "Unknown"})\n`;
+        const topPosts = Array.isArray(comp.topPosts) ? comp.topPosts.slice(0, 5) : [];
+        topPosts.forEach((p: any, idx: number) => {
+          competitorPostsContext += `  Post ${idx + 1}: ${p.type} | Views: ${p.views?.toLocaleString()} | Likes: ${p.likes?.toLocaleString()} | Hook: "${p.hookText || p.caption?.substring(0, 100)}"\n`;
+        });
+      }
+    }
+
     const prompt = `Analyze current trending content for ${platform} creators in India in the "${effectiveNiche}" niche (${currentMonth}).
 ${competitorContext}
+${competitorPostsContext}
 
 ${trendData.length > 0
   ? `Scraped trending data: ${JSON.stringify(trendData.slice(0, 8), null, 2).substring(0, 2000)}`
-  : `No scraped data available. Use your knowledge of June 2025 Indian ${platform} trends for ${effectiveNiche} niche. Be specific with real examples.`
+  : `Use the competitor posts above and your knowledge of current Indian ${platform} trends for ${effectiveNiche} niche. Be specific with real examples.`
 }
 
 IMPORTANT: If niche is "auto-detect", infer it from the competitor context or default to Digital Creator / Content Creator niche.
@@ -727,7 +768,7 @@ Return ONLY this JSON (no extra text, no markdown wrapper):
 // --- POST /api/analyze/pipeline --- (week-by-week to avoid token limits)
 router.post("/pipeline", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { platform, niche, language, profileUrl, competitors } = req.body;
+  const { platform, niche, language, profileUrl, competitors, rawCompetitorsData } = req.body;
   const effectiveNiche = niche || "Digital Creator";
   try {
     let ownData: RealProfileData | null = null;
@@ -741,49 +782,82 @@ router.post("/pipeline", async (req: Request, res: Response) => {
     const userContext = ownData
       ? `Creator: @${ownData.username} | ${ownData.followers.toLocaleString()} followers | ${ownData.engagementRate || 0}% ER | Bio: "${ownData.biography || "Not set"}"`
       : `Platform: ${platform} | Niche: ${effectiveNiche} | Indian audience`;
+    
     const isHindi = language === "hi";
     const lang = isHindi ? "Hinglish" : "English";
+    
     const systemPrompt = isHindi
-      ? "Tu world-class Indian content strategist hai. Poora real script likho. SIRF valid JSON return karo."
-      : "You are a world-class Indian content strategist. Write complete real scripts. Return ONLY valid JSON.";
+      ? `Tu world-class Indian social media content strategist aur copywriter hai jo natural, high-converting Hinglish content likhta hai.
+RULES FOR HINGLISH:
+1. Poora spoken dialogue, script aur hook conversation-ready Hinglish mein likho (Hindi words in Roman/Latin script, e.g. "Doston, kya aap bhi..." ya "Agar aapko marketing seekhni hai...").
+2. Standard English technical/business words (e.g. "ads", "leads", "revenue", "strategy", "creator", "views") ko Hinglish ke saath naturally mix karo.
+3. Devanagari script (Hindi characters like "नमस्ते") bilkul use nahi karna hai. Script strictly Roman alphabet mein likho.
+4. Script dialogue absolute professional aur casual record-ready hona chahiye. 
+
+STRICT RULE AGAINST PLACEHOLDERS:
+- Do NOT use ANY bracketed placeholder like [Your Name], [Niche], [Product Name], [Brand], [Insert Link], etc.
+- In-place values generate karo. Make up realistic generic names/values so the script is 100% ready to use immediately.
+
+Return ONLY a valid JSON object. No explanation, no markdown wrappers.`
+      : `You are a world-class Indian social media content strategist and copywriter.
+RULES:
+1. Write in a highly natural, engaging, and conversational tone native to Indian audience.
+2. Every field must contain actual, ready-to-use content.
+3. STRICTLY FORBIDDEN: Do not use ANY placeholders like [Your Name], [Your Product], [Niche], [insert link here]. Generate realistic generic names or concrete details instead so that the script can be read word-for-word immediately.
+
+Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
+
     const WEEK_DEFS = [
       { week: 1, theme: "Awareness - Introduce your expertise and hook new audience", formats: ["Reel","Carousel","Post"] },
       { week: 2, theme: "Education - Teach your best tips and build trust",           formats: ["Reel","Carousel","Reel"] },
       { week: 3, theme: "Engagement - Community stories and behind-the-scenes",      formats: ["Reel","Post","Carousel"] },
       { week: 4, theme: "Authority - Results transformation and strong CTA",         formats: ["Reel","Carousel","Reel"] },
     ];
-    const buildPostPrompt = (wd: { week: number; theme: string; formats: string[] }, postIdx: number) => {
+
+    let competitorPostsContext = "";
+    if (Array.isArray(rawCompetitorsData) && rawCompetitorsData.length > 0) {
+      competitorPostsContext = "\nREAL SCRAPED COMPETITOR POSTS & PERFORMANCE:\n";
+      for (const comp of rawCompetitorsData) {
+        competitorPostsContext += `\nCreator: @${comp.username} (Followers: ${comp.profile?.followers?.toLocaleString() || "Unknown"})\n`;
+        const topPosts = Array.isArray(comp.topPosts) ? comp.topPosts.slice(0, 5) : [];
+        topPosts.forEach((p: any, idx: number) => {
+          competitorPostsContext += `  Post ${idx + 1}: ${p.type} | Views: ${p.views?.toLocaleString()} | Likes: ${p.likes?.toLocaleString()} | Hook: "${p.hookText || p.caption?.substring(0, 100)}"\n`;
+        });
+      }
+    }
+
+    const buildPostPrompt = (wd: { week: number; theme: string; formats: string[] }, postIdx: number, compContext: string) => {
       const days = ["Monday","Wednesday","Friday"];
       const day = days[postIdx];
       const format = wd.formats[postIdx];
-      return `You are a world-class Indian content strategist for "${effectiveNiche}" niche.
-
-CREATOR: ${userContext}
+      return `Generate exactly 1 highly realistic, publication-ready post for ${platform} in the niche "${effectiveNiche}".
+      
+CREATOR PROFILE: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
-POST: ${day} | Format: ${format} | Language: ${lang}
+POST DETAILS: ${day} | Format: ${format} | Language: ${lang}
 ${competitorInsights}
+${compContext}
 
-Generate exactly 1 post. Return ONLY valid JSON (no markdown, no explanation):
-
+Your output must be a single JSON object matching this schema. Replace all placeholder explanations with real, high-quality, concrete copy:
 {
   "day": "${day}",
   "format": "${format}",
-  "topic": "Specific compelling topic for ${effectiveNiche}",
-  "hook": "Opening line (max 15 words, scroll-stopping)",
-  "caption": "Full ${lang} caption: hook + story + 3 value points + CTA (100+ words, emojis, Indian audience)",
-  "hashtags": ["#hashtag1","#hashtag2","#hashtag3","#hashtag4","#hashtag5","#hashtag6","#hashtag7","#hashtag8","#hashtag9","#hashtag10"],
-  "pin_comment": "Engagement comment to pin",
+  "topic": "Specific compelling topic for this post (e.g. '3 tools for scaling leads')",
+  "hook": "Scroll-stopping opening hook line in ${lang} (max 15 words, must grab attention)",
+  "caption": "Full publication-ready ${lang} caption: a hook line + relatable story/context + 3 highly specific value points + clear CTA with emojis (100+ words, no placeholders)",
+  "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10"],
+  "pin_comment": "An engaging, scroll-starting comment in ${lang} to pin under the post",
   "script": {
-    "scene1_hook": "Exact spoken words [0:00-0:03]",
-    "scene2_problem": "Exact dialogue — pain point [0:03-0:15]",
-    "scene3_solution": "3 real tips with exact words [0:15-0:45]",
-    "scene4_cta": "Exact CTA words [0:45-0:60]",
-    "voiceover_notes": "Tone, pace, energy direction",
-    "text_overlays": ["Overlay 1","Overlay 2","Save this!"]
+    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds (must be exactly what the creator says out loud to camera)",
+    "scene2_problem": "Exact spoken words in ${lang} explaining the problem/pain point [0:03-0:15]",
+    "scene3_solution": "Exact spoken words in ${lang} explaining the solution or 3 specific tips [0:15-0:45]",
+    "scene4_cta": "Exact spoken words in ${lang} for the call-to-action [0:45-0:60]",
+    "voiceover_notes": "Instructions for tone, speed, energy, and emotions during delivery",
+    "text_overlays": ["Text overlay for hook","Text overlay for tip 1","CTA overlay"]
   }
 }
 
-RULES: Replace ALL fields with real content. No placeholders. Every word must be publication-ready.`;
+CRITICAL: Every word in "caption", "hook", "pin_comment", and "script" fields MUST be in natural, conversational ${lang}. Absolutely zero placeholders or brackets. Make the copy highly engaging and native.`;
     };
 
     console.log(`[pipeline] Generating 4 weeks × 3 posts = 12 calls for: ${effectiveNiche}`);
@@ -793,7 +867,7 @@ RULES: Replace ALL fields with real content. No placeholders. Every word must be
     for (let w = 0; w < WEEK_DEFS.length; w++) {
       const wd = WEEK_DEFS[w];
       const postPromises = [0,1,2].map(pi =>
-        callLLM({ userId, endpoint: `pipeline_w${wd.week}_p${pi+1}`, prompt: buildPostPrompt(wd, pi), systemPrompt })
+        callLLM({ userId, endpoint: `pipeline_w${wd.week}_p${pi+1}`, prompt: buildPostPrompt(wd, pi, competitorPostsContext), systemPrompt })
           .then(r => ({ ok: true as const, text: r.text, provider: r.provider, model: r.model }))
           .catch(e => ({ ok: false as const, error: e.message }))
       );
@@ -853,7 +927,7 @@ RULES: Replace ALL fields with real content. No placeholders. Every word must be
 // Save full analysis result
 router.post("/save", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { profileUrl, platform, niche, auditData, competitorsData, trendsData, pipelineData } = req.body;
+  const { profileUrl, platform, niche, auditData, competitorsData, trendsData, pipelineData, rawCompetitorsData } = req.body;
 
   try {
     const { data, error } = await supabase.from("analysis_results").insert({
@@ -862,7 +936,13 @@ router.post("/save", async (req: Request, res: Response) => {
       platform,
       niche: niche || null,
       result_type: "full",
-      result_data: { audit: auditData, competitors: competitorsData, trends: trendsData, pipeline: pipelineData },
+      result_data: { 
+        audit: auditData, 
+        competitors: competitorsData, 
+        trends: trendsData, 
+        pipeline: pipelineData,
+        rawCompetitorsData: rawCompetitorsData || null
+      },
     }).select("id").single();
 
     if (error) throw new Error(error.message);

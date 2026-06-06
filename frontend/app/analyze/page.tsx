@@ -226,15 +226,19 @@ export default function AnalyzePage() {
       // Extract AI-detected niche from competitor analysis (if user didn't select one)
       const detectedNiche = (compRes as any)?.resultData?.detectedNiche || niche || "";
       const knownCompetitors = competitorMode === "known" ? competitorUrls.filter(Boolean) : [];
+      const discoveredCompetitorUrls = (compRes as any)?.fullResponseData?.scrapedStats?.map((s: any) => `https://instagram.com/${s.username}`) || [];
+      const targetCompetitorsForNextPhases = competitorMode === "known" ? knownCompetitors : discoveredCompetitorUrls;
 
       // Pass detected niche + competitors to trends and pipeline for richer context
       const trendsRes = await runPhase("trends", "trends", {
         niche: detectedNiche,
-        competitors: knownCompetitors,
+        competitors: targetCompetitorsForNextPhases,
+        rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData,
       });
       const pipeRes = await runPhase("pipeline", "pipeline", {
         niche: detectedNiche,
-        competitors: knownCompetitors,
+        competitors: targetCompetitorsForNextPhases,
+        rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData,
       });
 
       // Build full analysis object and save to localStorage for results page
@@ -252,6 +256,7 @@ export default function AnalyzePage() {
         competitors: (compRes as any)?.fullResponseData || (compRes as any)?.resultData || null,
         trends: (trendsRes as any)?.resultData || null,
         pipeline: (pipeRes as any)?.resultData || null,
+        rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData || null,
         _meta: (auditRes as any)?.data?._meta || null,
       };
 
@@ -276,6 +281,7 @@ export default function AnalyzePage() {
             competitorsData: (compRes as any)?.resultData || null,
             trendsData: (trendsRes as any)?.resultData || null,
             pipelineData: (pipeRes as any)?.resultData || null,
+            rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData || null,
           }),
         });
         console.log("[analyze] Saved to Supabase successfully");

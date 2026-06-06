@@ -136,10 +136,16 @@ export async function scrapeCompetitorFull(username: string): Promise<EnhancedCo
   if (APIFY_TOKEN) {
     // Run profile first, then posts sequentially (avoids concurrent Apify quota issues)
     const [profileResult, postsResult] = await Promise.allSettled([
-      runApifyActor("apify/instagram-profile-scraper", { usernames: [username] }),
-      runApifyActor("apify/instagram-post-scraper", {
+      runApifyActor("apify/instagram-profile-scraper", {
         usernames: [username],
+        instagram_urls: [`https://www.instagram.com/${username}/`],
+      }),
+      runApifyActor("apify/instagram-post-scraper", {
+        username: [username],
+        usernames: [username],
+        instagram_urls: [`https://www.instagram.com/${username}/`],
         resultsLimit: 20,
+        posts_count: 20,
       }),
     ]);
 
