@@ -104,61 +104,64 @@ export default function ResultsPage() {
   };
 
   useEffect(() => {
-    const id = params?.id as string;
-    if (!id) { setLoading(false); return; }
+    (async () => {
+      const id = params?.id as string;
+      if (!id) { setLoading(false); return; }
 
-    // Try multiple key patterns to handle old/new format
-    const keysToTry = [
-      `analysis_${id}`,
-      id,
-      `analysis_meta_${id}`,
-    ];
+      // Try multiple key patterns to handle old/new format
+      const keysToTry = [
+        `analysis_${id}`,
+        id,
+        `analysis_meta_${id}`,
+      ];
 
-    for (const key of keysToTry) {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        try {
-          setData(JSON.parse(stored));
-          setLoading(false);
-          return;
-        } catch {}
-      }
-    }
-
-    // Fallback: try Supabase (for cross-device / shared links)
-    try {
-      const sb = createSupabaseClient();
-      const { data: { session } } = await sb.auth.getSession();
-      if (!session) { setLoading(false); return; }
-      const { data: rows } = await sb
-        .from("analysis_results")
-        .select("id, result_data, profile_url, platform, niche, created_at")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (rows) {
-        const match = rows.find((r: any) =>
-          r.result_data?.id === id ||
-          r.result_data?.id === `analysis_${id}` ||
-          r.id === id
-        );
-        if (match) {
-          const record = {
-            id,
-            profileUrl: match.profile_url,
-            platform: match.platform,
-            niche: match.niche,
-            createdAt: match.created_at,
-            ...(match.result_data || {}),
-          };
-          localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
-          setData(record);
+      for (const key of keysToTry) {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          try {
+            setData(JSON.parse(stored));
+            setLoading(false);
+            return;
+          } catch {}
         }
       }
-    } catch {}
-    setLoading(false);
+
+      // Fallback: try Supabase (for cross-device / shared links)
+      try {
+        const sb = createSupabaseClient();
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session) { setLoading(false); return; }
+        const { data: rows } = await sb
+          .from("analysis_results")
+          .select("id, result_data, profile_url, platform, niche, created_at")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (rows) {
+          const match = rows.find((r: any) =>
+            r.result_data?.id === id ||
+            r.result_data?.id === `analysis_${id}` ||
+            r.id === id
+          );
+          if (match) {
+            const record = {
+              id,
+              profileUrl: match.profile_url,
+              platform: match.platform,
+              niche: match.niche,
+              createdAt: match.created_at,
+              ...(match.result_data || {}),
+            };
+            localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
+            setData(record);
+          }
+        }
+      } catch {}
+      setLoading(false);
+    })();
   }, [params?.id]);
+
 
 
   const copyAll = () => {
