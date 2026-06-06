@@ -330,7 +330,7 @@ async function refreshExpiringTokens(): Promise<number> {
 }
 
 // ─────────────────────────────────────────────
-// Core: Process unhandled webhook events
+// Core: Process unhandled webhook events (with DM automation + dedup)
 // ─────────────────────────────────────────────
 async function processUnhandledWebhookEvents(): Promise<void> {
   const { data: events } = await supabase
@@ -344,12 +344,128 @@ async function processUnhandledWebhookEvents(): Promise<void> {
 
   for (const event of events) {
     try {
+      // Handle comment events for DM automation
+      if (event.event_type === "instagram_comment" || event.event_type === "facebook_comment") {
+        await handleCommentDMTrigger(event);
+      }
+
       await supabase.from("webhook_events").update({
         processed: true,
         processed_at: new Date().toISOString(),
       }).eq("id", event.id);
     } catch (err: any) {
       console.error(`Failed to process webhook event ${event.id}:`, err.message);
+      // Still mark as processed to avoid infinite retry loop
+      await supabase.from("webhook_events").update({
+        processed: true,
+        processed_at: new Date().toISOString(),
+        processing_error: err.message.substring(0, 500),
+      }).eq("id", event.id);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// DM Automation: comment trigger → DM with dedup
+// ─────────────────────────────────────────────
+async function handleCommentDMTrigger(event: any): Promise<void> {
+  const payload = event.event_data || {};
+  const commentId: string = payload.comment_id || payload.id;
+  const commentText: string = (payload.text || payload.message || "").toLowerCase();
+  const senderId: string = payload.from?.id || payload.sender_id;
+  const pageId: string = payload.page_id || payload.recipient_id;
+
+  if (!commentId || !senderId || !pageId) return;
+
+  // Find matching DM automations for this page
+  const { data: automations } = await supabase
+    .from("dm_automations")
+    .select("*")
+    .eq("page_id", pageId)
+    .eq("is_active", true);
+
+  if (!automations?.length) return;
+
+  for (const automation of automations) {
+    // Check if keyword matches
+    const keywords: string[] = (automation.trigger_keywords || []).map((k: string) => k.toLowerCase());
+    const matched = keywords.length === 0 || keywords.some(kw => commentText.includes(kw));
+    if (!matched) continue;
+
+    // DEDUP: Check if we already sent this automation to this sender+comment
+    const { data: existing } = await supabase
+      .from("dm_trigger_log")
+      .select("id")
+      .eq("automation_id", automation.id)
+      .eq("comment_id", commentId)
+      .eq("sender_id", senderId)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[DM] Skipping duplicate trigger: automation=${automation.id} comment=${commentId}`);
+      continue;
+    }
+
+    // Log FIRST (optimistic) — prevents race condition if cron fires twice
+    const { error: logError } = await supabase.from("dm_trigger_log").insert({
+      automation_id: automation.id,
+      comment_id: commentId,
+      sender_id: senderId,
+      page_id: pageId,
+      triggered_at: new Date().toISOString(),
+      status: "sending",
+    });
+    if (logError) {
+      // Unique constraint violation = already sent, skip
+      console.log(`[DM] Dedup block (insert conflict): ${logError.message}`);
+      continue;
+    }
+
+    try {
+      // Get account token
+      const { data: account } = await supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("platform_user_id", pageId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!account?.access_token) throw new Error("No access token for page");
+
+      // Send DM via Meta Graph API
+      const dmRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: senderId },
+          message: { text: automation.dm_message },
+          access_token: account.access_token,
+        }),
+      });
+      const dmData = await dmRes.json();
+      if (dmData.error) throw new Error(`Meta DM API: ${dmData.error.message}`);
+
+      // Update log status to sent
+      await supabase.from("dm_trigger_log").update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        meta_message_id: dmData.message_id,
+      }).eq("automation_id", automation.id).eq("comment_id", commentId);
+
+      console.log(`[DM] Sent to ${senderId} via automation ${automation.id}`);
+
+      // Increment automation send count
+      await supabase.from("dm_automations").update({
+        sent_count: (automation.sent_count || 0) + 1,
+        last_triggered_at: new Date().toISOString(),
+      }).eq("id", automation.id);
+
+    } catch (dmErr: any) {
+      console.error(`[DM] Send failed:`, dmErr.message);
+      await supabase.from("dm_trigger_log").update({
+        status: "failed",
+        error: dmErr.message.substring(0, 500),
+      }).eq("automation_id", automation.id).eq("comment_id", commentId);
     }
   }
 }
@@ -362,6 +478,7 @@ app.listen(PORT, () => {
   console.log(`📅 Post publisher: every minute`);
   console.log(`🔑 Token refresh: every 6 hours`);
   console.log(`📨 Webhook processor: every 30 seconds`);
+  console.log(`💬 DM automation: dedup via dm_trigger_log table`);
   console.log(`🌐 API routes: /api/keys /api/credits /api/analyze /api/insights /api/admin`);
 });
 

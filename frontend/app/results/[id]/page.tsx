@@ -6,7 +6,7 @@ import {
   Download, Copy, ExternalLink, FileText, BarChart3,
   TrendingUp, Calendar, Zap, ChevronDown, ChevronUp,
   CheckCircle2, AlertTriangle, ThumbsUp, Loader2,
-  Target, Hash, Music, Lightbulb, ArrowRight, Star
+  Target, Hash, Music, Lightbulb, ArrowRight, Star, RefreshCw
 } from "lucide-react";
 
 const TABS = [
@@ -47,6 +47,63 @@ export default function ResultsPage() {
   const [data, setData] = useState<AnalysisData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  // ── Per-tab regenerate ─────────────────────────────────────────────────────
+  const regenerateTab = async (tab: string) => {
+    if (!data) return;
+    setRegenerating(tab);
+    setRegenError(null);
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const sb = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+
+      const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
+      const endpointMap: Record<string, string> = {
+        audit: "audit", competitors: "competitors", trends: "trends", pipeline: "pipeline",
+      };
+      const endpoint = endpointMap[tab];
+      if (!endpoint) throw new Error("Unknown tab");
+
+      const res = await fetch(`${BACKEND}/api/analyze/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          profileUrl: data.profileUrl,
+          platform: data.platform,
+          niche: data.niche,
+          language: data.language || "hi",
+          competitors: (data.competitors as any)?.competitors?.map((c: any) => c.username).filter(Boolean) || [],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+
+      // Extract the result key (same as analyze page does)
+      const resultKey = tab === "pipeline" ? "pipeline" : tab;
+      const newTabData = json[resultKey] || json;
+
+      // Merge into existing data
+      const updated = { ...data, [tab]: newTabData };
+      setData(updated);
+
+      // Update localStorage
+      const id = params?.id as string;
+      const storageKey = `analysis_${id}`;
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      localStorage.setItem(id, JSON.stringify(updated));
+    } catch (err: any) {
+      setRegenError(err.message || "Regeneration failed");
+    } finally {
+      setRegenerating(null);
+    }
+  };
 
   useEffect(() => {
     const id = params?.id as string;
@@ -266,9 +323,19 @@ export default function ResultsPage() {
       {/* Content */}
       <div className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-6">
 
+        {/* Regen error banner */}
+        {regenError && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-red-400/30 bg-red-400/10 text-sm">
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <span className="text-red-400">{regenError}</span>
+            <button onClick={() => setRegenError(null)} className="ml-auto text-xs text-muted-foreground hover:text-foreground">✕</button>
+          </div>
+        )}
+
         {/* ── Profile Audit Tab ─────────────────────────────────────────── */}
         {activeTab === "audit" && (
           <div className="space-y-5">
+            <RegenBar tab="audit" regenerating={regenerating} onRegen={regenerateTab} />
             {!audit ? (
               <EmptyState tab="Profile Audit" />
             ) : (
@@ -367,6 +434,7 @@ export default function ResultsPage() {
         {/* ── Competitor Analysis Tab ───────────────────────────────────── */}
         {activeTab === "competitors" && (
           <div className="space-y-5">
+            <RegenBar tab="competitors" regenerating={regenerating} onRegen={regenerateTab} />
             {!competitors ? (
               <EmptyState tab="Competitor Analysis" />
             ) : (
@@ -378,6 +446,7 @@ export default function ResultsPage() {
         {/* ── Trend Report Tab ─────────────────────────────────────────── */}
         {activeTab === "trends" && (
           <div className="space-y-5">
+            <RegenBar tab="trends" regenerating={regenerating} onRegen={regenerateTab} />
             {!trends ? (
               <EmptyState tab="Trend Report" />
             ) : (
@@ -470,6 +539,7 @@ export default function ResultsPage() {
         {/* ── Content Pipeline Tab ──────────────────────────────────────── */}
         {activeTab === "pipeline" && (
           <div className="space-y-5">
+            <RegenBar tab="pipeline" regenerating={regenerating} onRegen={regenerateTab} />
             {!pipeline ? (
               <EmptyState tab="Content Pipeline" />
             ) : pipeline.raw ? (
@@ -654,6 +724,46 @@ function EmptyState({ tab }: { tab: string }) {
       <BarChart3 className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
       <p className="font-medium text-muted-foreground">{tab} data not available</p>
       <p className="text-sm text-muted-foreground mt-1">Is phase ko run karo analyze page par</p>
+    </div>
+  );
+}
+
+// ── RegenBar: per-tab regenerate button ─────────────────────────────────────────
+function RegenBar({ tab, regenerating, onRegen }: {
+  tab: string;
+  regenerating: string | null;
+  onRegen: (tab: string) => void;
+}) {
+  const isActive = regenerating === tab;
+  const LABELS: Record<string, string> = {
+    audit: "Re-analyze Profile",
+    competitors: "Re-analyze Competitors",
+    trends: "Refresh Trends",
+    pipeline: "Regenerate Pipeline",
+  };
+  return (
+    <div className="flex items-center justify-between px-4 py-2 rounded-xl bg-muted/30 border border-border">
+      <p className="text-xs text-muted-foreground">
+        {isActive ? "AI analysis chal rahi hai..." : "Iss tab ka analysis dubara karo"}
+      </p>
+      <button
+        id={`regen-btn-${tab}`}
+        disabled={!!regenerating}
+        onClick={() => onRegen(tab)}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+          isActive
+            ? "bg-amber-400/20 text-amber-500 cursor-wait"
+            : regenerating
+            ? "opacity-40 cursor-not-allowed bg-muted"
+            : "bg-amber-400/10 hover:bg-amber-400/20 text-amber-600 dark:text-amber-400 border border-amber-400/30"
+        }`}
+      >
+        {isActive ? (
+          <><Loader2 className="w-3 h-3 animate-spin" /> Regenerating...</>
+        ) : (
+          <><RefreshCw className="w-3 h-3" /> {LABELS[tab] || "Regenerate"}</>
+        )}
+      </button>
     </div>
   );
 }
