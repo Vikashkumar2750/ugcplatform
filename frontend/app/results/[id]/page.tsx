@@ -81,11 +81,17 @@ export default function ResultsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
         body: JSON.stringify({
-          profileUrl: data.profileUrl,
+          profileUrl: data.profileUrl || window.location.pathname.split("/").pop(),
           platform: data.platform,
           niche: data.niche,
           language: data.language || "hi",
-          competitors: (data.competitors as any)?.competitors?.map((c: any) => c.username).filter(Boolean) || [],
+          // Extract competitor usernames from either full response or AI JSON format
+          competitors: (
+            (data.competitors as any)?.competitors?.map((c: any) => c.username || c.handle).filter(Boolean) ||
+            (Array.isArray((data.competitors as any)?.scrapedStats)
+              ? (data.competitors as any).scrapedStats.map((c: any) => c.username).filter(Boolean)
+              : [])
+          ),
         }),
       });
       if (!res.ok) {
@@ -95,8 +101,11 @@ export default function ResultsPage() {
       const json = await res.json();
       if (!json || typeof json !== "object") throw new Error("Invalid response from server");
 
-      // Extract the result key — backend wraps in {success, audit/competitors/trends/pipeline}
-      const newTabData = json[tab] ?? json["resultData"] ?? json;
+      // BUG-FIX: For competitors tab, store the FULL response (preserves scrapedStats, dataQuality etc.)
+      // For other tabs, store just the tab data
+      const newTabData = tab === "competitors"
+        ? json  // Full response object: { success, competitors, scrapedStats, dataQuality, ... }
+        : (json[tab] ?? json["resultData"] ?? json);
       if (!newTabData || typeof newTabData !== "object") {
         throw new Error(`Empty ${tab} data returned. Try again or re-run full analysis.`);
       }
@@ -1113,18 +1122,20 @@ function HookScriptCard({ hook }: { hook: any }) {
   );
 }
 
-function CompetitorsTab({ competitors }: { competitors: any }) {
+function CompetitorsTab({ competitors: raw }: { competitors: any }) {
   try {
-    // Data confidence badge
-    const confidence = (competitors as any)._dataConfidence ||
-      (competitors as any).dataConfidence ||
-      (competitors as any)._confidence;
-    const dataQuality = (competitors as any)._dataQuality ||
-      (competitors as any).dataQuality;
+    // Normalize: handle both formats:
+    // 1. Old: data.competitors = AI JSON object directly
+    // 2. New: data.competitors = { success, competitors: {...AI JSON...}, scrapedStats, dataQuality, ... }
+    const isWrapped = raw && typeof raw === "object" && "success" in raw && "competitors" in raw && typeof raw.competitors === "object" && !Array.isArray(raw.competitors);
+    const competitors: any = isWrapped ? raw.competitors : raw;
+    const dataQuality = isWrapped ? raw.dataQuality : (raw._dataQuality || raw.dataQuality);
+    const dataConfidence = isWrapped ? raw.dataConfidence : (raw._dataConfidence || raw.dataConfidence);
+    const totalPostsScraped = isWrapped ? raw.totalPostsScraped : raw.totalPostsScraped;
 
     return (<>
       {/* Data confidence banner */}
-      {confidence && (
+      {dataConfidence && (
         <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs mb-2 ${
           dataQuality === "high" ? "bg-green-500/10 border border-green-500/20 text-green-400" :
           dataQuality === "medium" ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" :
@@ -1134,12 +1145,30 @@ function CompetitorsTab({ competitors }: { competitors: any }) {
             dataQuality === "high" ? "bg-green-400" :
             dataQuality === "medium" ? "bg-amber-400" : "bg-red-400"
           }`} />
-          <span className="font-bold">Data Confidence: {confidence}</span>
-          {(competitors as any).totalPostsScraped != null && (
-            <span className="text-muted-foreground ml-1">· {(competitors as any).totalPostsScraped} posts scraped</span>
+          <span className="font-bold">Data Confidence: {dataConfidence}</span>
+          {totalPostsScraped != null && (
+            <span className="text-muted-foreground ml-1">· {totalPostsScraped} posts scraped</span>
           )}
         </div>
       )}
+      {competitors.detectedNiche && <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm"><span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span><span className="font-semibold">{competitors.detectedNiche}</span></div>}
+      {competitors.audienceIntelligence && <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/5"><p className="text-sm font-bold text-blue-400 mb-3">Audience Intelligence</p><div className="grid sm:grid-cols-2 gap-3">{competitors.audienceIntelligence.primaryAudience && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Primary Audience</p><p className="text-sm">{competitors.audienceIntelligence.primaryAudience}</p></div>}{competitors.audienceIntelligence.audienceIntent && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Audience Intent</p><p className="text-sm">{competitors.audienceIntelligence.audienceIntent}</p></div>}</div></div>}
+      {(competitors.competitors||[]).map((comp: any, i: number) => <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i+1}</div><div><p className="font-semibold">{comp.username}</p><p className="text-xs text-muted-foreground">{comp.realFollowers || comp.estimatedFollowers} followers</p></div></div>{comp.viralityScore && <div className="text-center"><p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p><p className="text-[10px] text-muted-foreground">Virality</p></div>}</div>{comp.bio && <div className="p-3 rounded-xl bg-muted/40"><p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p><p className="text-xs italic">"{comp.bio}"</p></div>}{(comp.viralTopics||[]).length > 0 && <div><p className="text-xs font-bold text-red-500 mb-1">VIRAL TOPICS</p><div className="flex flex-wrap gap-1.5">{comp.viralTopics.map((t: string, ti: number) => <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400">{t}</span>)}</div></div>}{comp.viralHook && <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20"><p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK</p><p className="text-sm italic">"{comp.viralHook}"</p></div>}{(comp.topHashtags||[]).length > 0 && <div className="flex flex-wrap gap-1">{comp.topHashtags.map((tag: string) => <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>)}</div>}</div>)}
+      {competitors.bioOptimization && <div className="p-5 rounded-2xl border border-green-400/20 bg-green-400/5"><p className="text-sm font-bold text-green-500 mb-3">Bio Optimization</p>{competitors.bioOptimization.userCurrentBio && <div className="mb-3 p-3 rounded-xl bg-card border border-border"><p className="text-[10px] font-bold text-muted-foreground mb-1">CURRENT BIO</p><p className="text-xs">{competitors.bioOptimization.userCurrentBio}</p></div>}{competitors.bioOptimization.suggestedBio && <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/30"><p className="text-[10px] font-bold text-green-500 mb-1">SUGGESTED BIO</p><p className="text-sm font-medium">{competitors.bioOptimization.suggestedBio}</p></div>}</div>}
+      {(competitors.hookFormulas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hook Formulas</p><div className="space-y-3">{competitors.hookFormulas.map((h: any, i: number) => <div key={i} className="p-3 rounded-xl bg-muted/40"><div className="flex justify-between mb-1"><span className="text-xs font-bold text-amber-500">{h.emotionalTrigger}</span><span className="text-[10px] text-muted-foreground">{h.confidence}</span></div><p className="text-sm font-medium">{h.formula}</p><p className="text-xs italic mt-1">"{h.example}"</p></div>)}</div></div>}
+      {(competitors.contentGaps||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Content Gaps</p><div className="space-y-3">{competitors.contentGaps.map((g: any, i: number) => <div key={i} className="p-3 rounded-xl border border-border"><div className="flex justify-between mb-1"><p className="text-sm font-medium">{g.gap}</p><span className="text-xs text-green-500">{g.viralPotential}</span></div><p className="text-xs text-amber-500 mt-1">{g.suggestedTopic}</p></div>)}</div></div>}
+      {(competitors.viralContentIdeas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Viral Content Ideas</p><div className="space-y-3">{competitors.viralContentIdeas.map((idea: any, i: number) => <div key={i} className="p-4 rounded-xl border border-border"><p className="text-sm font-bold mb-1">{idea.title}</p><p className="text-xs text-amber-500 italic">"{idea.hook}"</p><p className="text-xs text-green-500 mt-1">{idea.whyItWorks}</p></div>)}</div></div>}
+      {competitors.hashtagClusters && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hashtag Clusters</p><div className="space-y-3">{Object.entries(competitors.hashtagClusters).map(([cl, tags]: [string, any]) => <div key={cl}><p className="text-xs font-bold text-muted-foreground capitalize mb-1.5">{cl}</p><div className="flex flex-wrap gap-1.5">{(Array.isArray(tags)?tags:[]).map((tag: string) => <span key={tag} className="px-2 py-1 rounded-full bg-muted text-xs hover:bg-amber-400/10 hover:text-amber-500 transition cursor-pointer">{tag}</span>)}</div></div>)}</div></div>}
+      {competitors.userVsCompetitor && <div className="space-y-3"><div className="grid sm:grid-cols-2 gap-3"><div className="p-4 rounded-xl border border-green-400/20 bg-green-400/5"><p className="text-xs font-bold text-green-500 mb-2">YOUR STRENGTH</p><p className="text-sm">{competitors.userVsCompetitor.userStrength}</p></div><div className="p-4 rounded-xl border border-red-400/20 bg-red-400/5"><p className="text-xs font-bold text-red-500 mb-2">THEIR ADVANTAGE</p><p className="text-sm">{competitors.userVsCompetitor.userWeakness}</p></div></div>{competitors.userVsCompetitor.quickWin && <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5"><p className="text-xs font-bold text-amber-500 mb-2">QUICK WIN</p><p className="text-sm font-medium">{competitors.userVsCompetitor.quickWin}</p></div>}</div>}
+      {(competitors.keyInsights||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Key Insights</p><div className="space-y-2">{competitors.keyInsights.map((insight: string, i: number) => <div key={i} className="flex items-start gap-2 text-sm"><span className="text-amber-500">★</span><span>{insight}</span></div>)}</div></div>}
+    </>);
+  } catch {
+    return <div className="p-6 rounded-2xl border border-red-400/20 bg-red-400/5 text-center"><p className="text-sm font-bold text-red-500 mb-2">Display Error</p><p className="text-xs text-muted-foreground">Competitor data mismatch. Please re-run the analysis.</p></div>;
+  }
+}
+
+
+
       {competitors.detectedNiche && <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm"><span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span><span className="font-semibold">{competitors.detectedNiche}</span></div>}
       {competitors.audienceIntelligence && <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/5"><p className="text-sm font-bold text-blue-400 mb-3">Audience Intelligence</p><div className="grid sm:grid-cols-2 gap-3">{competitors.audienceIntelligence.primaryAudience && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Primary Audience</p><p className="text-sm">{competitors.audienceIntelligence.primaryAudience}</p></div>}{competitors.audienceIntelligence.audienceIntent && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Audience Intent</p><p className="text-sm">{competitors.audienceIntelligence.audienceIntent}</p></div>}</div></div>}
       {(competitors.competitors||[]).map((comp: any, i: number) => <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i+1}</div><div><p className="font-semibold">{comp.username}</p><p className="text-xs text-muted-foreground">{comp.realFollowers || comp.estimatedFollowers} followers</p></div></div>{comp.viralityScore && <div className="text-center"><p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p><p className="text-[10px] text-muted-foreground">Virality</p></div>}</div>{comp.bio && <div className="p-3 rounded-xl bg-muted/40"><p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p><p className="text-xs italic">"{comp.bio}"</p></div>}{(comp.viralTopics||[]).length > 0 && <div><p className="text-xs font-bold text-red-500 mb-1">VIRAL TOPICS</p><div className="flex flex-wrap gap-1.5">{comp.viralTopics.map((t: string, ti: number) => <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400">{t}</span>)}</div></div>}{comp.viralHook && <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20"><p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK</p><p className="text-sm italic">"{comp.viralHook}"</p></div>}{(comp.topHashtags||[]).length > 0 && <div className="flex flex-wrap gap-1">{comp.topHashtags.map((tag: string) => <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>)}</div>}</div>)}

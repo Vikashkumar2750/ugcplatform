@@ -204,11 +204,14 @@ export default function AnalyzePage() {
         if (data._meta?.provider) {
           setPhaseModels(prev => ({ ...prev, [phase]: { provider: data._meta.provider, model: data._meta.model } }));
         }
-        // Save real result data — each endpoint returns data under its own key
-        const resultData = data[phase === "pipeline" ? "pipeline" : phase] || data;
+        // BUG-FIX: Save the FULL response object (not just data[phase])
+        // This preserves scrapedStats, dataQuality, dataConfidence etc. for the competitors tab
+        const resultData = data[phase] || data;
+        // Store full response separately so results page can access all fields
+        const fullResponseData = data;
         setPhaseResults(prev => ({ ...prev, [phase]: resultData }));
         setPhaseStatus(p => ({ ...p, [phase]: "done" }));
-        return { data, resultData };
+        return { data, resultData, fullResponseData };
       } catch (err: any) {
         console.error(`Phase ${phase} failed:`, err.message);
         setPhaseStatus(p => ({ ...p, [phase]: "failed" }));
@@ -244,17 +247,16 @@ export default function AnalyzePage() {
         niche: detectedNiche || niche,
         language,
         createdAt: new Date().toISOString(),
+        // BUG-FIX: Store full phase response objects to preserve all fields (scrapedStats, etc.)
         audit: (auditRes as any)?.resultData || null,
-        competitors: (compRes as any)?.resultData || null,
+        competitors: (compRes as any)?.fullResponseData || (compRes as any)?.resultData || null,
         trends: (trendsRes as any)?.resultData || null,
         pipeline: (pipeRes as any)?.resultData || null,
         _meta: (auditRes as any)?.data?._meta || null,
       };
 
-      // Save with single prefix — results page: params.id = timestamp → key = analysis_${timestamp}
+      // BUG-FIX: Save with ONE key only (was saving double-prefixed key analysis_analysis_XXXX which was never read)
       localStorage.setItem(storageKey, JSON.stringify(fullAnalysis));
-      // Also save a copy with the full id for compatibility
-      localStorage.setItem(`analysis_${storageKey}`, JSON.stringify({ ...fullAnalysis, id: `analysis_${storageKey}` }));
       setAnalysisId(storageKey);
 
       // Also persist to Supabase (cross-device, permanent storage)

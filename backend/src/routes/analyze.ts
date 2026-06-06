@@ -652,13 +652,13 @@ router.post("/trends", async (req: Request, res: Response) => {
           maxResults: 10,
         });
       } else {
-        // FIX: use instagram-hashtag-scraper — /explore/tags/ is blocked since 2024
-        const tag = (niche || "india").toLowerCase().replace(/[^a-z0-9]/g, "");
-        trendData = await runApifyActor("zuzka/instagram-hashtag-scraper", {
-          hashtags: [tag, `${tag}india`, `${tag}creator`],
-          resultsLimit: 20,
-          scrapeComments: false,
-        });
+        // Scrape trending niche hashtag posts for trend signal
+        const tag = (effectiveNiche || "india").toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 20) || "india";
+        trendData = await runApifyActor("apify/instagram-hashtag-scraper", {
+          hashtags: [tag, `${tag}india`],
+          resultsLimit: 15,
+        }).catch(() => []);
+
       }
     } catch (scrapeErr: any) {
       console.warn(`[trends] Apify skipped: ${scrapeErr.message}`);
@@ -798,6 +798,7 @@ RULES: Replace ALL fields with real content. No placeholders. Every word must be
           .catch(e => ({ ok: false as const, error: e.message }))
       );
       const postResults = await Promise.all(postPromises);
+      // Poll for completion (max 25s = 5 × 5s — fits within Render's 30s response timeout)
       const posts: any[] = [];
       for (let pi = 0; pi < postResults.length; pi++) {
         const pr = postResults[pi];

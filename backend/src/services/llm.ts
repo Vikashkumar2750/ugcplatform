@@ -255,7 +255,7 @@ async function callAnthropic(
   const model = "claude-3-haiku-20240307";
   const body: any = {
     model,
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
   };
   if (systemPrompt) body.system = systemPrompt;
@@ -305,7 +305,7 @@ async function callOpenAI(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model, messages, max_tokens: 2048 }),
+    body: JSON.stringify({ model, messages, max_tokens: 4096 }),
   });
 
   if (!res.ok) {

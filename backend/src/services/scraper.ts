@@ -134,14 +134,12 @@ export async function scrapeCompetitorFull(username: string): Promise<EnhancedCo
 
   // === APIFY: Profile + Posts (most comprehensive) ===
   if (APIFY_TOKEN) {
-    // Run both actors in parallel for speed
+    // Run profile first, then posts sequentially (avoids concurrent Apify quota issues)
     const [profileResult, postsResult] = await Promise.allSettled([
       runApifyActor("apify/instagram-profile-scraper", { usernames: [username] }),
-      runApifyActor("apify/instagram-scraper", {
+      runApifyActor("apify/instagram-post-scraper", {
         usernames: [username],
-        resultsType: "posts",
-        resultsLimit: 30,
-        addParentData: false,
+        resultsLimit: 20,
       }),
     ]);
 
@@ -567,8 +565,8 @@ export async function runApifyActor(
   const runId = startData.data?.id;
   if (!runId) throw new Error("Apify: no run ID returned");
 
-  // Poll for completion (max 75s = 25 × 3s)
-  for (let i = 0; i < 25; i++) {
+  // Poll for completion (max 51s = 17 × 3s — stays within Render's 60s response timeout)
+  for (let i = 0; i < 17; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     try {
       const statusRes = await fetch(
