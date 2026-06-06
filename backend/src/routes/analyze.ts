@@ -339,33 +339,22 @@ PROFILE:
 - Full Name: ${c.profile.fullName}
 - Followers: ${c.profile.followers.toLocaleString()} | Following: ${c.profile.following}
 - Total Posts: ${c.profile.postsCount}
-- Verified: ${c.profile.verified} | Business: ${c.profile.isBusinessAccount}
+- Verified: ${c.profile.verified}
 - Bio: "${c.profile.bio}"
 
-ENGAGEMENT STATS (from ${c.engagementStats.totalPostsAnalyzed} posts):
+ENGAGEMENT STATS (${c.engagementStats.totalPostsAnalyzed} posts):
 - Avg Likes: ${c.engagementStats.avgLikes.toLocaleString()}
 - Avg Comments: ${c.engagementStats.avgComments.toLocaleString()}
 - Avg Views: ${c.engagementStats.avgViews.toLocaleString()}
 - Engagement Rate: ${c.engagementStats.engagementRate}%
 - Top Post Views: ${c.engagementStats.topPostViews.toLocaleString()}
 
-TOP 8 VIRAL POSTS (sorted by views):
-${c.topPosts.map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} Likes:${p.likes.toLocaleString()} Comments:${p.comments}
-   Hook: "${p.hookText.substring(0, 120)}"
-   Hashtags: ${p.hashtags.slice(0, 8).join(" ")}
-   Has CTA: ${p.hasCTA} | Has Question: ${p.hasQuestion} | Caption Length: ${p.captionLength}`).join("\n")}
+TOP 5 VIRAL POSTS (by views):
+${c.topPosts.slice(0, 5).map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} Likes:${p.likes.toLocaleString()}
+   Hook: "${p.hookText.substring(0, 80)}"
+   Tags: ${p.hashtags.slice(0, 6).join(" ")} | CTA:${p.hasCTA}`).join("\n")}
 
-MOST RECENT 5 POSTS:
-${c.recentPosts.map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} | "${p.hookText.substring(0, 80)}"`).join("\n")}
-
-POST TYPE DISTRIBUTION:
-${(() => {
-  const types = c.allPosts.reduce((acc: Record<string, number>, p) => { acc[p.type || "IMAGE"] = (acc[p.type || "IMAGE"] || 0) + 1; return acc; }, {});
-  return Object.entries(types).map(([t, count]) => `  ${t}: ${count} posts`).join("\n");
-})()}
-
-TOP HASHTAGS USED:
-${[...new Set(c.allPosts.flatMap(p => p.hashtags))].slice(0, 20).join(" ")}
+TOP HASHTAGS: ${[...new Set(c.allPosts.flatMap(p => p.hashtags))].slice(0, 12).join(" ")}
 `;
 
     const competitorDataSection = enhancedCompetitors.length > 0

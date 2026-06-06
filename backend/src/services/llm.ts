@@ -344,7 +344,7 @@ async function callBedrockModel(
 
   const body: any = {
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 2048,
+    max_tokens: 8192,   // Increased: competitor JSON can be large
     messages: [{ role: "user", content: prompt }],
   };
 
@@ -353,7 +353,7 @@ async function callBedrockModel(
   const requestBody = isNova
     ? {
         messages: [{ role: "user", content: [{ text: prompt }] }],
-        inferenceConfig: { maxTokens: 2048 },
+        inferenceConfig: { maxTokens: 8192 },  // Increased from 2048
         ...(systemPrompt ? { system: [{ text: systemPrompt }] } : {}),
       }
     : {
