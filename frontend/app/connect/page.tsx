@@ -5,12 +5,12 @@ import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2, AlertCircle, ExternalLink, RefreshCw,
   Unlink, Shield, Camera, PlayCircle, Share2, Zap,
-  Users, BarChart3, MessageSquare, Calendar, Loader2, X
+  Users, BarChart3, MessageSquare, Calendar, Loader2, X, Linkedin
 } from "lucide-react";
 
 interface ConnectedAccount {
   id: string;
-  platform: "instagram" | "facebook" | "youtube";
+  platform: "instagram" | "facebook" | "youtube" | "linkedin";
   platform_username: string;
   platform_name: string;
   avatar_url?: string;
@@ -69,6 +69,22 @@ const PLATFORM_CONFIG = {
     ],
     requirements: "Works with any YouTube channel",
     oauthUrl: "/api/auth/youtube",
+  },
+  linkedin: {
+    name: "LinkedIn",
+    color: "from-blue-700 to-blue-500",
+    borderColor: "border-blue-600/30",
+    bgColor: "bg-blue-600/5",
+    icon: Linkedin,
+    description: "Connect your LinkedIn profile or company page for analytics",
+    permissions: [
+      { key: "r_liteprofile", label: "Profile Access", required: true },
+      { key: "r_emailaddress", label: "Email Address", required: true },
+      { key: "w_member_social", label: "Post Scheduling", required: false, grantedWhenConnected: true },
+      { key: "rw_organization_admin", label: "Company Page Analytics", required: false },
+    ],
+    requirements: "Connect your personal profile or company page",
+    oauthUrl: "/api/auth/linkedin",
   },
 };
 
@@ -251,7 +267,7 @@ function ConnectContent() {
 
     if (success) {
       const platformNames: Record<string, string> = {
-        instagram: "Instagram", facebook: "Facebook", youtube: "YouTube"
+        instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", linkedin: "LinkedIn"
       };
       setToast({ message: `${platformNames[success] || success} connected successfully! ✓`, type: "success" });
       // Re-fetch after a short delay to ensure DB write is committed
@@ -314,7 +330,7 @@ function ConnectContent() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {(Object.entries(PLATFORM_CONFIG) as [keyof typeof PLATFORM_CONFIG, typeof PLATFORM_CONFIG["instagram"]][]).map(
           ([key, config]) => (
             <PlatformCard

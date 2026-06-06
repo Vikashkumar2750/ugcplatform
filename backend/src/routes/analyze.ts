@@ -459,147 +459,268 @@ router.post("/pipeline", async (req: Request, res: Response) => {
       ownData = data;
     }
 
+    const WEEK_THEMES: Record<string, string[]> = {
+      default: [
+        "Awareness — Introduce your expertise & hook new audience",
+        "Education — Teach your best tips & build trust",
+        "Engagement — Community, stories & behind-the-scenes",
+        "Authority — Results, transformation & strong CTA",
+      ],
+    };
+    const themes = WEEK_THEMES.default;
+
+    const competitorInsights = Array.isArray(competitors) && competitors.length > 0
+      ? `Based on competitor analysis of: ${competitors.join(", ")}\nModel the content strategy on their viral content patterns.`
+      : "";
+
+    const userContext = ownData
+      ? `Creator: @${ownData.username} | ${ownData.followers.toLocaleString()} followers | ${ownData.engagementRate || 0}% ER | Bio: "${ownData.biography || "Not set"}"\nTop performing content: ${ownData.posts.sort((a, b) => b.likes - a.likes).slice(0, 2).map(p => `"${(p.caption || "").substring(0, 60)}"`).join(", ")}`
+      : `Platform: ${platform} | Niche: ${effectiveNiche} | Indian audience`;
+
     const isHindi = language === "hi";
     const systemPrompt = isHindi
-      ? "Tu expert Indian content strategist hai. Har post ke liye POORI script, poora caption, hashtags aur pin comment de. SIRF valid JSON return kar — no extra text, no markdown outside JSON."
-      : "You are an expert Indian content strategist. For EVERY post give COMPLETE script/content, full caption, hashtags, and pin comment. Return ONLY valid JSON.";
+      ? "Tu world-class Indian content strategist hai. Har post ke liye POORI script likho — actual dialogues, real slide text, real caption. SIRF valid JSON return karo, koi bhi extra text nahi."
+      : "You are a world-class Indian content strategist. Write COMPLETE scripts with ACTUAL dialogues, real slide text, full captions. Return ONLY valid JSON — no text outside JSON.";
 
-    const dataSection = ownData
-      ? `USER REAL DATA:
-- @${ownData.username} | ${ownData.followers.toLocaleString()} followers | ${ownData.engagementRate}% ER
-- Avg likes: ${ownData.avgLikes} | Avg comments: ${ownData.avgComments}
-- Bio: "${ownData.biography || "Not set"}"
-- Best posts: ${ownData.posts.sort((a, b) => b.likes - a.likes).slice(0, 3).map(p => `"${(p.caption || "").substring(0, 80)}" (${p.likes}L, ${p.comments}C)`).join(" | ")}`
-      : `Platform: ${platform}, Niche: ${niche || "General"}`;
+    const lang = isHindi ? "Hinglish (mix of Hindi and English)" : "English";
 
-    const prompt = `Create a COMPLETE 30-day content pipeline for a ${platform} ${effectiveNiche} creator.
+    const prompt = `You are a world-class Indian content strategist. Create a DETAILED 4-week ${platform} content pipeline for a ${effectiveNiche} creator.
 
-${dataSection}
-Competitors: ${Array.isArray(competitors) ? competitors.join(", ") : "None"}
+CREATOR CONTEXT:
+${userContext}
+${competitorInsights}
 
-CRITICAL RULES:
-1. ALL 4 WEEKS must have posts — do NOT leave any week empty
-2. Each week has exactly 3 posts: Mon(Reel), Wed(Carousel), Fri(Post/Reel)
-3. For REEL: write complete scene-by-scene script with actual dialogues
-4. For POST/CAROUSEL: write complete text content with positioning
-5. Every post MUST have: full caption (150+ words), 15 hashtags, and a pin_comment
-6. Content must be specific to ${effectiveNiche} niche, Indian audience, in ${isHindi ? "Hinglish" : "English"}
-7. Base content topics on what works in the ${effectiveNiche} niche — be specific, not generic
+LANGUAGE: ${lang}
+TARGET: Indian audience, age 18-35
 
-Return this EXACT JSON structure (no deviation):
+WEEK THEMES (use these exact themes):
+Week 1: ${themes[0]}
+Week 2: ${themes[1]}  
+Week 3: ${themes[2]}
+Week 4: ${themes[3]}
+
+RULES FOR EVERY POST:
+- REEL: Write scene-by-scene script with ACTUAL dialogue (not generic descriptions)
+- CAROUSEL: Write actual text for each slide (what's written on each slide)
+- POST: Describe exact photo + full caption text
+- Caption: Min 100 words, personal + value-driven, end with engaging question
+- Hashtags: 15 specific ones (mix of large, medium, small — specific to ${effectiveNiche})
+- Pin comment: Always include — either a question to boost comments OR a resource offer
+
+Return ONLY this JSON (absolutely no text outside JSON):
 {
   "contentCalendar": [
     {
       "week": 1,
-      "theme": "Week 1 theme specific to ${niche}",
+      "theme": "${themes[0]}",
       "posts": [
         {
           "day": "Mon",
           "format": "Reel",
-          "topic": "Specific topic for ${niche}",
-          "hook": "First 3-second hook line in ${isHindi ? "Hinglish" : "English"}",
+          "topic": "Write the ACTUAL specific topic here for ${effectiveNiche} niche Week 1",
+          "hook": "Write the ACTUAL first 3-second hook line here",
           "script": {
-            "scene1_hook": "[0:00-0:03] Camera direct pe. Exact dialogue: 'YOUR HOOK HERE' — deliver with energy, point at camera",
-            "scene2_problem": "[0:03-0:15] Show the problem. Dialogue + action: 'Most people do X wrong because...' — use text overlay",
-            "scene3_solution": "[0:15-0:45] Step by step solution. Dialogue for each step with b-roll instructions",
-            "scene4_cta": "[0:45-0:60] CTA scene. Exact words: 'Comment WORD below and I'll send you...' — smile at camera",
-            "voiceover_notes": "Tone: energetic/calm/educational. Pacing: fast cuts every 3s. Background: clean/at gym/outdoor",
-            "text_overlays": ["Text 1 at 0:05", "Text 2 at 0:20", "Text 3 at 0:40"]
+            "scene1_hook": "[0:00-0:03] Write ACTUAL dialogue: 'Your hook here.' Action: point at camera/show visual proof",
+            "scene2_problem": "[0:03-0:15] Write ACTUAL problem dialogue: 'Most people struggle with...' Show the relatable pain point",
+            "scene3_solution": "[0:15-0:45] Write ACTUAL step-by-step: 'Step 1: ... Step 2: ... Step 3: ...' with specific ${effectiveNiche} tips",
+            "scene4_cta": "[0:45-0:60] Write ACTUAL CTA: 'Comment X below if you want Y...' Smile, direct to camera",
+            "voiceover_notes": "Tone: [specify]. Pacing: [specify]. Setting: [specify for ${effectiveNiche}]. Music: trending audio",
+            "text_overlays": ["Overlay 1 text at timestamp", "Overlay 2 text", "Overlay 3 text"]
           },
-          "caption": "Full 150+ word caption starting with hook, including story, value, and CTA. Must feel personal and authentic for Indian ${niche} audience. Include emojis naturally.",
-          "hashtags": ["#Hashtag1", "#Hashtag2", "#Hashtag3", "#Hashtag4", "#Hashtag5", "#Hashtag6", "#Hashtag7", "#Hashtag8", "#Hashtag9", "#Hashtag10", "#Hashtag11", "#Hashtag12", "#Hashtag13", "#Hashtag14", "#Hashtag15"],
-          "pin_comment": "Pinned comment text — usually a question to boost engagement or a resource link"
+          "caption": "Write the FULL caption here — start with hook, personal story, 3 value points, strong CTA. Minimum 100 words. Add relevant emojis. For ${effectiveNiche} Indian audience.",
+          "hashtags": ["#Specific1", "#Specific2", "#Specific3", "#Specific4", "#Specific5", "#Specific6", "#Specific7", "#Specific8", "#Specific9", "#Specific10", "#Specific11", "#Specific12", "#Specific13", "#Specific14", "#Specific15"],
+          "pin_comment": "Write the ACTUAL pin comment here — either a question or resource offer"
         },
         {
           "day": "Wed",
           "format": "Carousel",
-          "topic": "Carousel topic for ${niche}",
-          "hook": "Slide 1 hook text",
+          "topic": "Write the ACTUAL carousel topic for ${effectiveNiche} Week 1",
+          "hook": "Write the slide 1 hook text",
           "script": {
-            "slide1": "SLIDE 1 — Hook slide. Big bold text: 'EXACT TEXT'. Subtext: 'explanation'. Background: color/gradient",
-            "slide2": "SLIDE 2 — Point 1. Main text: ''. Supporting text: ''. Visual: icon/image suggestion",
-            "slide3": "SLIDE 3 — Point 2. Main text: ''. Supporting text: ''",
-            "slide4": "SLIDE 4 — Point 3. Main text: ''. Supporting text: ''",
-            "slide5": "SLIDE 5 — Point 4 or Case study. Main text: ''",
-            "slide6": "SLIDE 6 — Summary/Recap. Main text: ''",
-            "slide7": "SLIDE 7 — CTA slide. Text: 'Save this for later' + follow CTA. DM hook if applicable",
-            "design_notes": "Color scheme, font style, overall aesthetic guidance"
+            "slide1": "HOOK SLIDE — Write ACTUAL big text: '...' Subtext: '...' Background color/gradient suggestion",
+            "slide2": "SLIDE 2 — Point 1: Write ACTUAL tip text. Visual: describe the visual",
+            "slide3": "SLIDE 3 — Point 2: Write ACTUAL tip text",
+            "slide4": "SLIDE 4 — Point 3: Write ACTUAL tip text",
+            "slide5": "SLIDE 5 — Point 4 or Case Study: Write ACTUAL content",
+            "slide6": "SLIDE 6 — Summary: Write ACTUAL recap text",
+            "slide7": "SLIDE 7 — CTA: 'Save this! Comment below: [question]. Follow for more ${effectiveNiche} tips'",
+            "design_notes": "Color: [specify]. Font: Bold sans-serif. Template: [describe aesthetic for ${effectiveNiche}]"
           },
-          "caption": "Full carousel caption — start with question hook, tease the content, end with 'Save karo taaki bhool na jao'",
+          "caption": "Write FULL carousel caption — question hook, tease slides, end with save CTA",
           "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4", "#Tag5", "#Tag6", "#Tag7", "#Tag8", "#Tag9", "#Tag10", "#Tag11", "#Tag12", "#Tag13", "#Tag14", "#Tag15"],
-          "pin_comment": "Save karo ye post! Kaunsa point sabse helpful laga? Comment mein batao 👇"
+          "pin_comment": "Write ACTUAL pin comment"
         },
         {
           "day": "Fri",
           "format": "Post",
-          "topic": "Post topic for ${niche}",
-          "hook": "Caption first line hook",
+          "topic": "Write the ACTUAL post topic for ${effectiveNiche} Week 1",
+          "hook": "Write the ACTUAL first caption line hook",
           "script": {
-            "image_description": "What should the image show — pose, setting, text overlay, expression, colors",
-            "text_on_image": "Any text that appears on the image itself (bold quote or stat)",
-            "positioning": "How to stand/sit, what to hold, camera angle (eye level/above/below), lighting setup",
-            "expression_direction": "Emotion to convey — confident, relatable, happy, serious",
-            "content_type": "Single image / infographic / quote card / behind-the-scenes"
+            "image_description": "Write EXACTLY what to shoot — outfit, setting, props, background for ${effectiveNiche}",
+            "text_on_image": "Write ACTUAL text that goes ON the image if any",
+            "positioning": "Camera angle, distance, pose/expression direction",
+            "expression_direction": "Emotion: confident/relatable/happy — specific direction",
+            "content_type": "Single portrait / Quote card / Infographic / Behind the scenes"
           },
-          "caption": "Full post caption — personal story opening, 3-5 value points numbered, end with strong CTA question to drive comments",
+          "caption": "Write FULL post caption — personal story, numbered value points, CTA question at end",
           "hashtags": ["#Tag1", "#Tag2", "#Tag3", "#Tag4", "#Tag5", "#Tag6", "#Tag7", "#Tag8", "#Tag9", "#Tag10", "#Tag11", "#Tag12", "#Tag13", "#Tag14", "#Tag15"],
-          "pin_comment": "Comment mein batao: [engaging question related to the post topic]"
+          "pin_comment": "Write ACTUAL pin comment"
         }
       ]
     },
     {
       "week": 2,
-      "theme": "Week 2 different theme for ${niche}",
+      "theme": "${themes[1]}",
       "posts": [
-        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Wed", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Fri", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" }
+        {
+          "day": "Mon",
+          "format": "Reel",
+          "topic": "Write Week 2 Reel topic — education angle for ${effectiveNiche}",
+          "hook": "Write Week 2 Reel hook",
+          "script": { "scene1_hook": "Write ACTUAL dialogue", "scene2_problem": "Write ACTUAL dialogue", "scene3_solution": "Write ACTUAL step-by-step", "scene4_cta": "Write ACTUAL CTA", "voiceover_notes": "Direction notes", "text_overlays": ["Overlay 1", "Overlay 2"] },
+          "caption": "Write FULL Week 2 Reel caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write Week 2 pin comment"
+        },
+        {
+          "day": "Wed",
+          "format": "Carousel",
+          "topic": "Write Week 2 Carousel topic",
+          "hook": "Write Week 2 carousel hook",
+          "script": { "slide1": "Write ACTUAL slide 1", "slide2": "Write ACTUAL slide 2", "slide3": "Write ACTUAL slide 3", "slide4": "Write ACTUAL slide 4", "slide5": "Write ACTUAL slide 5", "slide6": "Write ACTUAL slide 6", "slide7": "Write ACTUAL CTA slide", "design_notes": "Design direction" },
+          "caption": "Write FULL Week 2 carousel caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write Week 2 carousel pin comment"
+        },
+        {
+          "day": "Fri",
+          "format": "Reel",
+          "topic": "Write Week 2 Friday Reel topic",
+          "hook": "Write Week 2 Friday hook",
+          "script": { "scene1_hook": "Write ACTUAL dialogue", "scene2_problem": "Write ACTUAL dialogue", "scene3_solution": "Write ACTUAL step-by-step", "scene4_cta": "Write ACTUAL CTA", "voiceover_notes": "Direction", "text_overlays": ["Overlay 1", "Overlay 2"] },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        }
       ]
     },
     {
       "week": 3,
-      "theme": "Week 3 theme — community/engagement focus",
+      "theme": "${themes[2]}",
       "posts": [
-        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Wed", "format": "Post", "topic": "", "hook": "", "script": { "image_description": "", "text_on_image": "", "positioning": "", "expression_direction": "", "content_type": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Fri", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" }
+        {
+          "day": "Mon",
+          "format": "Reel",
+          "topic": "Write Week 3 Reel topic — community angle",
+          "hook": "Write Week 3 hook",
+          "script": { "scene1_hook": "Write ACTUAL dialogue", "scene2_problem": "Write ACTUAL dialogue", "scene3_solution": "Write ACTUAL step-by-step", "scene4_cta": "Write ACTUAL CTA", "voiceover_notes": "Direction", "text_overlays": ["Overlay 1"] },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        },
+        {
+          "day": "Wed",
+          "format": "Post",
+          "topic": "Write Week 3 Post topic — behind the scenes",
+          "hook": "Write Week 3 Post hook",
+          "script": { "image_description": "Write what to shoot", "text_on_image": "Text on image", "positioning": "Camera direction", "expression_direction": "Emotion", "content_type": "Content type" },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        },
+        {
+          "day": "Fri",
+          "format": "Carousel",
+          "topic": "Write Week 3 Carousel topic",
+          "hook": "Write Week 3 Carousel hook",
+          "script": { "slide1": "Write ACTUAL slide 1", "slide2": "Write ACTUAL slide 2", "slide3": "Write ACTUAL slide 3", "slide4": "Write ACTUAL slide 4", "slide5": "Write ACTUAL slide 5", "slide6": "Write ACTUAL slide 6", "slide7": "Write ACTUAL CTA slide", "design_notes": "Design direction" },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        }
       ]
     },
     {
       "week": 4,
-      "theme": "Week 4 theme — authority/results/transformation",
+      "theme": "${themes[3]}",
       "posts": [
-        { "day": "Mon", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Wed", "format": "Carousel", "topic": "", "hook": "", "script": { "slide1": "", "slide2": "", "slide3": "", "slide4": "", "slide5": "", "slide6": "", "slide7": "", "design_notes": "" }, "caption": "", "hashtags": [], "pin_comment": "" },
-        { "day": "Fri", "format": "Reel", "topic": "", "hook": "", "script": { "scene1_hook": "", "scene2_problem": "", "scene3_solution": "", "scene4_cta": "", "voiceover_notes": "", "text_overlays": [] }, "caption": "", "hashtags": [], "pin_comment": "" }
+        {
+          "day": "Mon",
+          "format": "Reel",
+          "topic": "Write Week 4 Reel topic — transformation story",
+          "hook": "Write Week 4 Reel hook",
+          "script": { "scene1_hook": "Write ACTUAL dialogue", "scene2_problem": "Write ACTUAL dialogue", "scene3_solution": "Write ACTUAL step-by-step", "scene4_cta": "Write ACTUAL CTA", "voiceover_notes": "Direction", "text_overlays": ["Overlay 1"] },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        },
+        {
+          "day": "Wed",
+          "format": "Carousel",
+          "topic": "Write Week 4 Carousel topic — authority builder",
+          "hook": "Write Week 4 Carousel hook",
+          "script": { "slide1": "Write ACTUAL slide 1", "slide2": "Write ACTUAL slide 2", "slide3": "Write ACTUAL slide 3", "slide4": "Write ACTUAL slide 4", "slide5": "Write ACTUAL slide 5", "slide6": "Write ACTUAL slide 6", "slide7": "Write ACTUAL CTA slide", "design_notes": "Design direction" },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        },
+        {
+          "day": "Fri",
+          "format": "Reel",
+          "topic": "Write Week 4 Friday Reel topic — strong closer",
+          "hook": "Write Week 4 Friday hook",
+          "script": { "scene1_hook": "Write ACTUAL dialogue", "scene2_problem": "Write ACTUAL dialogue", "scene3_solution": "Write ACTUAL step-by-step", "scene4_cta": "Write ACTUAL CTA", "voiceover_notes": "Direction", "text_overlays": ["Overlay 1"] },
+          "caption": "Write FULL caption",
+          "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10","#Tag11","#Tag12","#Tag13","#Tag14","#Tag15"],
+          "pin_comment": "Write pin comment"
+        }
       ]
     }
   ],
   "contentPillars": [
-    { "pillar": "pillar name", "percentage": 40, "examples": ["example 1", "example 2", "example 3"] }
+    { "pillar": "Write pillar 1 name for ${effectiveNiche}", "percentage": 40, "examples": ["Example post idea 1", "Example post idea 2", "Example post idea 3"] },
+    { "pillar": "Write pillar 2 name", "percentage": 30, "examples": ["Example 1", "Example 2", "Example 3"] },
+    { "pillar": "Write pillar 3 name", "percentage": 20, "examples": ["Example 1", "Example 2"] },
+    { "pillar": "Write pillar 4 name", "percentage": 10, "examples": ["Example 1"] }
   ],
-  "batchingStrategy": "How to batch-create all 12 posts in one day — shooting order, tools needed",
+  "batchingStrategy": "Write specific batching advice for this creator — how to shoot all 12 posts in 1-2 days with equipment list and shooting order",
   "postingSchedule": {
     "frequency": "3 posts/week",
     "bestDays": ["Monday", "Wednesday", "Friday"],
-    "bestTimes": ["7:00 PM - 9:00 PM IST"],
-    "reason": "Why this timing works specifically for Indian ${niche} audience"
+    "bestTimes": ["7:00 PM - 9:00 PM IST", "8:00 AM - 10:00 AM IST on weekends"],
+    "reason": "Write WHY this timing works for Indian ${effectiveNiche} audience specifically"
   },
   "kpis": {
-    "targetER": "${ownData ? ((ownData.engagementRate ?? 0) * 1.5).toFixed(1) : "3.5"}%",
+    "targetER": "${ownData ? (Math.max(3, ((ownData.engagementRate ?? 0) * 1.5))).toFixed(1) : "3.5"}%",
     "postingFrequency": "3/week",
-    "growthTarget": "Realistic follower growth target for 30 days"
+    "growthTarget": "Write realistic 30-day follower growth target with reasoning"
   }
 }
 
-IMPORTANT: Fill in ALL empty string fields with real, specific, detailed content. Every script must have actual dialogues, not placeholders.`;
+REMEMBER: Replace every "Write ACTUAL..." placeholder with REAL specific content for ${effectiveNiche} niche. The output must be immediately usable by a creator — no placeholders left.`;
 
     const llmResult = await callLLM({ userId, endpoint: "pipeline", prompt, systemPrompt });
-    const data = extractJSON(llmResult.text) || { raw: llmResult.text };
+    const rawData = extractJSON(llmResult.text);
+
+    // Validate that we got real content (not just template placeholders)
+    const pipelineData: any = rawData || {};
+    const calendar = pipelineData.contentCalendar || [];
+
+    // Check if AI actually filled content or returned empty/placeholder
+    const hasRealContent = calendar.length > 0 && calendar.some((week: any) =>
+      week.posts?.some((post: any) =>
+        post.topic && !post.topic.includes("Write") && !post.topic.includes("ACTUAL")
+      )
+    );
+
+    if (!hasRealContent && calendar.length > 0) {
+      console.warn("[pipeline] AI returned template placeholders — content not filled");
+    }
 
     return res.json({
       success: true,
-      pipeline: data,
+      pipeline: pipelineData,
+      hasRealContent,
       _meta: { provider: llmResult.provider, model: llmResult.model }
     });
   } catch (err: any) {

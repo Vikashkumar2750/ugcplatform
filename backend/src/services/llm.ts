@@ -76,16 +76,25 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
   // ── Platform keys (if user has no working key / platform allowed) ─────────
   if (platformAllowed) {
+    // Gemini first — free tier, reliable, no auth issues
     if (process.env.GEMINI_API_KEY) {
       attempts.push(() => callGemini(process.env.GEMINI_API_KEY!, prompt, systemPrompt, "platform"));
     }
+    // Anthropic Claude as secondary platform key
+    if (process.env.ANTHROPIC_API_KEY) {
+      attempts.push(() => callAnthropic(process.env.ANTHROPIC_API_KEY!, prompt, systemPrompt, "platform"));
+    }
+    // Bedrock last — requires AWS credentials configured on server
     if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
       attempts.push(() => callBedrock(process.env.AWS_BEARER_TOKEN_BEDROCK!, prompt, systemPrompt, "platform"));
     }
   }
 
   if (attempts.length === 0) {
-    throw new Error("No AI provider available. Add your API key in Settings → API Keys.");
+    throw new Error(
+      "No AI provider configured. " +
+      "Either add GEMINI_API_KEY to Render environment, or add your API key in Settings → API Keys."
+    );
   }
 
   // 4. Try each provider in order — stop at first success
