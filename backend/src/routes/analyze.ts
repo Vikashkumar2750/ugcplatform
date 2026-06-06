@@ -110,9 +110,11 @@ async function getRealProfileData(
         const avgComments = Math.round(posts.reduce((s, p) => s + (p.comments || 0), 0) / posts.length);
         const followers = result.profile?.followers || 0;
         // BUG-FIX: ER was hardcoded to 0 — now computed correctly
-        const engagementRate = followers > 0
+        // Cap at 50% — micro-accounts with tiny follower counts can produce unrealistic values
+        const rawER = followers > 0
           ? parseFloat(((avgLikes + avgComments) / followers * 100).toFixed(2))
           : 0;
+        const engagementRate = Math.min(rawER, 50);
         return {
           data: {
             username,
@@ -855,7 +857,10 @@ CRITICAL RULES:
       }
     }
     contentCalendar.sort((a: any, b: any) => (a.week || 0) - (b.week || 0));
-    const targetER = ownData ? (Math.max(3, ((ownData.engagementRate ?? 0) * 1.5))).toFixed(1) : "3.5";
+    // Cap targetER: micro-accounts can produce inflated ER (e.g. 300 followers, 500 avg likes = 233%).
+    // A realistic growth target should be capped at 30% and floored at 3%.
+    const rawTargetER = ownData ? (ownData.engagementRate ?? 0) * 1.3 : 3.5;
+    const targetER = Math.min(30, Math.max(3, rawTargetER)).toFixed(1);
     const metaPrompt = `Return ONLY valid JSON for ${effectiveNiche} ${platform} content strategy (replace placeholders with real values):
 {"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":40,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":30,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 12 posts in 2 days for ${effectiveNiche} creator - equipment, outfit changes, shooting order","postingSchedule":{"frequency":"3 posts/week","bestDays":["Monday","Wednesday","Friday"],"bestTimes":["7:00 PM - 9:00 PM IST"],"reason":"Why this time works for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"3/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}"}}`;
     let metaData: any = { contentPillars: [], postingSchedule: { bestDays: ["Monday","Wednesday","Friday"], bestTimes: ["7:00 PM IST"] }, kpis: { targetER: targetER + "%", postingFrequency: "3/week", growthTarget: "500+ followers/month" } };

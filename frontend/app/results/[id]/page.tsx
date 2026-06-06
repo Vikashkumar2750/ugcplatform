@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import {
   Download, Copy, ExternalLink, FileText, BarChart3,
   TrendingUp, Calendar, Zap, ChevronDown, ChevronUp,
@@ -56,13 +57,10 @@ export default function ResultsPage() {
     setRegenerating(tab);
     setRegenError(null);
     try {
-      const { createClient } = await import("@supabase/supabase-js");
-      const sb = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
+      // Use @supabase/ssr browser client — correctly reads session from cookies
+      const sb = createSupabaseClient();
       const { data: { session } } = await sb.auth.getSession();
-      if (!session) throw new Error("Not logged in");
+      if (!session) throw new Error("Session expired — please refresh the page and try again");
 
       const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
       const endpointMap: Record<string, string> = {
@@ -128,46 +126,40 @@ export default function ResultsPage() {
     }
 
     // Fallback: try Supabase (for cross-device / shared links)
-    import("@supabase/supabase-js").then(({ createClient }) => {
-      const sb = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
-      sb.auth.getSession().then(async ({ data: { session } }) => {
-        if (!session) { setLoading(false); return; }
-        // Try to load by result_data->>id field or by record id
-        const { data: rows } = await sb
-          .from("analysis_results")
-          .select("id, result_data, profile_url, platform, niche, created_at")
-          .eq("user_id", session.user.id)
-          .order("created_at", { ascending: false })
-          .limit(20);
+    try {
+      const sb = createSupabaseClient();
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) { setLoading(false); return; }
+      const { data: rows } = await sb
+        .from("analysis_results")
+        .select("id, result_data, profile_url, platform, niche, created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
 
-        if (rows) {
-          // Match by localStorage id pattern (timestamp)
-          const match = rows.find((r: any) =>
-            r.result_data?.id === id ||
-            r.result_data?.id === `analysis_${id}` ||
-            r.id === id
-          );
-          if (match) {
-            const record = {
-              id,
-              profileUrl: match.profile_url,
-              platform: match.platform,
-              niche: match.niche,
-              createdAt: match.created_at,
-              ...(match.result_data || {}),
-            };
-            // Cache back to localStorage
-            localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
-            setData(record);
-          }
+      if (rows) {
+        const match = rows.find((r: any) =>
+          r.result_data?.id === id ||
+          r.result_data?.id === `analysis_${id}` ||
+          r.id === id
+        );
+        if (match) {
+          const record = {
+            id,
+            profileUrl: match.profile_url,
+            platform: match.platform,
+            niche: match.niche,
+            createdAt: match.created_at,
+            ...(match.result_data || {}),
+          };
+          localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
+          setData(record);
         }
-        setLoading(false);
-      });
-    }).catch(() => setLoading(false));
+      }
+    } catch {}
+    setLoading(false);
   }, [params?.id]);
+
 
   const copyAll = () => {
     const text = JSON.stringify(data, null, 2);
