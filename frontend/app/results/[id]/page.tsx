@@ -332,6 +332,7 @@ export default function ResultsPage() {
           <div className="space-y-5">
             {!competitors ? (
               <EmptyState tab="Competitor Analysis" />
+            ) : (
               <CompetitorsTab competitors={competitors} />
             )}
           </div>
