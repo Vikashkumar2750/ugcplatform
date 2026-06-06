@@ -332,445 +332,7 @@ export default function ResultsPage() {
           <div className="space-y-5">
             {!competitors ? (
               <EmptyState tab="Competitor Analysis" />
-            ) : (
-              <>
-                {/* Niche Banner */}
-                {competitors.detectedNiche && (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm">
-                    <span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span>
-                    <span className="font-semibold">{competitors.detectedNiche}</span>
-                    {competitors.recommendedSubNiche && (
-                      <span className="ml-auto text-xs text-muted-foreground">Sub-niche: {competitors.recommendedSubNiche}</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Audience Intelligence */}
-                {competitors.audienceIntelligence && (
-                  <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/5">
-                    <p className="text-sm font-bold text-blue-400 mb-3">🧠 Audience Intelligence</p>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      {competitors.audienceIntelligence.primaryAudience && (
-                        <div className="p-3 rounded-xl bg-card border border-border">
-                          <p className="text-xs text-muted-foreground mb-1">Primary Audience</p>
-                          <p className="text-sm">{competitors.audienceIntelligence.primaryAudience}</p>
-                        </div>
-                      )}
-                      {competitors.audienceIntelligence.audienceIntent && (
-                        <div className="p-3 rounded-xl bg-card border border-border">
-                          <p className="text-xs text-muted-foreground mb-1">Audience Intent</p>
-                          <p className="text-sm">{competitors.audienceIntelligence.audienceIntent}</p>
-                        </div>
-                      )}
-                    </div>
-                    {competitors.audienceIntelligence.painPoints?.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs font-bold text-muted-foreground mb-2">PAIN POINTS</p>
-                        <div className="flex flex-wrap gap-2">
-                          {competitors.audienceIntelligence.painPoints.map((p: string, i: number) => (
-                            <span key={i} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-500">{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {competitors.audienceIntelligence.confidence && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Confidence: <strong className="text-green-500">{competitors.audienceIntelligence.confidence}</strong> — {competitors.audienceIntelligence.evidence}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Competitor Cards — enhanced */}
-                {(competitors.competitors || []).map((comp: any, i: number) => (
-                  <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i + 1}</div>
-                        <div>
-                          <p className="font-semibold">{comp.username}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {comp.realFollowers} followers · {comp.engagementRate} ER · Avg {comp.avgViralViews} views
-                          </p>
-                        </div>
-                      </div>
-                      {comp.viralityScore && (
-                        <div className="text-center">
-                          <p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p>
-                          <p className="text-[10px] text-muted-foreground">Virality</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Creator Archetype */}
-                    {comp.creatorArchetype && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-400 font-bold">{comp.creatorArchetype}</span>
-                        {comp.postingFrequency && <span className="text-xs text-muted-foreground">{comp.postingFrequency}</span>}
-                      </div>
-                    )}
-
-                    {/* Bio */}
-                    {comp.bio && (
-                      <div className="p-3 rounded-xl bg-muted/40 border border-border">
-                        <p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p>
-                        <p className="text-xs italic">"{comp.bio}"</p>
-                        {comp.bioStrengths?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {comp.bioStrengths.map((s: string, si: number) => (
-                              <span key={si} className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500">{s}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Viral topics */}
-                    {comp.viralTopics?.length > 0 && (
-                      <div>
-                        <p className="text-xs font-bold text-red-500 mb-1.5">🔥 VIRAL TOPICS</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {comp.viralTopics.map((topic: string, ti: number) => (
-                            <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 font-medium">{topic}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Viral hook */}
-                    {comp.viralHook && (
-                      <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20">
-                        <p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK FORMULA</p>
-                        <p className="text-sm italic">"{comp.viralHook}"</p>
-                      </div>
-                    )}
-
-                    {/* Content Pillars */}
-                    {comp.contentPillars?.length > 0 && (
-                      <div>
-                        <p className="text-xs font-bold text-muted-foreground mb-1.5">CONTENT PILLARS</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {comp.contentPillars.map((p: string, pi: number) => (
-                            <span key={pi} className="text-xs px-2 py-1 rounded bg-muted">{p}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Emotional Triggers */}
-                    {comp.emotionalTriggers?.length > 0 && (
-                      <div>
-                        <p className="text-xs font-bold text-muted-foreground mb-1.5">EMOTIONAL TRIGGERS</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {comp.emotionalTriggers.map((t: string, ti: number) => (
-                            <span key={ti} className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-400">{t}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3 text-xs">
-                      {comp.hookStyle && <div><p className="text-muted-foreground">Hook Style</p><p className="font-medium">{comp.hookStyle}</p></div>}
-                      {comp.ctaStrategy && <div><p className="text-muted-foreground">CTA Strategy</p><p className="font-medium">{comp.ctaStrategy}</p></div>}
-                      {comp.retentionStrategy && <div><p className="text-muted-foreground">Retention</p><p className="font-medium">{comp.retentionStrategy}</p></div>}
-                      {comp.viralStructure && <div><p className="text-muted-foreground">Viral Structure</p><p className="font-medium">{comp.viralStructure}</p></div>}
-                    </div>
-
-                    {comp.topHashtags?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {comp.topHashtags.map((tag: string) => (
-                          <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>
-                        ))}
-                      </div>
-                    )}
-
-                    {comp.weaknesses?.length > 0 && (
-                      <div className="pt-1">
-                        <p className="text-xs font-bold text-muted-foreground mb-1">THEIR WEAKNESSES</p>
-                        <div className="space-y-1">
-                          {comp.weaknesses.map((w: string, wi: number) => (
-                            <p key={wi} className="text-xs text-muted-foreground flex items-start gap-1"><span className="text-amber-500">▸</span>{w}</p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* 🔑 BIO OPTIMIZATION */}
-                {competitors.bioOptimization && (
-                  <div className="p-5 rounded-2xl border border-green-400/20 bg-green-400/5">
-                    <p className="text-sm font-bold text-green-500 mb-4">✨ Bio Optimization (Apne profile ko improve karo)</p>
-                    {competitors.bioOptimization.userCurrentBio && (
-                      <div className="mb-3 p-3 rounded-xl bg-card border border-border">
-                        <p className="text-[10px] font-bold text-muted-foreground mb-1">CURRENT BIO</p>
-                        <p className="text-xs">{competitors.bioOptimization.userCurrentBio}</p>
-                      </div>
-                    )}
-                    {competitors.bioOptimization.suggestedBio && (
-                      <div className="mb-3 p-3 rounded-xl bg-green-500/10 border border-green-500/30">
-                        <p className="text-[10px] font-bold text-green-500 mb-1">✅ SUGGESTED BIO</p>
-                        <p className="text-sm font-medium">{competitors.bioOptimization.suggestedBio}</p>
-                      </div>
-                    )}
-                    {competitors.bioOptimization.bioImprovements?.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-bold text-muted-foreground mb-2">WHAT TO IMPROVE</p>
-                        <div className="space-y-1.5">
-                          {competitors.bioOptimization.bioImprovements.map((imp: string, i: number) => (
-                            <p key={i} className="text-xs flex items-start gap-1.5"><span className="text-green-500">→</span>{imp}</p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {competitors.bioOptimization.keywordsToAdd?.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        <p className="text-xs font-bold text-muted-foreground w-full mb-1">KEYWORDS TO ADD</p>
-                        {competitors.bioOptimization.keywordsToAdd.map((k: string, ki: number) => (
-                          <span key={ki} className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-500">{k}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Hook Formulas */}
-                {competitors.hookFormulas?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4">🎣 Proven Hook Formulas</p>
-                    <div className="space-y-3">
-                      {competitors.hookFormulas.map((hook: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl bg-muted/40">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-bold text-amber-500">{hook.emotionalTrigger}</span>
-                            <span className="text-[10px] text-muted-foreground">{hook.avgViews} avg views · {hook.confidence}</span>
-                          </div>
-                          <p className="text-sm font-medium">{hook.formula}</p>
-                          <p className="text-xs text-muted-foreground italic mt-1">"{hook.example}"</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Reel Framework */}
-                {competitors.reelFramework && (
-                  <div className="p-5 rounded-2xl border border-red-400/20 bg-red-400/5">
-                    <p className="text-sm font-bold text-red-500 mb-4">🎬 Viral Reel Framework</p>
-                    <div className="space-y-2">
-                      {[
-                        { label: "Structure", value: competitors.reelFramework.structure },
-                        { label: "Hook (0-3s)", value: competitors.reelFramework.hookDuration },
-                        { label: "Problem (3-15s)", value: competitors.reelFramework.problemSection },
-                        { label: "Solution (15-45s)", value: competitors.reelFramework.solutionSection },
-                        { label: "CTA (45-60s)", value: competitors.reelFramework.ctaSection },
-                        { label: "Editing Pace", value: competitors.reelFramework.editingPace },
-                        { label: "Text Overlays", value: competitors.reelFramework.textOverlayStrategy },
-                        { label: "Audio", value: competitors.reelFramework.audioStrategy },
-                      ].filter(r => r.value).map(row => (
-                        <div key={row.label} className="flex gap-3 py-1.5 border-b border-border/50 last:border-0">
-                          <span className="text-xs text-muted-foreground w-32 flex-shrink-0">{row.label}</span>
-                          <span className="text-xs font-medium">{row.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {competitors.reelFramework.confidence && (
-                      <p className="text-xs text-muted-foreground mt-3">Confidence: <strong>{competitors.reelFramework.confidence}</strong> — {competitors.reelFramework.evidence}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Psychological Triggers */}
-                {competitors.psychologicalTriggers?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3">🧠 Psychological Triggers</p>
-                    <div className="space-y-3">
-                      {competitors.psychologicalTriggers.map((t: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl bg-muted/40">
-                          <p className="text-xs font-bold text-purple-400 mb-1">{t.trigger}</p>
-                          <p className="text-xs text-muted-foreground">Competitor uses: {t.howCompetitorUses}</p>
-                          <p className="text-xs text-green-500 mt-1">Your version: {t.howToAdapt}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Content Gaps */}
-                {competitors.contentGaps?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3">🕳 Content Gaps to Exploit</p>
-                    <div className="space-y-3">
-                      {competitors.contentGaps.map((gap: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl border border-border">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-sm font-medium">{gap.gap}</p>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${gap.viralPotential === "High" ? "bg-green-500/10 text-green-500" : "bg-amber-500/10 text-amber-500"}`}>{gap.viralPotential}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{gap.opportunity}</p>
-                          <p className="text-xs text-amber-500 mt-1">💡 Topic: {gap.suggestedTopic}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Trend Opportunities */}
-                {competitors.trendOpportunities?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3">📈 Trend Opportunities</p>
-                    <div className="space-y-3">
-                      {competitors.trendOpportunities.map((t: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl bg-muted/40">
-                          <div className="flex items-center justify-between mb-1">
-                            <p className="text-sm font-medium">{t.trend}</p>
-                            <span className="text-xs text-amber-500 font-bold">{t.urgency}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{t.relevance}</p>
-                          <p className="text-xs text-green-500 mt-1">Content idea: {t.contentIdea}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Viral Content Ideas */}
-                {competitors.viralContentIdeas?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3">💡 Viral Content Ideas (ready to create)</p>
-                    <div className="space-y-3">
-                      {competitors.viralContentIdeas.map((idea: any, i: number) => (
-                        <div key={i} className="p-4 rounded-xl border border-border hover:border-amber-400/30 transition">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-500 font-bold">{idea.format}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${idea.viralPotential === "High" ? "bg-green-500/10 text-green-500" : "bg-blue-500/10 text-blue-400"}`}>{idea.viralPotential}</span>
-                          </div>
-                          <p className="text-sm font-bold mb-1">{idea.title}</p>
-                          <p className="text-xs text-amber-500 italic mb-1">Hook: "{idea.hook}"</p>
-                          <p className="text-xs text-muted-foreground">Angle: {idea.angle}</p>
-                          <p className="text-xs text-green-500 mt-1">Why it works: {idea.whyItWorks}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Viral Content Blueprint */}
-                {competitors.viralContentBlueprint && (
-                  <div className="p-5 rounded-2xl border border-red-500/20 bg-red-500/5">
-                    <div className="flex items-center justify-between mb-4">
-                      <p className="text-sm font-bold text-red-500">🎯 Viral Content Blueprint</p>
-                      {competitors.viralContentBlueprint.viralityProbability && (
-                        <span className="text-lg font-heading font-extrabold text-green-500">{competitors.viralContentBlueprint.viralityProbability}% viral</span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {[
-                        { label: "Top Format", value: competitors.viralContentBlueprint.topPerformingFormat },
-                        { label: "Top Topic", value: competitors.viralContentBlueprint.topPerformingTopic },
-                        { label: "Top Hook", value: competitors.viralContentBlueprint.topPerformingHook },
-                        { label: "Optimal Length", value: competitors.viralContentBlueprint.optimalLength },
-                        { label: "Editing Style", value: competitors.viralContentBlueprint.editingStyle },
-                        { label: "Post Time", value: competitors.viralContentBlueprint.postingTime },
-                      ].filter(item => item.value).map(item => (
-                        <div key={item.label} className="p-3 rounded-xl bg-card border border-border">
-                          <p className="text-xs text-muted-foreground">{item.label}</p>
-                          <p className="text-sm font-semibold mt-0.5">{item.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                    {competitors.viralContentBlueprint.confidence && (
-                      <p className="text-xs text-muted-foreground mt-3">Confidence: <strong>{competitors.viralContentBlueprint.confidence}</strong> — {competitors.viralContentBlueprint.evidence}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Hashtag Clusters */}
-                {competitors.hashtagClusters && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4"># Hashtag Clusters</p>
-                    <div className="space-y-3">
-                      {Object.entries(competitors.hashtagClusters).map(([cluster, tags]: [string, any]) => (
-                        <div key={cluster}>
-                          <p className="text-xs font-bold text-muted-foreground capitalize mb-1.5">{cluster}</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(Array.isArray(tags) ? tags : []).map((tag: string) => (
-                              <span key={tag} className="px-2 py-1 rounded-full bg-muted text-xs hover:bg-amber-400/10 hover:text-amber-500 transition cursor-pointer">{tag}</span>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* User vs Competitor */}
-                {competitors.userVsCompetitor && (
-                  <div className="space-y-3">
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div className="p-4 rounded-xl border border-green-400/20 bg-green-400/5">
-                        <p className="text-xs font-bold text-green-500 mb-2">✅ TUMHARI STRENGTH</p>
-                        <p className="text-sm">{competitors.userVsCompetitor.userStrength}</p>
-                      </div>
-                      <div className="p-4 rounded-xl border border-red-400/20 bg-red-400/5">
-                        <p className="text-xs font-bold text-red-500 mb-2">⚠️ UNKA ADVANTAGE</p>
-                        <p className="text-sm">{competitors.userVsCompetitor.userWeakness}</p>
-                      </div>
-                    </div>
-                    <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
-                      <p className="text-xs font-bold text-amber-500 mb-2">⚡ QUICK WIN — Abhi karo</p>
-                      <p className="text-sm font-medium">{competitors.userVsCompetitor.quickWin}</p>
-                    </div>
-                    {competitors.userVsCompetitor["30DayPlan"] && (
-                      <div className="p-4 rounded-xl border border-border bg-card">
-                        <p className="text-xs font-bold text-muted-foreground mb-2">📅 30-DAY GROWTH PLAN</p>
-                        <p className="text-sm">{competitors.userVsCompetitor["30DayPlan"]}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Posting Strategy */}
-                {competitors.postingStrategy && (
-                  <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
-                    <p className="text-xs font-bold text-amber-500 mb-3">📅 Optimal Posting Strategy</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      {competitors.postingStrategy.frequency && <div><p className="text-muted-foreground">Frequency</p><p className="font-bold">{competitors.postingStrategy.frequency}</p></div>}
-                      {competitors.postingStrategy.bestDays?.length > 0 && <div><p className="text-muted-foreground">Best Days</p><p className="font-bold">{competitors.postingStrategy.bestDays.join(", ")}</p></div>}
-                      {competitors.postingStrategy.bestTimes?.length > 0 && <div><p className="text-muted-foreground">Best Times</p><p className="font-bold">{competitors.postingStrategy.bestTimes.join(", ")}</p></div>}
-                      {competitors.postingStrategy.contentMix && <div><p className="text-muted-foreground">Content Mix</p><p className="font-bold">{competitors.postingStrategy.contentMix}</p></div>}
-                    </div>
-                    {competitors.postingStrategy.reason && <p className="text-xs text-muted-foreground mt-2">{competitors.postingStrategy.reason}</p>}
-                  </div>
-                )}
-
-                {/* Key Insights */}
-                {competitors.keyInsights?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3">⭐ Key Insights</p>
-                    <div className="space-y-2">
-                      {competitors.keyInsights.map((insight: string, i: number) => (
-                        <div key={i} className="flex items-start gap-2 text-sm">
-                          <Star className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <span>{insight}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Growth Weaknesses */}
-                {competitors.growthWeaknesses?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3 text-red-500">⚠️ Growth Weaknesses to Avoid</p>
-                    <div className="space-y-1.5">
-                      {competitors.growthWeaknesses.map((w: string, i: number) => (
-                        <p key={i} className="text-sm flex items-start gap-2"><AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />{w}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
+              <CompetitorsTab competitors={competitors} />
             )}
           </div>
         )}
@@ -854,14 +416,10 @@ export default function ResultsPage() {
 
                 {trends.viralHookFormulas?.length > 0 && (
                   <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><Lightbulb className="w-4 h-4" /> Viral Hook Formulas</p>
+                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><Lightbulb className="w-4 h-4" /> Viral Hook Formulas + Reel Scripts</p>
                     <div className="space-y-4">
                       {trends.viralHookFormulas.map((hook: any, i: number) => (
-                        <div key={i} className="p-3 rounded-xl bg-muted/40">
-                          <p className="text-xs font-bold text-amber-500 mb-1">{hook.emotion} trigger</p>
-                          <p className="text-sm font-medium">{hook.formula}</p>
-                          <p className="text-xs text-muted-foreground italic mt-1">"{hook.example}"</p>
-                        </div>
+                        <HookScriptCard key={i} hook={hook} />
                       ))}
                     </div>
                   </div>
@@ -1348,4 +906,50 @@ function buildPlainText(data: any): string {
   }
 
   return text;
+}
+
+// HookScriptCard and CompetitorsTab components appended
+function HookScriptCard({ hook }: { hook: any }) {
+  const [open, setOpen] = useState(false);
+  const rs = hook.reelScript;
+  return (
+    <div className="rounded-xl border border-border overflow-hidden">
+      <div className="p-3 bg-muted/40 cursor-pointer hover:bg-muted/60 transition" onClick={() => setOpen(!open)}>
+        <div className="flex items-center justify-between"><span className="text-xs font-bold text-amber-500">{hook.emotion} trigger</span><span className="text-[10px] text-muted-foreground">{open ? "collapse" : "Full script dekho"}</span></div>
+        <p className="text-sm font-semibold mt-1">{hook.formula}</p>
+        <p className="text-xs text-muted-foreground italic mt-0.5">"{hook.example}"</p>
+      </div>
+      {open && (
+        <div className="p-4 border-t border-border space-y-2 bg-card">
+          {rs ? (<>
+            <p className="text-xs font-bold text-red-400 mb-2">60-Second Reel Script</p>
+            {rs.scene1 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-red-400">HOOK (0-3s)</p><p className="text-xs">{rs.scene1}</p></div>}
+            {rs.scene2 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-amber-400">PROBLEM (3-15s)</p><p className="text-xs">{rs.scene2}</p></div>}
+            {rs.scene3 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-green-400">SOLUTION (15-45s)</p><p className="text-xs">{rs.scene3}</p></div>}
+            {rs.scene4 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-blue-400">CTA (45-60s)</p><p className="text-xs">{rs.scene4}</p></div>}
+            {rs.editingNotes && <div className="p-2 rounded-lg bg-purple-500/5 border border-purple-500/20"><p className="text-[10px] font-bold text-purple-400 mb-1">EDITING NOTES</p><p className="text-xs text-muted-foreground">{rs.editingNotes}</p></div>}
+          </>) : <p className="text-xs text-muted-foreground">Re-run analysis for full scripts.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompetitorsTab({ competitors }: { competitors: any }) {
+  try {
+    return (<>
+      {competitors.detectedNiche && <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm"><span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span><span className="font-semibold">{competitors.detectedNiche}</span></div>}
+      {competitors.audienceIntelligence && <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/5"><p className="text-sm font-bold text-blue-400 mb-3">Audience Intelligence</p><div className="grid sm:grid-cols-2 gap-3">{competitors.audienceIntelligence.primaryAudience && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Primary Audience</p><p className="text-sm">{competitors.audienceIntelligence.primaryAudience}</p></div>}{competitors.audienceIntelligence.audienceIntent && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Audience Intent</p><p className="text-sm">{competitors.audienceIntelligence.audienceIntent}</p></div>}</div></div>}
+      {(competitors.competitors||[]).map((comp: any, i: number) => <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i+1}</div><div><p className="font-semibold">{comp.username}</p><p className="text-xs text-muted-foreground">{comp.realFollowers} followers</p></div></div>{comp.viralityScore && <div className="text-center"><p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p><p className="text-[10px] text-muted-foreground">Virality</p></div>}</div>{comp.bio && <div className="p-3 rounded-xl bg-muted/40"><p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p><p className="text-xs italic">"{comp.bio}"</p></div>}{(comp.viralTopics||[]).length > 0 && <div><p className="text-xs font-bold text-red-500 mb-1">VIRAL TOPICS</p><div className="flex flex-wrap gap-1.5">{comp.viralTopics.map((t: string, ti: number) => <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400">{t}</span>)}</div></div>}{comp.viralHook && <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20"><p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK</p><p className="text-sm italic">"{comp.viralHook}"</p></div>}{(comp.topHashtags||[]).length > 0 && <div className="flex flex-wrap gap-1">{comp.topHashtags.map((tag: string) => <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>)}</div>}</div>)}
+      {competitors.bioOptimization && <div className="p-5 rounded-2xl border border-green-400/20 bg-green-400/5"><p className="text-sm font-bold text-green-500 mb-3">Bio Optimization</p>{competitors.bioOptimization.userCurrentBio && <div className="mb-3 p-3 rounded-xl bg-card border border-border"><p className="text-[10px] font-bold text-muted-foreground mb-1">CURRENT BIO</p><p className="text-xs">{competitors.bioOptimization.userCurrentBio}</p></div>}{competitors.bioOptimization.suggestedBio && <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/30"><p className="text-[10px] font-bold text-green-500 mb-1">SUGGESTED BIO</p><p className="text-sm font-medium">{competitors.bioOptimization.suggestedBio}</p></div>}</div>}
+      {(competitors.hookFormulas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hook Formulas</p><div className="space-y-3">{competitors.hookFormulas.map((h: any, i: number) => <div key={i} className="p-3 rounded-xl bg-muted/40"><div className="flex justify-between mb-1"><span className="text-xs font-bold text-amber-500">{h.emotionalTrigger}</span><span className="text-[10px] text-muted-foreground">{h.confidence}</span></div><p className="text-sm font-medium">{h.formula}</p><p className="text-xs italic mt-1">"{h.example}"</p></div>)}</div></div>}
+      {(competitors.contentGaps||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Content Gaps</p><div className="space-y-3">{competitors.contentGaps.map((g: any, i: number) => <div key={i} className="p-3 rounded-xl border border-border"><div className="flex justify-between mb-1"><p className="text-sm font-medium">{g.gap}</p><span className="text-xs text-green-500">{g.viralPotential}</span></div><p className="text-xs text-amber-500 mt-1">{g.suggestedTopic}</p></div>)}</div></div>}
+      {(competitors.viralContentIdeas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Viral Content Ideas</p><div className="space-y-3">{competitors.viralContentIdeas.map((idea: any, i: number) => <div key={i} className="p-4 rounded-xl border border-border"><p className="text-sm font-bold mb-1">{idea.title}</p><p className="text-xs text-amber-500 italic">"{idea.hook}"</p><p className="text-xs text-green-500 mt-1">{idea.whyItWorks}</p></div>)}</div></div>}
+      {competitors.hashtagClusters && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hashtag Clusters</p><div className="space-y-3">{Object.entries(competitors.hashtagClusters).map(([cl, tags]: [string, any]) => <div key={cl}><p className="text-xs font-bold text-muted-foreground capitalize mb-1.5">{cl}</p><div className="flex flex-wrap gap-1.5">{(Array.isArray(tags)?tags:[]).map((tag: string) => <span key={tag} className="px-2 py-1 rounded-full bg-muted text-xs hover:bg-amber-400/10 hover:text-amber-500 transition cursor-pointer">{tag}</span>)}</div></div>)}</div></div>}
+      {competitors.userVsCompetitor && <div className="space-y-3"><div className="grid sm:grid-cols-2 gap-3"><div className="p-4 rounded-xl border border-green-400/20 bg-green-400/5"><p className="text-xs font-bold text-green-500 mb-2">YOUR STRENGTH</p><p className="text-sm">{competitors.userVsCompetitor.userStrength}</p></div><div className="p-4 rounded-xl border border-red-400/20 bg-red-400/5"><p className="text-xs font-bold text-red-500 mb-2">THEIR ADVANTAGE</p><p className="text-sm">{competitors.userVsCompetitor.userWeakness}</p></div></div>{competitors.userVsCompetitor.quickWin && <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5"><p className="text-xs font-bold text-amber-500 mb-2">QUICK WIN</p><p className="text-sm font-medium">{competitors.userVsCompetitor.quickWin}</p></div>}</div>}
+      {(competitors.keyInsights||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Key Insights</p><div className="space-y-2">{competitors.keyInsights.map((insight: string, i: number) => <div key={i} className="flex items-start gap-2 text-sm"><span className="text-amber-500">*</span><span>{insight}</span></div>)}</div></div>}
+    </>);
+  } catch {
+    return <div className="p-6 rounded-2xl border border-red-400/20 bg-red-400/5 text-center"><p className="text-sm font-bold text-red-500 mb-2">Display Error</p><p className="text-xs text-muted-foreground">Competitor data mismatch. Please re-run the analysis.</p></div>;
+  }
 }
