@@ -537,36 +537,57 @@ export async function runApifyActor(
 ): Promise<any[]> {
   if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN not configured");
 
-  const startRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${APIFY_TOKEN}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }
-  );
+  // 25s timeout on the start call
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-  if (!startRes.ok) {
-    const errText = await startRes.text();
-    throw new Error(`Apify start failed (${startRes.status}): ${errText.substring(0, 200)}`);
+  let startData: any;
+  try {
+    const startRes = await fetch(
+      `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${APIFY_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+        signal: controller.signal,
+      }
+    );
+    clearTimeout(timeoutId);
+    if (!startRes.ok) {
+      const errText = await startRes.text();
+      throw new Error(`Apify start failed (${startRes.status}): ${errText.substring(0, 200)}`);
+    }
+    startData = await startRes.json();
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === "AbortError") throw new Error(`Apify actor ${actorId} start timed out after 25s`);
+    throw err;
   }
-  const startData = await startRes.json();
+
   const runId = startData.data?.id;
   if (!runId) throw new Error("Apify: no run ID returned");
 
-  // Poll for completion (max 90s = 30 × 3s)
-  for (let i = 0; i < 30; i++) {
+  // Poll for completion (max 75s = 25 × 3s)
+  for (let i = 0; i < 25; i++) {
     await new Promise((r) => setTimeout(r, 3000));
-    const statusRes = await fetch(
-      `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
-    );
-    if (!statusRes.ok) continue;
-    const { data: status } = await statusRes.json();
-    if (status?.status === "SUCCEEDED") break;
-    if (status?.status === "FAILED" || status?.status === "ABORTED") {
-      throw new Error(`Apify actor ${actorId} run ${status.status}`);
+    try {
+      const statusRes = await fetch(
+        `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
+      );
+      if (!statusRes.ok) continue;
+      const { data: status } = await statusRes.json();
+      if (status?.status === "SUCCEEDED") break;
+      if (status?.status === "FAILED" || status?.status === "ABORTED") {
+        throw new Error(`Apify actor ${actorId} run ${status.status}`);
+      }
+      console.log(`[Apify] ${actorId} run status: ${status?.status} (${i + 1}/25)`);
+      // If still running at attempt 24, return whatever data exists (partial)
+      if (i === 24) {
+        console.warn(`[Apify] ${actorId} timed out — fetching partial results`);
+      }
+    } catch (pollErr: any) {
+      console.warn(`[Apify] Poll error: ${pollErr.message}`);
     }
-    console.log(`[Apify] ${actorId} run status: ${status?.status} (${i + 1}/30)`);
   }
 
   const resultsRes = await fetch(
@@ -576,3 +597,4 @@ export async function runApifyActor(
   const items = await resultsRes.json();
   return Array.isArray(items) ? items : [];
 }
+

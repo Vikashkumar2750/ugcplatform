@@ -12,14 +12,55 @@ import { supabase } from "../lib/supabase";
 const router = Router();
 router.use(requireAuth);
 
-// ─── Helper: extract JSON from LLM response ──────────────────────────────────
+// ─── Helper: extract JSON from LLM response (multi-pass) ────────────────────
 function extractJSON(text: string): unknown {
-  const match = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*\})/);
-  if (match) {
-    try { return JSON.parse(match[1].trim()); } catch {}
+  if (!text) return null;
+  // Pass 1: code fence (```json ... ``` or ``` ... ```)
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) {
+    try { return JSON.parse(fence[1].trim()); } catch {}
   }
+  // Pass 2: raw JSON parse
   try { return JSON.parse(text.trim()); } catch {}
+  // Pass 3: first `{` to last `}` greedy extraction
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    const slice = text.slice(start, end + 1);
+    try { return JSON.parse(slice); } catch {}
+    // Pass 4: try removing trailing commas (common LLM quirk)
+    try { return JSON.parse(slice.replace(/,\s*([}\]])/g, "$1")); } catch {}
+  }
+  console.warn("[extractJSON] All passes failed. First 300 chars:", text.substring(0, 300));
   return null;
+}
+
+// ─── Helper: validate LLM output — reject obvious placeholder responses ───────
+function validateLLMOutput(data: any, endpoint: string): { valid: boolean; warnings: string[] } {
+  if (!data || typeof data !== "object") return { valid: false, warnings: ["Empty or non-object response"] };
+  const PLACEHOLDER_PATTERNS = [
+    /WRITE (ACTUAL|REAL)/i,
+    /\[TOPIC\]/i,
+    /your topic here/i,
+    /specific insight \d/i,
+    /idea \d+$/i,
+  ];
+  const text = JSON.stringify(data);
+  const warnings: string[] = [];
+  for (const p of PLACEHOLDER_PATTERNS) {
+    if (p.test(text)) {
+      warnings.push(`Placeholder text detected: ${p.source}`);
+      break;
+    }
+  }
+  // Check field lengths for key endpoints
+  if (endpoint === "audit" && typeof data.topRecommendation === "string" && data.topRecommendation.length < 20) {
+    warnings.push("topRecommendation is too short — likely generic");
+  }
+  if (endpoint === "competitors" && Array.isArray(data.competitors) && data.competitors.length === 0) {
+    warnings.push("No competitors returned");
+  }
+  return { valid: warnings.length === 0, warnings };
 }
 
 // ─── Helper: get username from URL ───────────────────────────────────────────
@@ -33,6 +74,10 @@ function extractUsername(url: string, platform: string): string {
   if (platform === "youtube") {
     const match = url.match(/@([^/?\s]+)/);
     return match ? match[1] : "";
+  }
+  if (platform === "linkedin") {
+    const match = url.match(/linkedin\.com\/(?:in|company)\/([^/?\s]+)/i);
+    return match ? match[1] : url.replace(/.*linkedin\.com\//i, "").replace(/\/$/, "").split("/").filter(Boolean).pop() || "";
   }
   return "";
 }
@@ -63,22 +108,27 @@ async function getRealProfileData(
         const posts = result.posts.slice(0, 20);
         const avgLikes = Math.round(posts.reduce((s, p) => s + (p.likes || 0), 0) / posts.length);
         const avgComments = Math.round(posts.reduce((s, p) => s + (p.comments || 0), 0) / posts.length);
+        const followers = result.profile?.followers || 0;
+        // BUG-FIX: ER was hardcoded to 0 — now computed correctly
+        const engagementRate = followers > 0
+          ? parseFloat(((avgLikes + avgComments) / followers * 100).toFixed(2))
+          : 0;
         return {
           data: {
             username,
-            followers: result.profile?.followers || 0,
+            followers,
             following: result.profile?.following || 0,
             mediaCount: result.profile?.posts || posts.length,
             biography: result.profile?.bio,
             avgLikes,
             avgComments,
-            engagementRate: 0,
+            engagementRate,
             posts: posts.map(p => ({
               id: p.id,
               caption: p.caption,
               likes: p.likes || 0,
               comments: p.comments || 0,
-              mediaType: "IMAGE",
+              mediaType: (p.type === "VIDEO" || (p.views || 0) > 0) ? "VIDEO" : "IMAGE",
               timestamp: p.timestamp || "",
               views: p.views,
             })),
@@ -545,6 +595,15 @@ Return ONLY this JSON structure:
     const llmResult = await callLLM({ userId, endpoint: "competitors", prompt, systemPrompt });
     const data = extractJSON(llmResult.text) || { raw: llmResult.text };
 
+    // Validate LLM output quality
+    const { valid, warnings } = validateLLMOutput(data, "competitors");
+    if (!valid) console.warn("[competitors] LLM output quality warnings:", warnings);
+
+    // Data quality scoring
+    const totalPostsScraped = enhancedCompetitors.reduce((s, c) => s + c.allPosts.length, 0);
+    const dataQuality = totalPostsScraped >= 20 ? "high" : totalPostsScraped >= 5 ? "medium" : enhancedCompetitors.length > 0 ? "low" : "none";
+    const dataConfidence = totalPostsScraped >= 20 ? "High" : totalPostsScraped >= 5 ? "Medium" : "Low — analysis based on AI knowledge only";
+
     // Inject actual scraped stats into response for frontend display
     const scrapedStats = enhancedCompetitors.map(c => ({
       username: c.username,
@@ -564,6 +623,10 @@ Return ONLY this JSON structure:
       competitors: data,
       scrapedCount: enhancedCompetitors.length,
       scrapedStats,
+      dataQuality,
+      dataConfidence,
+      totalPostsScraped,
+      _warnings: valid ? [] : warnings,
       _meta: { provider: llmResult.provider, model: llmResult.model }
     });
   } catch (err: any) {
@@ -587,10 +650,12 @@ router.post("/trends", async (req: Request, res: Response) => {
           maxResults: 10,
         });
       } else {
-        const tag = (niche || "india").toLowerCase().replace(/\s/g, "");
-        trendData = await runApifyActor("apify/instagram-scraper", {
-          directUrls: [`https://www.instagram.com/explore/tags/${tag}/`],
-          resultsLimit: 15,
+        // FIX: use instagram-hashtag-scraper — /explore/tags/ is blocked since 2024
+        const tag = (niche || "india").toLowerCase().replace(/[^a-z0-9]/g, "");
+        trendData = await runApifyActor("zuzka/instagram-hashtag-scraper", {
+          hashtags: [tag, `${tag}india`, `${tag}creator`],
+          resultsLimit: 20,
+          scrapeComments: false,
         });
       }
     } catch (scrapeErr: any) {
@@ -685,21 +750,85 @@ router.post("/pipeline", async (req: Request, res: Response) => {
       { week: 3, theme: "Engagement - Community stories and behind-the-scenes",      formats: ["Reel","Post","Carousel"] },
       { week: 4, theme: "Authority - Results transformation and strong CTA",         formats: ["Reel","Carousel","Reel"] },
     ];
-    const makeScript = (format: string) => {
-      if (format === "Reel") return { scene1_hook: "[0:00-0:03] EXACT hook dialogue. Direct camera eye contact.", scene2_problem: "[0:03-0:15] EXACT problem dialogue relatable for " + effectiveNiche, scene3_solution: "[0:15-0:45] Step 1: REAL TIP. Step 2: REAL TIP. Step 3: REAL TIP.", scene4_cta: "[0:45-0:60] EXACT CTA - what to comment/save/follow.", voiceover_notes: "Tone/pace/setting/music direction.", text_overlays: ["KEY POINT at 0:05","KEY POINT at 0:20","Save this!"] };
-      if (format === "Carousel") return { slide1: "HOOK - Bold text for " + effectiveNiche, slide2: "POINT 1 - ACTUAL tip", slide3: "POINT 2 - ACTUAL tip", slide4: "POINT 3 - ACTUAL tip", slide5: "EXAMPLE - Real result or case study", slide6: "SUMMARY - 4 bullet recap", slide7: "CTA - Save! Comment: [QUESTION]", design_notes: "Colors/fonts/style direction" };
-      return { image_description: "EXACTLY what to shoot: outfit/background/props/lighting", text_on_image: "Text ON the image", positioning: "Camera angle/distance/pose", expression_direction: "Emotion to convey", content_type: "Portrait/Quote/Infographic/BTS" };
-    };
     const buildWeekPrompt = (wd: { week: number; theme: string; formats: string[] }) => {
-      const days = ["Mon","Wed","Fri"];
-      const posts = wd.formats.map((fmt, i) => ({ day: days[i], format: fmt, topic: `WRITE ACTUAL TOPIC for ${effectiveNiche} Week ${wd.week} ${days[i]}`, hook: "WRITE ACTUAL hook that stops scrolling", script: makeScript(fmt), caption: `WRITE FULL 100+ word caption in ${lang}: hook line, personal story, 3 value points, CTA question. Emojis. Indian ${effectiveNiche} audience.`, hashtags: ["#Niche1","#Niche2","#Niche3","#Topic4","#Topic5","#India6","#Creator7","#Trending8","#Community9","#Viral10","#Tips11","#Growth12","#${effectiveNiche.replace(/\s+/g,'')}13","#Indian14","#Reels15"], pin_comment: "WRITE ACTUAL pin comment - engagement question or resource offer" }));
-      return `You are an expert Indian content strategist. Week ${wd.week} theme: "${wd.theme}".
-CREATOR: ${userContext}
-${competitorInsights}
-NICHE: ${effectiveNiche} | LANGUAGE: ${lang}
+      const days = ["Monday","Wednesday","Friday"];
+      const isHindi2 = language === "hi";
+      return `You are a world-class Indian content strategist for the "${effectiveNiche}" niche.
 
-Return ONLY JSON - replace ALL placeholder text with REAL SPECIFIC content for ${effectiveNiche}:
-${JSON.stringify({ week: wd.week, theme: wd.theme, posts }, null, 2)}`;
+CREATOR INFO: ${userContext}
+${competitorInsights}
+WEEK ${wd.week} THEME: "${wd.theme}"
+LANGUAGE: ${lang}
+
+Generate 3 posts for this week. Output ONLY valid JSON (no explanation, no markdown).
+
+JSON structure (fill every field with REAL, SPECIFIC, PUBLICATION-READY content):
+{
+  "week": ${wd.week},
+  "theme": "${wd.theme}",
+  "posts": [
+    {
+      "day": "${days[0]}",
+      "format": "${wd.formats[0]}",
+      "topic": "[Write a specific, compelling content topic relevant to ${effectiveNiche}]",
+      "hook": "[Write the exact opening line — 1-2 sentences that stop scrolling, max 15 words]",
+      "caption": "[Write a full 120+ word ${lang} caption: opening hook, personal story, 3 value points, emotional close, CTA question, emojis. For Indian ${effectiveNiche} audience.]",
+      "hashtags": ["[15 specific hashtags for ${effectiveNiche} — mix viral, niche, community]"],
+      "pin_comment": "[Write an engagement-driving comment to pin (ask a question or offer a resource)]",
+      "script": {
+        "scene1_hook": "[0:00-0:03] Exact spoken words for the hook. Camera direction.",
+        "scene2_problem": "[0:03-0:15] Exact dialogue describing the pain point. Relatable scenario.",
+        "scene3_solution": "[0:15-0:45] 3 specific tips with exact dialogue for each tip.",
+        "scene4_cta": "[0:45-0:60] Exact CTA words — what to comment, save, or follow.",
+        "voiceover_notes": "Tone, pace, energy, background music style.",
+        "text_overlays": ["[Overlay 1 text + timing]", "[Overlay 2 text + timing]", "Save this!"]
+      }
+    },
+    {
+      "day": "${days[1]}",
+      "format": "${wd.formats[1]}",
+      "topic": "[Different specific topic for ${effectiveNiche}]",
+      "hook": "[Different hook — use a different emotion than the first post]",
+      "caption": "[Full ${lang} caption for this post — 120+ words]",
+      "hashtags": ["[15 hashtags — different mix from post 1]"],
+      "pin_comment": "[Different engagement comment]",
+      "script": {
+        "scene1_hook": "[Exact dialogue]",
+        "scene2_problem": "[Exact dialogue]",
+        "scene3_solution": "[3 real tips with exact words]",
+        "scene4_cta": "[Exact CTA]",
+        "voiceover_notes": "[Direction]",
+        "text_overlays": ["[Overlay 1]", "[Overlay 2]", "[Overlay 3]"]
+      }
+    },
+    {
+      "day": "${days[2]}",
+      "format": "${wd.formats[2]}",
+      "topic": "[Third unique topic]",
+      "hook": "[Third hook]",
+      "caption": "[Full caption]",
+      "hashtags": ["[15 hashtags]"],
+      "pin_comment": "[Engagement comment]",
+      "script": {
+        "scene1_hook": "[Exact dialogue]",
+        "scene2_problem": "[Exact dialogue]",
+        "scene3_solution": "[3 real tips]",
+        "scene4_cta": "[Exact CTA]",
+        "voiceover_notes": "[Direction]",
+        "text_overlays": ["[Overlay 1]", "[Overlay 2]", "[Overlay 3]"]
+      }
+    }
+  ]
+}
+
+CRITICAL RULES:
+- Replace EVERY field in brackets [] with real, specific, publication-ready content for ${effectiveNiche}.
+- Do NOT leave any placeholder text. Every word must be usable as-is.
+- Captions must be ${lang}, 120+ words, emotionally engaging.
+- Scripts must be realistic spoken words a real creator would say.
+- Topics must be DIFFERENT from each other (no repetition).
+- Hashtags must be real Instagram hashtags relevant to ${effectiveNiche} in India.
+`;
     };
     console.log(`[pipeline] Generating 4 weeks in parallel for: ${effectiveNiche}`);
     const weekResults = await Promise.allSettled(

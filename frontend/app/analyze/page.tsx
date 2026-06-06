@@ -27,12 +27,14 @@ const PLATFORM_PATTERNS = {
   instagram: /instagram\.com\//i,
   youtube: /youtube\.com\/|youtu\.be\//i,
   facebook: /facebook\.com\//i,
+  linkedin: /linkedin\.com\//i,
 };
 
 function detectPlatform(url: string) {
   if (PLATFORM_PATTERNS.instagram.test(url)) return "instagram";
   if (PLATFORM_PATTERNS.youtube.test(url)) return "youtube";
   if (PLATFORM_PATTERNS.facebook.test(url)) return "facebook";
+  if (PLATFORM_PATTERNS.linkedin.test(url)) return "linkedin";
   return null;
 }
 
@@ -43,6 +45,7 @@ function buildProfileUrl(platform: string, username: string): string {
     case "instagram": return `https://www.instagram.com/${handle}/`;
     case "youtube":   return `https://www.youtube.com/@${handle}`;
     case "facebook":  return `https://www.facebook.com/${handle}`;
+    case "linkedin":  return `https://www.linkedin.com/in/${handle}/`;
     default:          return "";
   }
 }
@@ -132,12 +135,12 @@ export default function AnalyzePage() {
 
   const validateStep1 = () => {
     if (!profileUrl.trim()) { setUrlError("Profile URL daalna zaroori hai"); return false; }
-    if (!platformDetected) { setUrlError("Valid Instagram, YouTube ya Facebook URL daalo"); return false; }
+    if (!platformDetected) { setUrlError("Valid Instagram, YouTube, Facebook ya LinkedIn URL daalo"); return false; }
     return true;
   };
 
   const addCompetitor = () => {
-    if (competitorUrls.length < 3) setCompetitorUrls([...competitorUrls, ""]);
+    if (competitorUrls.length < 5) setCompetitorUrls([...competitorUrls, ""]);
   };
   const updateCompetitor = (i: number, val: string) => {
     const updated = [...competitorUrls]; updated[i] = val; setCompetitorUrls(updated);
@@ -253,6 +256,32 @@ export default function AnalyzePage() {
       // Also save a copy with the full id for compatibility
       localStorage.setItem(`analysis_${storageKey}`, JSON.stringify({ ...fullAnalysis, id: `analysis_${storageKey}` }));
       setAnalysisId(storageKey);
+
+      // Also persist to Supabase (cross-device, permanent storage)
+      try {
+        const backendUrl2 = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
+        await fetch(`${backendUrl2}/api/analyze/save`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            profileUrl,
+            platform: platformDetected,
+            niche: detectedNiche || niche,
+            auditData: (auditRes as any)?.resultData || null,
+            competitorsData: (compRes as any)?.resultData || null,
+            trendsData: (trendsRes as any)?.resultData || null,
+            pipelineData: (pipeRes as any)?.resultData || null,
+          }),
+        });
+        console.log("[analyze] Saved to Supabase successfully");
+      } catch (saveErr) {
+        console.warn("[analyze] Supabase save skipped:", saveErr);
+        // Not fatal — localStorage copy still works
+      }
+
     } catch {
       setRunning(false);
     }

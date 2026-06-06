@@ -52,12 +52,10 @@ export default function ResultsPage() {
     const id = params?.id as string;
     if (!id) { setLoading(false); return; }
 
-    // Try multiple key patterns to handle old/new format:
-    // params.id = 'analysis_1780...' (from URL /results/analysis_1780...)
-    // We save as: key='analysis_1780...' (new) or 'analysis_analysis_1780...' (compat copy)
+    // Try multiple key patterns to handle old/new format
     const keysToTry = [
-      `analysis_${id}`,    // if id = 'analysis_1780' → 'analysis_analysis_1780' (old compat)
-      id,                   // if id = 'analysis_1780' → 'analysis_1780' (new format)
+      `analysis_${id}`,
+      id,
       `analysis_meta_${id}`,
     ];
 
@@ -72,7 +70,46 @@ export default function ResultsPage() {
       }
     }
 
-    setLoading(false);
+    // Fallback: try Supabase (for cross-device / shared links)
+    import("@supabase/supabase-js").then(({ createClient }) => {
+      const sb = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      sb.auth.getSession().then(async ({ data: { session } }) => {
+        if (!session) { setLoading(false); return; }
+        // Try to load by result_data->>id field or by record id
+        const { data: rows } = await sb
+          .from("analysis_results")
+          .select("id, result_data, profile_url, platform, niche, created_at")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (rows) {
+          // Match by localStorage id pattern (timestamp)
+          const match = rows.find((r: any) =>
+            r.result_data?.id === id ||
+            r.result_data?.id === `analysis_${id}` ||
+            r.id === id
+          );
+          if (match) {
+            const record = {
+              id,
+              profileUrl: match.profile_url,
+              platform: match.platform,
+              niche: match.niche,
+              createdAt: match.created_at,
+              ...(match.result_data || {}),
+            };
+            // Cache back to localStorage
+            localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
+            setData(record);
+          }
+        }
+        setLoading(false);
+      });
+    }).catch(() => setLoading(false));
   }, [params?.id]);
 
   const copyAll = () => {
@@ -909,27 +946,32 @@ function buildPlainText(data: any): string {
   return text;
 }
 
-// HookScriptCard and CompetitorsTab components appended
 function HookScriptCard({ hook }: { hook: any }) {
   const [open, setOpen] = useState(false);
   const rs = hook.reelScript;
+  // BUG-FIX: support BOTH key formats (old: scene1, new: scene1_hook)
+  const s1 = rs?.scene1_hook || rs?.scene1;
+  const s2 = rs?.scene2_problem || rs?.scene2;
+  const s3 = rs?.scene3_solution || rs?.scene3;
+  const s4 = rs?.scene4_cta || rs?.scene4;
+  const editing = rs?.editingNotes || rs?.voiceover_notes || rs?.editing_notes;
   return (
     <div className="rounded-xl border border-border overflow-hidden">
       <div className="p-3 bg-muted/40 cursor-pointer hover:bg-muted/60 transition" onClick={() => setOpen(!open)}>
-        <div className="flex items-center justify-between"><span className="text-xs font-bold text-amber-500">{hook.emotion} trigger</span><span className="text-[10px] text-muted-foreground">{open ? "collapse" : "Full script dekho"}</span></div>
+        <div className="flex items-center justify-between"><span className="text-xs font-bold text-amber-500">{hook.emotion} trigger</span><span className="text-[10px] text-muted-foreground">{open ? "collapse ▲" : "Full script dekho ▼"}</span></div>
         <p className="text-sm font-semibold mt-1">{hook.formula}</p>
         <p className="text-xs text-muted-foreground italic mt-0.5">"{hook.example}"</p>
       </div>
       {open && (
         <div className="p-4 border-t border-border space-y-2 bg-card">
-          {rs ? (<>
+          {(s1 || s2 || s3 || s4) ? (<>
             <p className="text-xs font-bold text-red-400 mb-2">60-Second Reel Script</p>
-            {rs.scene1 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-red-400">HOOK (0-3s)</p><p className="text-xs">{rs.scene1}</p></div>}
-            {rs.scene2 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-amber-400">PROBLEM (3-15s)</p><p className="text-xs">{rs.scene2}</p></div>}
-            {rs.scene3 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-green-400">SOLUTION (15-45s)</p><p className="text-xs">{rs.scene3}</p></div>}
-            {rs.scene4 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-blue-400">CTA (45-60s)</p><p className="text-xs">{rs.scene4}</p></div>}
-            {rs.editingNotes && <div className="p-2 rounded-lg bg-purple-500/5 border border-purple-500/20"><p className="text-[10px] font-bold text-purple-400 mb-1">EDITING NOTES</p><p className="text-xs text-muted-foreground">{rs.editingNotes}</p></div>}
-          </>) : <p className="text-xs text-muted-foreground">Re-run analysis for full scripts.</p>}
+            {s1 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-red-400">HOOK (0-3s)</p><p className="text-xs">{s1}</p></div>}
+            {s2 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-amber-400">PROBLEM (3-15s)</p><p className="text-xs">{s2}</p></div>}
+            {s3 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-green-400">SOLUTION (15-45s)</p><p className="text-xs">{s3}</p></div>}
+            {s4 && <div className="p-2 rounded-lg bg-muted/50"><p className="text-[10px] font-bold mb-1 text-blue-400">CTA (45-60s)</p><p className="text-xs">{s4}</p></div>}
+            {editing && <div className="p-2 rounded-lg bg-purple-500/5 border border-purple-500/20"><p className="text-[10px] font-bold text-purple-400 mb-1">EDITING NOTES</p><p className="text-xs text-muted-foreground">{editing}</p></div>}
+          </>) : <p className="text-xs text-muted-foreground">Script data not available — re-run analysis for full scripts.</p>}
         </div>
       )}
     </div>
@@ -938,17 +980,41 @@ function HookScriptCard({ hook }: { hook: any }) {
 
 function CompetitorsTab({ competitors }: { competitors: any }) {
   try {
+    // Data confidence badge
+    const confidence = (competitors as any)._dataConfidence ||
+      (competitors as any).dataConfidence ||
+      (competitors as any)._confidence;
+    const dataQuality = (competitors as any)._dataQuality ||
+      (competitors as any).dataQuality;
+
     return (<>
+      {/* Data confidence banner */}
+      {confidence && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs mb-2 ${
+          dataQuality === "high" ? "bg-green-500/10 border border-green-500/20 text-green-400" :
+          dataQuality === "medium" ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" :
+          "bg-red-500/10 border border-red-500/20 text-red-400"
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${
+            dataQuality === "high" ? "bg-green-400" :
+            dataQuality === "medium" ? "bg-amber-400" : "bg-red-400"
+          }`} />
+          <span className="font-bold">Data Confidence: {confidence}</span>
+          {(competitors as any).totalPostsScraped != null && (
+            <span className="text-muted-foreground ml-1">· {(competitors as any).totalPostsScraped} posts scraped</span>
+          )}
+        </div>
+      )}
       {competitors.detectedNiche && <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-400/30 bg-amber-400/5 text-sm"><span className="text-xs font-bold text-amber-500">AI DETECTED NICHE:</span><span className="font-semibold">{competitors.detectedNiche}</span></div>}
       {competitors.audienceIntelligence && <div className="p-5 rounded-2xl border border-blue-400/20 bg-blue-400/5"><p className="text-sm font-bold text-blue-400 mb-3">Audience Intelligence</p><div className="grid sm:grid-cols-2 gap-3">{competitors.audienceIntelligence.primaryAudience && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Primary Audience</p><p className="text-sm">{competitors.audienceIntelligence.primaryAudience}</p></div>}{competitors.audienceIntelligence.audienceIntent && <div className="p-3 rounded-xl bg-card border border-border"><p className="text-xs text-muted-foreground mb-1">Audience Intent</p><p className="text-sm">{competitors.audienceIntelligence.audienceIntent}</p></div>}</div></div>}
-      {(competitors.competitors||[]).map((comp: any, i: number) => <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i+1}</div><div><p className="font-semibold">{comp.username}</p><p className="text-xs text-muted-foreground">{comp.realFollowers} followers</p></div></div>{comp.viralityScore && <div className="text-center"><p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p><p className="text-[10px] text-muted-foreground">Virality</p></div>}</div>{comp.bio && <div className="p-3 rounded-xl bg-muted/40"><p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p><p className="text-xs italic">"{comp.bio}"</p></div>}{(comp.viralTopics||[]).length > 0 && <div><p className="text-xs font-bold text-red-500 mb-1">VIRAL TOPICS</p><div className="flex flex-wrap gap-1.5">{comp.viralTopics.map((t: string, ti: number) => <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400">{t}</span>)}</div></div>}{comp.viralHook && <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20"><p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK</p><p className="text-sm italic">"{comp.viralHook}"</p></div>}{(comp.topHashtags||[]).length > 0 && <div className="flex flex-wrap gap-1">{comp.topHashtags.map((tag: string) => <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>)}</div>}</div>)}
+      {(competitors.competitors||[]).map((comp: any, i: number) => <div key={i} className="p-5 rounded-2xl border border-border bg-card space-y-3"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center font-bold text-amber-500">{i+1}</div><div><p className="font-semibold">{comp.username}</p><p className="text-xs text-muted-foreground">{comp.realFollowers || comp.estimatedFollowers} followers</p></div></div>{comp.viralityScore && <div className="text-center"><p className="text-2xl font-heading font-extrabold text-amber-500">{comp.viralityScore}</p><p className="text-[10px] text-muted-foreground">Virality</p></div>}</div>{comp.bio && <div className="p-3 rounded-xl bg-muted/40"><p className="text-[10px] font-bold text-muted-foreground mb-1">THEIR BIO</p><p className="text-xs italic">"{comp.bio}"</p></div>}{(comp.viralTopics||[]).length > 0 && <div><p className="text-xs font-bold text-red-500 mb-1">VIRAL TOPICS</p><div className="flex flex-wrap gap-1.5">{comp.viralTopics.map((t: string, ti: number) => <span key={ti} className="text-xs px-2 py-1 rounded-lg bg-red-500/10 text-red-400">{t}</span>)}</div></div>}{comp.viralHook && <div className="p-3 rounded-xl bg-amber-400/5 border border-amber-400/20"><p className="text-xs font-bold text-amber-500 mb-1">VIRAL HOOK</p><p className="text-sm italic">"{comp.viralHook}"</p></div>}{(comp.topHashtags||[]).length > 0 && <div className="flex flex-wrap gap-1">{comp.topHashtags.map((tag: string) => <span key={tag} className="px-2 py-0.5 rounded-full bg-muted text-xs">{tag}</span>)}</div>}</div>)}
       {competitors.bioOptimization && <div className="p-5 rounded-2xl border border-green-400/20 bg-green-400/5"><p className="text-sm font-bold text-green-500 mb-3">Bio Optimization</p>{competitors.bioOptimization.userCurrentBio && <div className="mb-3 p-3 rounded-xl bg-card border border-border"><p className="text-[10px] font-bold text-muted-foreground mb-1">CURRENT BIO</p><p className="text-xs">{competitors.bioOptimization.userCurrentBio}</p></div>}{competitors.bioOptimization.suggestedBio && <div className="p-3 rounded-xl bg-green-500/10 border border-green-500/30"><p className="text-[10px] font-bold text-green-500 mb-1">SUGGESTED BIO</p><p className="text-sm font-medium">{competitors.bioOptimization.suggestedBio}</p></div>}</div>}
       {(competitors.hookFormulas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hook Formulas</p><div className="space-y-3">{competitors.hookFormulas.map((h: any, i: number) => <div key={i} className="p-3 rounded-xl bg-muted/40"><div className="flex justify-between mb-1"><span className="text-xs font-bold text-amber-500">{h.emotionalTrigger}</span><span className="text-[10px] text-muted-foreground">{h.confidence}</span></div><p className="text-sm font-medium">{h.formula}</p><p className="text-xs italic mt-1">"{h.example}"</p></div>)}</div></div>}
       {(competitors.contentGaps||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Content Gaps</p><div className="space-y-3">{competitors.contentGaps.map((g: any, i: number) => <div key={i} className="p-3 rounded-xl border border-border"><div className="flex justify-between mb-1"><p className="text-sm font-medium">{g.gap}</p><span className="text-xs text-green-500">{g.viralPotential}</span></div><p className="text-xs text-amber-500 mt-1">{g.suggestedTopic}</p></div>)}</div></div>}
       {(competitors.viralContentIdeas||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Viral Content Ideas</p><div className="space-y-3">{competitors.viralContentIdeas.map((idea: any, i: number) => <div key={i} className="p-4 rounded-xl border border-border"><p className="text-sm font-bold mb-1">{idea.title}</p><p className="text-xs text-amber-500 italic">"{idea.hook}"</p><p className="text-xs text-green-500 mt-1">{idea.whyItWorks}</p></div>)}</div></div>}
       {competitors.hashtagClusters && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-4">Hashtag Clusters</p><div className="space-y-3">{Object.entries(competitors.hashtagClusters).map(([cl, tags]: [string, any]) => <div key={cl}><p className="text-xs font-bold text-muted-foreground capitalize mb-1.5">{cl}</p><div className="flex flex-wrap gap-1.5">{(Array.isArray(tags)?tags:[]).map((tag: string) => <span key={tag} className="px-2 py-1 rounded-full bg-muted text-xs hover:bg-amber-400/10 hover:text-amber-500 transition cursor-pointer">{tag}</span>)}</div></div>)}</div></div>}
       {competitors.userVsCompetitor && <div className="space-y-3"><div className="grid sm:grid-cols-2 gap-3"><div className="p-4 rounded-xl border border-green-400/20 bg-green-400/5"><p className="text-xs font-bold text-green-500 mb-2">YOUR STRENGTH</p><p className="text-sm">{competitors.userVsCompetitor.userStrength}</p></div><div className="p-4 rounded-xl border border-red-400/20 bg-red-400/5"><p className="text-xs font-bold text-red-500 mb-2">THEIR ADVANTAGE</p><p className="text-sm">{competitors.userVsCompetitor.userWeakness}</p></div></div>{competitors.userVsCompetitor.quickWin && <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5"><p className="text-xs font-bold text-amber-500 mb-2">QUICK WIN</p><p className="text-sm font-medium">{competitors.userVsCompetitor.quickWin}</p></div>}</div>}
-      {(competitors.keyInsights||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Key Insights</p><div className="space-y-2">{competitors.keyInsights.map((insight: string, i: number) => <div key={i} className="flex items-start gap-2 text-sm"><span className="text-amber-500">*</span><span>{insight}</span></div>)}</div></div>}
+      {(competitors.keyInsights||[]).length > 0 && <div className="p-5 rounded-2xl border border-border bg-card"><p className="text-sm font-bold mb-3">Key Insights</p><div className="space-y-2">{competitors.keyInsights.map((insight: string, i: number) => <div key={i} className="flex items-start gap-2 text-sm"><span className="text-amber-500">★</span><span>{insight}</span></div>)}</div></div>}
     </>);
   } catch {
     return <div className="p-6 rounded-2xl border border-red-400/20 bg-red-400/5 text-center"><p className="text-sm font-bold text-red-500 mb-2">Display Error</p><p className="text-xs text-muted-foreground">Competitor data mismatch. Please re-run the analysis.</p></div>;
