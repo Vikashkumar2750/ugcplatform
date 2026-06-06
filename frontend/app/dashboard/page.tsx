@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import {
   Zap, ArrowRight, BarChart3, FileText, Clock,
-  AlertCircle, ChevronRight, TrendingUp, Plus, Activity, Instagram, Youtube
+  AlertCircle, ChevronRight, TrendingUp, Plus, Activity
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
