@@ -52,7 +52,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
   // ── Ollama LOCAL (highest priority — free, no API key needed) ─────────────
   const ollamaUrl = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").trim();
-  const ollamaModel = (process.env.OLLAMA_MODEL || "llama3.2:3b").trim();
+  const ollamaModel = (process.env.OLLAMA_MODEL || "llama3.1:8b").trim();
   // Always try Ollama first in local dev (NODE_ENV !== production)
   if (process.env.NODE_ENV !== "production" || process.env.OLLAMA_BASE_URL) {
     attempts.push(() => callOllama(ollamaUrl, ollamaModel, prompt, systemPrompt));
@@ -350,31 +350,59 @@ async function callOllama(
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: prompt });
 
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, stream: false }),
-    signal: AbortSignal.timeout(120000), // 2 min timeout for local models
-  });
+  // Try the configured model first, then fall back to 3b if not found
+  const modelsToTry = model === "llama3.2:3b" ? [model] : [model, "llama3.2:3b"];
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Ollama error ${res.status}: ${err.substring(0, 100)}`);
+  for (const tryModel of modelsToTry) {
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: tryModel,
+        messages,
+        stream: false,
+        options: { num_predict: 4096 },   // Max tokens
+      }),
+      signal: AbortSignal.timeout(300000), // 5 min — local models can be slow
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      const msg = `Ollama error ${res.status}: ${err.substring(0, 200)}`;
+      // 404 = model not installed, try next fallback
+      if (res.status === 404 && tryModel !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(`[LLM] Ollama model ${tryModel} not found, trying next...`);
+        continue;
+      }
+      throw new Error(msg);
+    }
+
+    const data = await res.json();
+    // Ollama sometimes returns 200 with error in body (e.g. empty output)
+    if (data.error) {
+      const errMsg = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
+      // "model output must contain..." = empty generation, try next model
+      if (errMsg.includes("model output must contain") && tryModel !== modelsToTry[modelsToTry.length - 1]) {
+        console.warn(`[LLM] Ollama ${tryModel} empty output, trying next model...`);
+        continue;
+      }
+      throw new Error(`Ollama error: ${errMsg.substring(0, 150)}`);
+    }
+
+    const text = data.choices?.[0]?.message?.content || "";
+    if (!text) throw new Error(`Ollama returned empty response for model: ${tryModel}`);
+
+    const usage = data.usage || {};
+    console.log(`[LLM] Ollama success: ${tryModel} @ ${baseUrl}`);
+    return {
+      text,
+      provider: "ollama",
+      model: tryModel,
+      tokensInput: usage.prompt_tokens || 0,
+      tokensOutput: usage.completion_tokens || 0,
+    };
   }
-
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content || "";
-  if (!text) throw new Error(`Ollama returned empty response for model: ${model}`);
-
-  const usage = data.usage || {};
-  console.log(`[LLM] Ollama success: ${model} @ ${baseUrl}`);
-  return {
-    text,
-    provider: "ollama",
-    model,
-    tokensInput: usage.prompt_tokens || 0,
-    tokensOutput: usage.completion_tokens || 0,
-  };
+  throw new Error("Ollama: all models unavailable");
 }
 
 const BEDROCK_MODELS = [

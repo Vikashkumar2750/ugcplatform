@@ -46,6 +46,229 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
+// ─── API Docs (dev reference) ─────────────────
+app.get("/docs", (_req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContentEngineer API Docs</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f0f0f;color:#e2e8f0;min-height:100vh;padding:32px 16px}
+  .container{max-width:900px;margin:0 auto}
+  h1{font-size:28px;font-weight:700;color:#f59e0b;margin-bottom:4px}
+  .subtitle{color:#94a3b8;font-size:14px;margin-bottom:32px}
+  .section{margin-bottom:32px}
+  .section-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e293b}
+  .route{background:#161b27;border:1px solid #1e293b;border-radius:10px;margin-bottom:10px;overflow:hidden}
+  .route-header{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+  .method{font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px;min-width:52px;text-align:center}
+  .get{background:#064e3b;color:#34d399}.post{background:#1e3a5f;color:#60a5fa}
+  .delete{background:#450a0a;color:#f87171}.patch{background:#3b1f64;color:#c084fc}
+  .path{font-family:'Courier New',monospace;font-size:14px;color:#e2e8f0}
+  .desc{margin-left:auto;font-size:12px;color:#64748b;text-align:right}
+  .auth-badge{font-size:10px;background:#292524;color:#a3a3a3;padding:2px 7px;border-radius:99px;margin-left:8px;white-space:nowrap}
+  .auth-badge.bearer{background:#1c1917;color:#f59e0b}
+  .body-example{background:#0a0a0a;border-top:1px solid #1e293b;padding:12px 16px;font-family:'Courier New',monospace;font-size:12px;color:#86efac;white-space:pre}
+  .tag{display:inline-block;font-size:10px;background:#1e293b;color:#94a3b8;padding:2px 7px;border-radius:4px;margin-right:4px}
+  .env-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .env-item{background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:10px 14px}
+  .env-key{font-family:monospace;font-size:12px;color:#f59e0b;margin-bottom:2px}
+  .env-val{font-size:11px;color:#64748b}
+  .status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+  .ok{background:#22c55e}.warn{background:#f59e0b}.err{background:#ef4444}
+  @media(max-width:600px){.desc{display:none}.env-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚡ ContentEngineer API</h1>
+  <p class="subtitle">Backend v2.0 · Port ${PORT} · <span class="status ok"></span>Running · ${new Date().toLocaleString("en-IN", {timeZone:"Asia/Kolkata"})}</p>
+
+  <div class="section">
+    <div class="section-title">🔐 Authentication</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/health</span>
+        <span class="auth-badge">No auth</span>
+        <span class="desc">Health check</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🔑 API Keys — /api/keys</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/keys</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">List saved providers</span>
+      </div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/keys</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Save/update key</span>
+      </div>
+      <div class="body-example">{ "provider": "gemini", "key": "AIza...", "label": "My Gemini Key" }</div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/keys/:provider/test</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Test saved key</span>
+      </div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method delete">DEL</span>
+        <span class="path">/api/keys/:provider</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Delete key</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🤖 Analysis — /api/analyze</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/analyze/audit</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Profile audit</span>
+      </div>
+      <div class="body-example">{ "profileUrl": "@virat.kohli", "platform": "instagram", "niche": "Sports", "language": "hi" }</div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/analyze/competitors</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Competitor analysis</span>
+      </div>
+      <div class="body-example">{ "profileUrl": "@virat.kohli", "platform": "instagram", "niche": "Sports", "competitors": ["@rohitsharma45"] }</div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/analyze/hashtags</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Hashtag research</span>
+      </div>
+      <div class="body-example">{ "niche": "Fitness", "platform": "instagram", "language": "hi" }</div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/analyze/ideas</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Content ideas</span>
+      </div>
+      <div class="body-example">{ "niche": "Tech", "platform": "instagram", "language": "hi" }</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💡 Insights — /api/insights</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/insights</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Get saved analysis results</span>
+      </div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/insights/:id</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Single result by ID</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">💰 Credits — /api/credits</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/credits</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Get credit balance</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🤖 Automation — /api/automation</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method get">GET</span>
+        <span class="path">/api/automation/dms</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">List DM automations</span>
+      </div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/api/automation/dms</span>
+        <span class="auth-badge bearer">Bearer JWT</span>
+        <span class="desc">Create DM automation</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🔧 Internal Triggers (Worker Secret)</div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/trigger/publish</span>
+        <span class="auth-badge">x-worker-secret</span>
+        <span class="desc">Publish scheduled posts</span>
+      </div>
+    </div>
+    <div class="route">
+      <div class="route-header">
+        <span class="method post">POST</span>
+        <span class="path">/trigger/refresh-tokens</span>
+        <span class="auth-badge">x-worker-secret</span>
+        <span class="desc">Refresh OAuth tokens</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🌐 Environment Status</div>
+    <div class="env-grid">
+      <div class="env-item"><div class="env-key">GEMINI_API_KEY</div><div class="env-val">${process.env.GEMINI_API_KEY ? "✅ Set (" + process.env.GEMINI_API_KEY.substring(0,8) + "...)" : "❌ Not set"}</div></div>
+      <div class="env-item"><div class="env-key">ANTHROPIC_API_KEY</div><div class="env-val">${process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== "your-anthropic-api-key" ? "✅ Set" : "❌ Not set"}</div></div>
+      <div class="env-item"><div class="env-key">AWS_ACCESS_KEY_ID</div><div class="env-val">${process.env.AWS_ACCESS_KEY_ID ? "✅ Set (" + process.env.AWS_ACCESS_KEY_ID.substring(0,8) + "...)" : "⚠️ Not set (using bearer token)"}</div></div>
+      <div class="env-item"><div class="env-key">AWS_BEARER_TOKEN_BEDROCK</div><div class="env-val">${process.env.AWS_BEARER_TOKEN_BEDROCK ? "✅ Set" : "❌ Not set"}</div></div>
+      <div class="env-item"><div class="env-key">OLLAMA_MODEL</div><div class="env-val">${process.env.OLLAMA_MODEL || "llama3.1:8b (default)"} @ ${process.env.OLLAMA_BASE_URL || "localhost:11434"}</div></div>
+      <div class="env-item"><div class="env-key">APIFY_TOKEN</div><div class="env-val">${process.env.APIFY_TOKEN ? "✅ Set" : "❌ Not set"}</div></div>
+      <div class="env-item"><div class="env-key">SUPABASE</div><div class="env-val">${process.env.SUPABASE_URL ? "✅ Connected" : "❌ Not set"}</div></div>
+      <div class="env-item"><div class="env-key">NODE_ENV</div><div class="env-val">${process.env.NODE_ENV || "development"}</div></div>
+    </div>
+  </div>
+
+  <p style="color:#334155;font-size:12px;text-align:center;margin-top:32px">ContentEngineer Backend · Add <code style="color:#475569">Authorization: Bearer &lt;supabase_jwt&gt;</code> to all protected routes</p>
+</div>
+</body>
+</html>`);
+});
+
 // ─── API Routes ───────────────────────────────
 app.use("/api/keys", keysRouter);
 app.use("/api/credits", creditsRouter);
