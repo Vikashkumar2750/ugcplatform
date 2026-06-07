@@ -1,3 +1,4 @@
+import "dotenv/config";  // load .env file for local dev (no-op in production)
 import express from "express";
 import cron from "node-cron";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";

@@ -341,7 +341,7 @@ async function callBedrockModel(
 ): Promise<LLMResponse> {
   // Trim to remove accidental trailing whitespace from Render env vars
   const region = (process.env.AWS_REGION || "us-east-1").trim();
-  const bearerToken = token.trim();
+  const cleanToken = bearerToken.trim();
 
   const body: any = {
     anthropic_version: "bedrock-2023-05-31",
@@ -367,7 +367,7 @@ async function callBedrockModel(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${bearerToken}`,
+        Authorization: `Bearer ${cleanToken}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
