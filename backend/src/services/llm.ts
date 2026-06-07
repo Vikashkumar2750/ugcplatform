@@ -500,7 +500,12 @@ async function callBedrock(
         err.message?.includes("Access denied") ||
         err.message?.includes("404") ||
         err.message?.includes("throttl") ||
-        err.message?.includes("quota");
+        err.message?.includes("quota") ||
+        err.message?.includes("quarantine") ||
+        err.message?.includes("QuarantineV3") ||
+        err.message?.includes("model output must contain") ||  // Nova empty response
+        err.message?.includes("explicit deny") ||              // IAM deny
+        err.message?.includes("403");                          // Any 403 = try next
 
       if (isSkippable) {
         console.warn(`[LLM] Bedrock ${model} skipped: ${err.message?.slice(0, 80)}`);
