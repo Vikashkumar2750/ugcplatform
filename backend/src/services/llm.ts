@@ -406,11 +406,11 @@ async function callOllama(
 }
 
 const BEDROCK_MODELS = [
-  "amazon.nova-lite-v1:0",              // Amazon Nova Lite — base model ID
-  "amazon.nova-micro-v1:0",             // Amazon Nova Micro — smallest
-  "anthropic.claude-3-haiku-20240307-v1:0",       // Claude 3 Haiku — widely available
+  "amazon.nova-micro-v1:0",             // Amazon Nova Micro — fastest, cheapest
+  "amazon.nova-lite-v1:0",              // Amazon Nova Lite — balanced
+  "anthropic.claude-3-haiku-20240307-v1:0",       // Claude 3 Haiku — if enabled
   "anthropic.claude-3-5-haiku-20241022-v1:0",      // Claude 3.5 Haiku — newer
-  "amazon.titan-text-lite-v1",          // Amazon Titan — last resort
+  // amazon.titan-text-lite-v1 — EOL, removed
 ];
 
 async function callBedrockModel(
