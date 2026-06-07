@@ -215,15 +215,17 @@ Return JSON:
     const llmResult = await callLLM({ userId, endpoint: "audit", prompt, systemPrompt });
     const auditData = extractJSON(llmResult.text) || { raw: llmResult.text };
 
-    // Save to analysis_results table
+    // Save to analysis_results table — actual columns: id, user_id, platform, result, created_at
     const { data: saved } = await supabase.from("analysis_results").insert({
       user_id: userId,
-      profile_url: profileUrl,
       platform,
-      niche: niche || null,
-      result_type: "audit",
-      result_data: auditData,
-      data_source: source,
+      result: {
+        type: "audit",
+        profileUrl,
+        niche: niche || null,
+        dataSource: source,
+        audit: auditData,
+      },
     }).select("id").single();
 
     return res.json({
@@ -916,21 +918,21 @@ CRITICAL: Every word in "caption", "hook", "pin_comment", and "script" fields MU
 // Save full analysis result
 router.post("/save", async (req: Request, res: Response) => {
   const { userId } = req as AuthenticatedRequest;
-  const { profileUrl, platform, niche, auditData, competitorsData, trendsData, pipelineData, rawCompetitorsData } = req.body;
+  const { profileUrl, platform, niche, auditData, competitorsData, trendsData, pipelineData } = req.body;
 
   try {
+    // actual columns: id, user_id, platform, result, created_at
     const { data, error } = await supabase.from("analysis_results").insert({
       user_id: userId,
-      profile_url: profileUrl,
       platform,
-      niche: niche || null,
-      result_type: "full",
-      result_data: { 
-        audit: auditData, 
-        competitors: competitorsData, 
-        trends: trendsData, 
+      result: {
+        type: "full",
+        profileUrl,
+        niche: niche || null,
+        audit: auditData,
+        competitors: competitorsData,
+        trends: trendsData,
         pipeline: pipelineData,
-        rawCompetitorsData: rawCompetitorsData || null
       },
     }).select("id").single();
 

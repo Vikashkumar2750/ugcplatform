@@ -177,34 +177,36 @@ export default function ResultsPage() {
         const sb = createSupabaseClient();
         const { data: { session } } = await sb.auth.getSession();
         if (!session) { setLoading(false); return; }
+        // actual columns: id, user_id, platform, result, created_at
         const { data: rows } = await sb
           .from("analysis_results")
-          .select("id, result_data, profile_url, platform, niche, created_at")
+          .select("id, platform, result, created_at")
           .eq("user_id", session.user.id)
           .order("created_at", { ascending: false })
           .limit(20);
 
         if (rows) {
+          // result is a JSONB column containing { type, profileUrl, niche, audit, competitors, trends, pipeline }
           const match = rows.find((r: any) =>
-            r.result_data?.id === id ||
-            r.result_data?.id === `analysis_${id}` ||
+            r.result?.id === id ||
             r.id === id
           );
           if (match) {
+            const resultJson = match.result || {};
             const record: any = {
               id,
-              profileUrl: match.profile_url,
+              profileUrl: resultJson.profileUrl || "",
               platform: match.platform,
-              niche: match.niche,
+              niche: resultJson.niche,
               createdAt: match.created_at,
-              ...(match.result_data || {}),
+              audit: resultJson.audit || null,
+              competitors: resultJson.competitors || null,
+              trends: resultJson.trends || null,
+              pipeline: resultJson.pipeline || null,
             };
-            // Strip rawCompetitorsData from Supabase record too
+            // Strip rawCompetitorsData if present
             delete record.rawCompetitorsData;
-            if (record.competitors?.rawCompetitorsData) {
-              delete record.competitors.rawCompetitorsData;
-            }
-            // Cache to localStorage using the correct key (id, not analysis_${id})
+            // Cache to localStorage
             try {
               localStorage.setItem(id, JSON.stringify(record));
             } catch {}

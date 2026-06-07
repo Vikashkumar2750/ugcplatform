@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///D:/HGGH/ugc-platform/frontend/app/login/layout.tsx"],"sourcesContent":["import { Metadata } from \"next\";\n\nexport const metadata: Metadata = {\n  title: \"Login — Content Engineer\",\n  description: \"Sign in to Content Engineer — India's #1 AI content strategy platform\",\n};\n\nexport default function LoginLayout({ children }: { children: React.ReactNode }) {\n  return children;\n}\n"],"names":["metadata","title","description","LoginLayout","children"],"mappings":";;;;;;AAEO,MAAMA,WAAqB;IAChCC,OAAO;IACPC,aAAa;AACf;AAEe,SAASC,YAAY,EAAEC,QAAQ,EAAiC;IAC7E,OAAOA;AACT"}}]
+}

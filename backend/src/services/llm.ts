@@ -154,11 +154,10 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
 // Models tried in order — each has its own independent quota bucket
 const GEMINI_MODELS = [
-  "gemini-2.5-flash-preview-05-20",   // Latest — highest quota
-  "gemini-2.0-flash",                 // Stable fallback
-  "gemini-2.0-flash-lite",            // Lighter model
+  "gemini-2.0-flash",                 // Stable, good quota
+  "gemini-2.0-flash-lite",            // Lighter, more quota
+  "gemini-2.5-flash-preview-05-20",   // Latest but may hit quota
   "gemini-1.5-flash",                 // Older stable
-  "gemini-1.5-flash-8b",             // Smallest — usually has remaining quota
 ];
 
 async function callGeminiModel(
@@ -340,7 +339,9 @@ async function callBedrockModel(
   prompt: string,
   systemPrompt: string | undefined
 ): Promise<LLMResponse> {
-  const region = process.env.AWS_REGION || "us-east-1";
+  // Trim to remove accidental trailing whitespace from Render env vars
+  const region = (process.env.AWS_REGION || "us-east-1").trim();
+  const bearerToken = token.trim();
 
   const body: any = {
     anthropic_version: "bedrock-2023-05-31",
