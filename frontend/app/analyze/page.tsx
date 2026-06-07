@@ -322,7 +322,7 @@ export default function AnalyzePage() {
           </h1>
           {!allDone && (
             <p className="text-muted-foreground text-sm flex items-center justify-center gap-1.5">
-              <Clock className="w-4 h-4" /> ~90 seconds lagenge
+              <Clock className="w-4 h-4" /> ~3-5 minutes lagenge (Apify scraping + AI analysis)
             </p>
           )}
         </div>
