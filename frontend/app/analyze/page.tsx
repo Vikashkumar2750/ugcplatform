@@ -242,6 +242,9 @@ export default function AnalyzePage() {
       });
 
       // Build full analysis object and save to localStorage for results page
+      // NOTE: rawCompetitorsData is NOT stored here — it is large (2-5MB) and
+      // only needed during API calls (trends/pipeline prompts). Storing it in
+      // localStorage causes the 5MB quota to be exceeded → page crash on load.
       const timestamp = Date.now();
       const storageKey = `analysis_${timestamp}`;
       const fullAnalysis = {
@@ -252,16 +255,27 @@ export default function AnalyzePage() {
         language,
         createdAt: new Date().toISOString(),
         // BUG-FIX: Store full phase response objects to preserve all fields (scrapedStats, etc.)
+        // Strip rawCompetitorsData from the nested fullResponseData before saving (it's too large)
         audit: (auditRes as any)?.resultData || null,
-        competitors: (compRes as any)?.fullResponseData || (compRes as any)?.resultData || null,
+        competitors: (() => {
+          const full = (compRes as any)?.fullResponseData || (compRes as any)?.resultData || null;
+          if (!full) return null;
+          // Omit rawCompetitorsData from the stored object (large post array)
+          const { rawCompetitorsData: _omit, ...rest } = full;
+          return rest;
+        })(),
         trends: (trendsRes as any)?.resultData || null,
         pipeline: (pipeRes as any)?.resultData || null,
-        rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData || null,
+        // rawCompetitorsData intentionally EXCLUDED — too large for localStorage
         _meta: (auditRes as any)?.data?._meta || null,
       };
 
-      // BUG-FIX: Save with ONE key only (was saving double-prefixed key analysis_analysis_XXXX which was never read)
-      localStorage.setItem(storageKey, JSON.stringify(fullAnalysis));
+      // Safely write to localStorage — catch quota errors
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(fullAnalysis));
+      } catch (quotaErr) {
+        console.warn("[analyze] localStorage quota exceeded — results only available via Supabase", quotaErr);
+      }
       setAnalysisId(storageKey);
 
       // Also persist to Supabase (cross-device, permanent storage)
@@ -281,7 +295,7 @@ export default function AnalyzePage() {
             competitorsData: (compRes as any)?.resultData || null,
             trendsData: (trendsRes as any)?.resultData || null,
             pipelineData: (pipeRes as any)?.resultData || null,
-            rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData || null,
+            // rawCompetitorsData excluded — too large for DB storage
           }),
         });
         console.log("[analyze] Saved to Supabase successfully");
