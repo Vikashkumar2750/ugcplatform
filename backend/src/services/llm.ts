@@ -1,5 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { decrypt } from "./crypto";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,8 +50,15 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
   // 3. Build ordered list of (key, provider, source) to try
   const attempts: Array<() => Promise<LLMResponse>> = [];
 
-  // ── User's own keys (highest priority) ───────────────────────────────────
-  // If user prefers a provider, try that first
+  // ── Ollama LOCAL (highest priority — free, no API key needed) ─────────────
+  const ollamaUrl = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").trim();
+  const ollamaModel = (process.env.OLLAMA_MODEL || "llama3.2").trim();
+  // Always try Ollama first in local dev (NODE_ENV !== production)
+  if (process.env.NODE_ENV !== "production" || process.env.OLLAMA_BASE_URL) {
+    attempts.push(() => callOllama(ollamaUrl, ollamaModel, prompt, systemPrompt));
+  }
+
+  // ── User's own keys (next priority) ──────────────────────────────────────
   if (req.preferProvider === "anthropic" && userKeys.anthropic) {
     attempts.push(() => callAnthropic(userKeys.anthropic, prompt, systemPrompt, "user_own"));
   }
@@ -57,7 +66,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     attempts.push(() => callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own"));
   }
   if (req.preferProvider === "bedrock" && userKeys.bedrock) {
-    attempts.push(() => callBedrock(userKeys.bedrock, prompt, systemPrompt, "user_own"));
+    attempts.push(() => callBedrock(undefined, undefined, userKeys.bedrock, prompt, systemPrompt, "user_own"));
   }
   // User Gemini always available as user-key option
   if (userKeys.gemini) {
@@ -71,12 +80,12 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     attempts.push(() => callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own"));
   }
   if (userKeys.bedrock && req.preferProvider !== "bedrock") {
-    attempts.push(() => callBedrock(userKeys.bedrock, prompt, systemPrompt, "user_own"));
+    attempts.push(() => callBedrock(undefined, undefined, userKeys.bedrock, prompt, systemPrompt, "user_own"));
   }
 
   // ── Platform keys (if user has no working key / platform allowed) ─────────
   if (platformAllowed) {
-    // Gemini first — free tier, reliable, no auth issues
+    // Gemini first — free tier, reliable
     if (process.env.GEMINI_API_KEY) {
       attempts.push(() => callGemini(process.env.GEMINI_API_KEY!, prompt, systemPrompt, "platform"));
     }
@@ -84,9 +93,14 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     if (process.env.ANTHROPIC_API_KEY) {
       attempts.push(() => callAnthropic(process.env.ANTHROPIC_API_KEY!, prompt, systemPrompt, "platform"));
     }
-    // Bedrock last — requires AWS credentials configured on server
-    if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
-      attempts.push(() => callBedrock(process.env.AWS_BEARER_TOKEN_BEDROCK!, prompt, systemPrompt, "platform"));
+    // Bedrock via standard AWS access key + secret key (preferred) OR old bearer token
+    const awsKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
+    const awsSecret = process.env.AWS_SECRET_ACCESS_KEY?.trim();
+    const bedrockBearer = process.env.AWS_BEARER_TOKEN_BEDROCK?.trim();
+    if (awsKeyId && awsSecret) {
+      attempts.push(() => callBedrock(awsKeyId, awsSecret, undefined, prompt, systemPrompt, "platform"));
+    } else if (bedrockBearer) {
+      attempts.push(() => callBedrock(undefined, undefined, bedrockBearer, prompt, systemPrompt, "platform"));
     }
   }
 
@@ -325,7 +339,44 @@ async function callOpenAI(
   };
 }
 
-// Active Bedrock models — use BASE model IDs (no us. prefix = no cross-region IAM needed)
+// ─── Ollama (local) ───────────────────────────────────────────────────────────
+async function callOllama(
+  baseUrl: string,
+  model: string,
+  prompt: string,
+  systemPrompt: string | undefined
+): Promise<LLMResponse> {
+  const messages: any[] = [];
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: prompt });
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, messages, stream: false }),
+    signal: AbortSignal.timeout(120000), // 2 min timeout for local models
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ollama error ${res.status}: ${err.substring(0, 100)}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  if (!text) throw new Error(`Ollama returned empty response for model: ${model}`);
+
+  const usage = data.usage || {};
+  console.log(`[LLM] Ollama success: ${model} @ ${baseUrl}`);
+  return {
+    text,
+    provider: "ollama",
+    model,
+    tokensInput: usage.prompt_tokens || 0,
+    tokensOutput: usage.completion_tokens || 0,
+  };
+}
+
 const BEDROCK_MODELS = [
   "amazon.nova-lite-v1:0",              // Amazon Nova Lite — base model ID
   "amazon.nova-micro-v1:0",             // Amazon Nova Micro — smallest
@@ -335,72 +386,101 @@ const BEDROCK_MODELS = [
 ];
 
 async function callBedrockModel(
-  bearerToken: string,
+  accessKeyId: string | undefined,
+  secretAccessKey: string | undefined,
+  bearerToken: string | undefined,
   model: string,
   prompt: string,
   systemPrompt: string | undefined
 ): Promise<LLMResponse> {
-  // Trim to remove accidental trailing whitespace from Render env vars
   const region = (process.env.AWS_REGION || "us-east-1").trim();
-  const cleanToken = bearerToken.trim();
-
-  const body: any = {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 8192,   // Increased: competitor JSON can be large
-    messages: [{ role: "user", content: prompt }],
-  };
-
-  // Amazon Nova uses different body format
   const isNova = model.includes("nova");
-  const requestBody = isNova
-    ? {
+  const isTitan = model.includes("titan");
+
+  // ── Prefer AWS SDK (standard SigV4 with access key + secret) ─────────────
+  if (accessKeyId && secretAccessKey) {
+    const client = new BedrockRuntimeClient({
+      region,
+      credentials: { accessKeyId, secretAccessKey },
+    });
+
+    let requestBody: any;
+    if (isNova) {
+      requestBody = {
         messages: [{ role: "user", content: [{ text: prompt }] }],
-        inferenceConfig: { maxTokens: 8192 },  // Increased from 2048
+        inferenceConfig: { maxTokens: 8192 },
         ...(systemPrompt ? { system: [{ text: systemPrompt }] } : {}),
-      }
-    : {
-        ...body,
+      };
+    } else if (isTitan) {
+      requestBody = {
+        inputText: `${systemPrompt ? systemPrompt + "\n\n" : ""}${prompt}`,
+        textGenerationConfig: { maxTokenCount: 4096 },
+      };
+    } else {
+      // Claude format
+      requestBody = {
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 8192,
+        messages: [{ role: "user", content: prompt }],
         ...(systemPrompt ? { system: systemPrompt } : {}),
       };
+    }
+
+    const command = new InvokeModelCommand({
+      modelId: model,
+      body: JSON.stringify(requestBody),
+      contentType: "application/json",
+      accept: "application/json",
+    });
+
+    const response = await client.send(command);
+    const data = JSON.parse(new TextDecoder().decode(response.body));
+
+    const text = isNova
+      ? (data.output?.message?.content?.[0]?.text || "")
+      : isTitan
+      ? (data.results?.[0]?.outputText || "")
+      : (data.content?.[0]?.text || "");
+
+    const usage = data.usage || {};
+    return {
+      text, provider: "bedrock", model,
+      tokensInput: usage.inputTokens || usage.input_tokens || 0,
+      tokensOutput: usage.outputTokens || usage.output_tokens || 0,
+    };
+  }
+
+  // ── Fallback: old bearer token (HTTP Authorization header) ────────────────
+  if (!bearerToken) throw new Error("Bedrock: no credentials provided");
+  const cleanToken = bearerToken.trim();
+
+  const requestBody = isNova
+    ? { messages: [{ role: "user", content: [{ text: prompt }] }], inferenceConfig: { maxTokens: 8192 }, ...(systemPrompt ? { system: [{ text: systemPrompt }] } : {}) }
+    : { anthropic_version: "bedrock-2023-05-31", max_tokens: 8192, messages: [{ role: "user", content: prompt }], ...(systemPrompt ? { system: systemPrompt } : {}) };
 
   const res = await fetch(
     `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(model)}/invoke`,
     {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${cleanToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: { Authorization: `Bearer ${cleanToken}`, "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(requestBody),
     }
   );
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Bedrock error ${res.status}: ${errText}`);
-  }
-
+  if (!res.ok) { const errText = await res.text(); throw new Error(`Bedrock error ${res.status}: ${errText}`); }
   const data = await res.json();
-
-  // Nova response format differs from Claude
-  const text = isNova
-    ? (data.output?.message?.content?.[0]?.text || "")
-    : (data.content?.[0]?.text || "");
-
+  const text = isNova ? (data.output?.message?.content?.[0]?.text || "") : (data.content?.[0]?.text || "");
   const usage = data.usage || {};
-
   return {
-    text,
-    provider: "bedrock",
-    model,
+    text, provider: "bedrock", model,
     tokensInput: usage.inputTokens || usage.input_tokens || 0,
     tokensOutput: usage.outputTokens || usage.output_tokens || 0,
   };
 }
 
 async function callBedrock(
-  bearerToken: string,
+  accessKeyId: string | undefined,
+  secretAccessKey: string | undefined,
+  bearerToken: string | undefined,
   prompt: string,
   systemPrompt: string | undefined,
   _source: string
@@ -409,7 +489,7 @@ async function callBedrock(
 
   for (const model of BEDROCK_MODELS) {
     try {
-      const result = await callBedrockModel(bearerToken, model, prompt, systemPrompt);
+      const result = await callBedrockModel(accessKeyId, secretAccessKey, bearerToken, model, prompt, systemPrompt);
       console.log(`[LLM] Bedrock success with model: ${model}`);
       return result;
     } catch (err: any) {
@@ -431,9 +511,7 @@ async function callBedrock(
     }
   }
 
-  throw new Error(
-    `All Bedrock models failed. Last error: ${lastError?.message?.slice(0, 100)}`
-  );
+  throw new Error(`All Bedrock models failed. Last error: ${lastError?.message?.slice(0, 100)}`);
 }
 
 
