@@ -52,7 +52,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
   // ── Ollama LOCAL (highest priority — free, no API key needed) ─────────────
   const ollamaUrl = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").trim();
-  const ollamaModel = (process.env.OLLAMA_MODEL || "llama3.2").trim();
+  const ollamaModel = (process.env.OLLAMA_MODEL || "llama3.2:3b").trim();
   // Always try Ollama first in local dev (NODE_ENV !== production)
   if (process.env.NODE_ENV !== "production" || process.env.OLLAMA_BASE_URL) {
     attempts.push(() => callOllama(ollamaUrl, ollamaModel, prompt, systemPrompt));
