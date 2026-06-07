@@ -325,12 +325,13 @@ async function callOpenAI(
   };
 }
 
-// Active Bedrock models (in order of preference — Nova models are always active)
+// Active Bedrock models — use BASE model IDs (no us. prefix = no cross-region IAM needed)
 const BEDROCK_MODELS = [
-  "us.amazon.nova-lite-v1:0",         // Amazon Nova Lite — fast, cheap, always active
-  "us.amazon.nova-micro-v1:0",        // Amazon Nova Micro — smallest, always active
-  "us.anthropic.claude-3-5-haiku-20241022-v1:0",  // Claude 3.5 Haiku — latest Claude
-  "anthropic.claude-3-haiku-20240307-v1:0",       // Claude 3 Haiku — older fallback
+  "amazon.nova-lite-v1:0",              // Amazon Nova Lite — base model ID
+  "amazon.nova-micro-v1:0",             // Amazon Nova Micro — smallest
+  "anthropic.claude-3-haiku-20240307-v1:0",       // Claude 3 Haiku — widely available
+  "anthropic.claude-3-5-haiku-20241022-v1:0",      // Claude 3.5 Haiku — newer
+  "amazon.titan-text-lite-v1",          // Amazon Titan — last resort
 ];
 
 async function callBedrockModel(
