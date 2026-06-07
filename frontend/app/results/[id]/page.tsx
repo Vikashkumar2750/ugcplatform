@@ -60,7 +60,6 @@ export default function ResultsPage() {
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
 
-  // ── Per-tab regenerate ─────────────────────────────────────────────────────
   const regenerateTab = async (tab: string) => {
     if (!data) return;
     setRegenerating(tab);
@@ -105,28 +104,33 @@ export default function ResultsPage() {
       if (!json || typeof json !== "object") throw new Error("Invalid response from server");
 
       // BUG-FIX: For competitors tab, store the FULL response (preserves scrapedStats, dataQuality etc.)
-      // For other tabs, store just the tab data
-      const newTabData = tab === "competitors"
-        ? json  // Full response object: { success, competitors, scrapedStats, dataQuality, ... }
+      // Strip rawCompetitorsData from nested objects before storing
+      let newTabData = tab === "competitors"
+        ? (() => {
+            const { rawCompetitorsData: _r, ...rest } = json;
+            return rest;
+          })()
         : (json[tab] ?? json["resultData"] ?? json);
       if (!newTabData || typeof newTabData !== "object") {
         throw new Error(`Empty ${tab} data returned. Try again or re-run full analysis.`);
       }
 
-      // Safe merge into existing data
-      const updated: AnalysisData = { 
-        ...data, 
+      // Safe merge — do NOT store rawCompetitorsData in localStorage (too large)
+      const updated: AnalysisData = {
+        ...data,
         [tab]: newTabData,
-        rawCompetitorsData: tab === "competitors"
-          ? (json.rawCompetitorsData || (newTabData as any)?.rawCompetitorsData || rawCompetitors)
-          : rawCompetitors
       } as any;
+      // Remove rawCompetitorsData from the root (was stored there by old code)
+      delete (updated as any).rawCompetitorsData;
       setData(updated);
 
-      // Update localStorage
+      // Update localStorage — use the id as-is (it already has analysis_ prefix from the URL)
       const id = params?.id as string;
-      localStorage.setItem(`analysis_${id}`, JSON.stringify(updated));
-      localStorage.setItem(id, JSON.stringify(updated));
+      try {
+        localStorage.setItem(id, JSON.stringify(updated));
+      } catch (quotaErr) {
+        console.warn("[results] localStorage quota exceeded after regen:", quotaErr);
+      }
     } catch (err: any) {
       setRegenError(err.message || "Regeneration failed");
     } finally {
@@ -134,23 +138,34 @@ export default function ResultsPage() {
     }
   };
 
+
   useEffect(() => {
     (async () => {
       const id = params?.id as string;
       if (!id) { setLoading(false); return; }
 
-      // Try multiple key patterns to handle old/new format
+      // id from URL already includes "analysis_" prefix (e.g. "analysis_1780839838606")
+      // The analyze page stores with key = id (e.g. "analysis_1780839838606")
+      // Try the id directly first, then with extra prefix for backwards compat
       const keysToTry = [
-        `analysis_${id}`,
-        id,
-        `analysis_meta_${id}`,
+        id,                     // "analysis_1780839838606" — correct (stored by analyze page)
+        `analysis_${id}`,       // "analysis_analysis_..." — legacy/wrong but keep for compat
+        `analysis_meta_${id}`,  // even older format
       ];
 
       for (const key of keysToTry) {
         const stored = localStorage.getItem(key);
         if (stored) {
           try {
-            setData(JSON.parse(stored));
+            const parsed = JSON.parse(stored);
+            // Strip rawCompetitorsData if it was stored by old code (prevents crash)
+            if (parsed && (parsed as any).rawCompetitorsData) {
+              delete (parsed as any).rawCompetitorsData;
+            }
+            if (parsed?.competitors && (parsed.competitors as any).rawCompetitorsData) {
+              delete (parsed.competitors as any).rawCompetitorsData;
+            }
+            setData(parsed);
             setLoading(false);
             return;
           } catch {}
@@ -176,7 +191,7 @@ export default function ResultsPage() {
             r.id === id
           );
           if (match) {
-            const record = {
+            const record: any = {
               id,
               profileUrl: match.profile_url,
               platform: match.platform,
@@ -184,7 +199,15 @@ export default function ResultsPage() {
               createdAt: match.created_at,
               ...(match.result_data || {}),
             };
-            localStorage.setItem(`analysis_${id}`, JSON.stringify(record));
+            // Strip rawCompetitorsData from Supabase record too
+            delete record.rawCompetitorsData;
+            if (record.competitors?.rawCompetitorsData) {
+              delete record.competitors.rawCompetitorsData;
+            }
+            // Cache to localStorage using the correct key (id, not analysis_${id})
+            try {
+              localStorage.setItem(id, JSON.stringify(record));
+            } catch {}
             setData(record);
           }
         }
@@ -192,6 +215,7 @@ export default function ResultsPage() {
       setLoading(false);
     })();
   }, [params?.id]);
+
 
 
 
