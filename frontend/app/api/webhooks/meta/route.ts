@@ -1,14 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
+const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
+const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Webhook event deduplication (in-memory, per serverless instance)
+// Prevents processing the same event twice if Meta retries.
+// ─────────────────────────────────────────────────────────────
+const processedEvents = new Set<string>();
+const MAX_DEDUP_SIZE = 5000;
+
+function getEventFingerprint(entry: any): string {
+  const id = entry.id || "";
+  const time = entry.time || "";
+  return crypto.createHash("md5").update(`${id}:${time}`).digest("hex");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -35,7 +51,7 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("x-hub-signature-256") || "";
 
     if (!verifySignature(rawBody, signature)) {
-      console.warn("[Webhook] Signature mismatch");
+      console.warn("[Webhook] Signature mismatch — rejecting");
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
@@ -45,6 +61,19 @@ export async function POST(request: NextRequest) {
     console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 500));
 
     for (const entry of (body.entry || [])) {
+      // ── Deduplication: skip if we've already processed this entry ──
+      const fingerprint = getEventFingerprint(entry);
+      if (processedEvents.has(fingerprint)) {
+        console.log(`[Webhook] Skipping duplicate entry: ${fingerprint}`);
+        continue;
+      }
+      processedEvents.add(fingerprint);
+      // Prune dedup set to prevent memory leak
+      if (processedEvents.size > MAX_DEDUP_SIZE) {
+        const toDelete = [...processedEvents].slice(0, 1000);
+        toDelete.forEach(k => processedEvents.delete(k));
+      }
+
       const pageId: string = entry.id;
 
       // ── Standard change events (comments, mentions, follow) ──
@@ -151,11 +180,13 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   const isFirstMessage = !conv || (conv.message_count || 0) === 0;
 
   // Update or create conversation tracker (avoid upsert conflict issue)
+  // CRITICAL: Track last_user_interaction_at for 24h messaging window compliance
   if (conv) {
     await supabase.from("dm_conversations")
       .update({
         message_count: (conv.message_count || 0) + 1,
         last_message_at: new Date().toISOString(),
+        last_user_interaction_at: new Date().toISOString(),  // 24h window tracking
       })
       .eq("account_id", account.id)
       .eq("sender_id", senderId);
@@ -166,6 +197,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       sender_id: senderId,
       message_count: 1,
       last_message_at: new Date().toISOString(),
+      last_user_interaction_at: new Date().toISOString(),  // 24h window tracking
     });
     if (insertErr) console.warn("[Webhook] dm_conversations insert error:", insertErr.message);
   }
@@ -198,7 +230,17 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     if (followerRules?.length > 0) {
       const rule = followerRules[0];
       console.log(`[Webhook] Triggering dm_new_follower rule: ${rule.name}`);
-      await sendInstagramDM(account.access_token, senderId, rule.action_config, account.platform_user_id);
+      await enqueueViaBackend({
+        accountId: account.id,
+        userId: account.user_id,
+        recipientId: senderId,
+        messagePayload: {
+          text: rule.action_config?.message || "Namaste! 🙏",
+          link: rule.action_config?.link || undefined,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+      });
       await supabase.from("automation_rules").update({
         trigger_count: (rule.trigger_count || 0) + 1,
         last_triggered: new Date().toISOString(),
@@ -227,7 +269,17 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
 
     if (matched) {
       console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
-      await sendInstagramDM(account.access_token, senderId, rule.action_config, account.platform_user_id);
+      await enqueueViaBackend({
+        accountId: account.id,
+        userId: account.user_id,
+        recipientId: senderId,
+        messagePayload: {
+          text: rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏",
+          link: rule.action_config?.link || undefined,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+      });
       await supabase.from("automation_rules").update({
         trigger_count: (rule.trigger_count || 0) + 1,
         last_triggered: new Date().toISOString(),
@@ -366,7 +418,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     if (rule.type === "comment_to_dm" && commentorId) {
       console.log(`[Webhook] Sending DM to commenter ${commentorId}`);
-      await sendInstagramDM(token, commentorId, rule.action_config, igId);
+      await enqueueViaBackend({
+        accountId: rule.account_id,
+        userId: rule.user_id,
+        recipientId: commentorId,
+        messagePayload: {
+          text: rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏",
+          link: rule.action_config?.link || undefined,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+      });
     }
 
     if (rule.type === "hide_comment") {
@@ -387,112 +449,81 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 }
 
 // ─────────────────────────────────────────────────────────────
-// Send Instagram DM via Graph API
+// Enqueue message via Backend Send Queue (Compliance Pipeline)
+// Replaces direct Meta API calls. All messages now go through:
+// Compliance Check → Rate Limiter → Send Queue → Meta API
 // ─────────────────────────────────────────────────────────────
-async function sendInstagramDM(
-  accessToken: string,
-  recipientId: string,
-  actionConfig: any,
-  igUserId: string
-) {
-  const delay = actionConfig?.delay_seconds || 0;
-  if (delay > 0) await new Promise(r => setTimeout(r, delay * 1000));
-
-  const messageText = actionConfig?.message || actionConfig?.reply_text || "Namaste! 🙏";
-
-  const body: any = {
-    recipient: { id: recipientId },
-    message: { text: messageText },
-  };
-
-  // Optional: Add link button
-  if (actionConfig?.link) {
-    body.message.attachment = {
-      type: "template",
-      payload: {
-        template_type: "button",
-        text: messageText,
-        buttons: [{ type: "web_url", url: actionConfig.link, title: "Check it out →" }],
+async function enqueueViaBackend(opts: {
+  accountId: string;
+  userId: string;
+  recipientId: string;
+  messagePayload: { text: string; link?: string };
+  messageType: string;
+  automationRuleId?: string;
+}) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/messaging/enqueue`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-worker-secret": WORKER_SECRET,
       },
-    };
-    delete body.message.text;
+      body: JSON.stringify(opts),
+    });
+
+    const data = await res.json();
+
+    if (data.blocked) {
+      console.log(`[Webhook] Message blocked by compliance: ${data.blockReason}`);
+    } else if (data.queued) {
+      console.log(`[Webhook] ✅ Message enqueued: queue=${data.queueId}`);
+    } else {
+      console.warn(`[Webhook] Enqueue returned unexpected result:`, data);
+    }
+
+    return data;
+  } catch (err: any) {
+    console.error(`[Webhook] Failed to enqueue message:`, err.message);
+    // Fallback: log the failure but don't crash the webhook handler
+    return { queued: false, error: err.message };
   }
-
-  // Instagram DM API: use /me/messages with messaging_product: 'instagram'
-  // The access_token must have instagram_manage_messages permission
-  const dmBody: any = {
-    messaging_product: "instagram",
-    recipient: { id: recipientId },
-    message: { text: messageText },
-  };
-
-  // Optional: Add quick reply buttons if configured
-  if (actionConfig?.quick_replies?.length) {
-    dmBody.message.quick_replies = actionConfig.quick_replies.map((qr: string) => ({
-      content_type: "text",
-      title: qr.substring(0, 20),
-      payload: qr,
-    }));
-  }
-
-  const res = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${accessToken}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(dmBody),
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    console.error(`[Webhook] DM send failed to ${recipientId}: code=${data.error?.code} msg="${data.error?.message}" fbtrace=${data.error?.fbtrace_id}`);
-  } else {
-    console.log(`[Webhook] ✅ DM sent to ${recipientId}, message_id=${data.message_id}`);
-  }
-  return data;
 }
 
 // ─────────────────────────────────────────────────────────────
 // Signature verification
 // ─────────────────────────────────────────────────────────────
 function verifySignature(body: string, signature: string): boolean {
-  // Set META_SKIP_SIGNATURE_CHECK=true in Vercel env to bypass (for testing)
-  if (process.env.META_SKIP_SIGNATURE_CHECK === "true") {
-    console.log("[Webhook] Signature check SKIPPED (META_SKIP_SIGNATURE_CHECK=true)");
-    return true;
-  }
-
+  // SECURITY: Signature verification is mandatory in production.
+  // META_SKIP_SIGNATURE_CHECK removed — all webhooks must be signed.
   if (!META_APP_SECRET) {
-    console.warn("[Webhook] META_APP_SECRET not set — skipping signature check");
+    console.warn("[Webhook] META_APP_SECRET not set — REJECTING webhook (set META_APP_SECRET in env)");
+    // In production, reject unsigned webhooks. In dev, allow with warning.
+    if (process.env.NODE_ENV === "production") return false;
+    console.warn("[Webhook] Allowing unsigned webhook in development mode ONLY");
     return true;
   }
 
   if (!signature) {
-    console.warn("[Webhook] No signature header received");
+    console.warn("[Webhook] No signature header received — rejecting");
     return false;
   }
 
   try {
-    const crypto = require("crypto");
     const expected = "sha256=" +
       crypto.createHmac("sha256", META_APP_SECRET)
         .update(Buffer.from(body, "utf-8"))
         .digest("hex");
 
     // Timing-safe comparison
-    try {
-      const sigBuf = Buffer.from(signature);
-      const expBuf = Buffer.from(expected);
-      if (sigBuf.length !== expBuf.length) {
-        console.warn("[Webhook] Signature length mismatch — check META_APP_SECRET in Vercel env");
-        return false;
-      }
-      return crypto.timingSafeEqual(sigBuf, expBuf);
-    } catch {
-      const match = signature === expected;
-      if (!match) console.warn("[Webhook] Signature mismatch — verify META_APP_SECRET matches Facebook App Secret");
-      return match;
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length) {
+      console.warn("[Webhook] Signature length mismatch");
+      return false;
     }
+    return crypto.timingSafeEqual(sigBuf, expBuf);
   } catch (e) {
-    console.error("[Webhook] Signature error:", e);
+    console.error("[Webhook] Signature verification error:", e);
     return false;
   }
 }

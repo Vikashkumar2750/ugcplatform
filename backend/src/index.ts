@@ -9,6 +9,11 @@ import analyzeRouter from "./routes/analyze";
 import insightsRouter from "./routes/insights";
 import adminRouter from "./routes/admin";
 import automationRouter from "./routes/automation";
+import messagingRouter from "./routes/messaging";
+
+// ─── Compliance Pipeline Services ─────────────────────────────────────────────
+import { processMessageQueue, recoverStaleMessages } from "./services/send-queue";
+import { cleanupExpiredRateLimits } from "./services/rate-limiter";
 
 // ─────────────────────────────────────────────
 // Config validation
@@ -276,6 +281,7 @@ app.use("/api/analyze", analyzeRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/automation", automationRouter);
+app.use("/api/messaging", messagingRouter);
 
 // ─── Worker trigger endpoints (internal — protected by WORKER_SECRET) ─────────
 function requireWorkerSecret(
@@ -320,6 +326,42 @@ cron.schedule("0 */6 * * *", async () => {
 // ─────────────────────────────────────────────
 cron.schedule("*/30 * * * * *", async () => {
   await processUnhandledWebhookEvents();
+});
+
+// ─────────────────────────────────────────────
+// CRON 4: Process outbound message queue every 5 seconds
+// This is the ONLY code path that sends messages to Meta API.
+// ─────────────────────────────────────────────
+cron.schedule("*/5 * * * * *", async () => {
+  try {
+    const sent = await processMessageQueue();
+    if (sent > 0) console.log(`[${new Date().toISOString()}] SendQueue: processed ${sent} messages`);
+  } catch (err: any) {
+    console.error(`[SendQueue] Cron error: ${err.message}`);
+  }
+});
+
+// ─────────────────────────────────────────────
+// CRON 5: Recover stale messages (stuck in 'processing') every 60 seconds
+// ─────────────────────────────────────────────
+cron.schedule("* * * * *", async () => {
+  try {
+    await recoverStaleMessages();
+  } catch (err: any) {
+    console.error(`[SendQueue] Stale recovery error: ${err.message}`);
+  }
+});
+
+// ─────────────────────────────────────────────
+// CRON 6: Cleanup expired rate limit windows every hour
+// ─────────────────────────────────────────────
+cron.schedule("0 * * * *", async () => {
+  try {
+    const cleaned = await cleanupExpiredRateLimits();
+    if (cleaned > 0) console.log(`[${new Date().toISOString()}] RateLimiter: cleaned ${cleaned} expired windows`);
+  } catch (err: any) {
+    console.error(`[RateLimiter] Cleanup error: ${err.message}`);
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -555,6 +597,7 @@ async function refreshExpiringTokens(): Promise<number> {
 
 // ─────────────────────────────────────────────
 // Core: Process unhandled webhook events (with DM automation + dedup)
+// Now uses the send queue pipeline instead of direct Meta API calls.
 // ─────────────────────────────────────────────
 async function processUnhandledWebhookEvents(): Promise<void> {
   const { data: events } = await supabase
@@ -590,8 +633,12 @@ async function processUnhandledWebhookEvents(): Promise<void> {
 }
 
 // ─────────────────────────────────────────────
-// DM Automation: comment trigger → DM with dedup
+// DM Automation: comment trigger → Send Queue (with dedup)
+// REFACTORED: Uses enqueueMessage() instead of direct Meta API calls.
+// Every message goes through: Compliance → Rate Limiter → Send Queue → Meta API
 // ─────────────────────────────────────────────
+import { enqueueMessage } from "./services/send-queue";
+
 async function handleCommentDMTrigger(event: any): Promise<void> {
   const payload = event.event_data || {};
   const commentId: string = payload.comment_id || payload.id;
@@ -601,95 +648,104 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
 
   if (!commentId || !senderId || !pageId) return;
 
-  // Find matching DM automations for this page
-  const { data: automations } = await supabase
-    .from("dm_automations")
+  // Find matching automation rules (consolidated — uses automation_rules table)
+  const { data: account } = await supabase
+    .from("connected_accounts")
+    .select("id, user_id")
+    .eq("platform_user_id", pageId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!account) return;
+
+  const { data: rules } = await supabase
+    .from("automation_rules")
     .select("*")
-    .eq("page_id", pageId)
+    .eq("account_id", account.id)
+    .in("type", ["comment_to_dm"])
     .eq("is_active", true);
 
-  if (!automations?.length) return;
+  if (!rules?.length) return;
 
-  for (const automation of automations) {
+  for (const rule of rules) {
     // Check if keyword matches
-    const keywords: string[] = (automation.trigger_keywords || []).map((k: string) => k.toLowerCase());
-    const matched = keywords.length === 0 || keywords.some(kw => commentText.includes(kw));
+    const keywords: string[] = (rule.trigger_config?.keywords || []).map((k: string) => k.toLowerCase());
+    const matchType: string = rule.trigger_config?.match_type || "any";
+    const matched = keywords.length === 0
+      || (matchType === "all"
+        ? keywords.every(kw => commentText.includes(kw))
+        : keywords.some(kw => commentText.includes(kw)));
     if (!matched) continue;
 
-    // DEDUP: Check if we already sent this automation to this sender+comment
+    // DEDUP: Check if we already processed this comment for this rule
     const { data: existing } = await supabase
       .from("dm_trigger_log")
       .select("id")
-      .eq("automation_id", automation.id)
+      .eq("automation_id", rule.id)
       .eq("comment_id", commentId)
       .eq("sender_id", senderId)
       .maybeSingle();
 
     if (existing) {
-      console.log(`[DM] Skipping duplicate trigger: automation=${automation.id} comment=${commentId}`);
+      console.log(`[DM] Skipping duplicate trigger: rule=${rule.id} comment=${commentId}`);
       continue;
     }
 
     // Log FIRST (optimistic) — prevents race condition if cron fires twice
     const { error: logError } = await supabase.from("dm_trigger_log").insert({
-      automation_id: automation.id,
+      automation_id: rule.id,
       comment_id: commentId,
       sender_id: senderId,
       page_id: pageId,
       triggered_at: new Date().toISOString(),
-      status: "sending",
+      status: "queued",
     });
     if (logError) {
-      // Unique constraint violation = already sent, skip
       console.log(`[DM] Dedup block (insert conflict): ${logError.message}`);
       continue;
     }
 
     try {
-      // Get account token
-      const { data: account } = await supabase
-        .from("connected_accounts")
-        .select("access_token")
-        .eq("platform_user_id", pageId)
-        .eq("is_active", true)
-        .maybeSingle();
+      // ── ENQUEUE via compliance pipeline (replaces direct Meta API call) ──
+      const messageText = rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏";
 
-      if (!account?.access_token) throw new Error("No access token for page");
-
-      // Send DM via Meta Graph API
-      const dmRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: { id: senderId },
-          message: { text: automation.dm_message },
-          access_token: account.access_token,
-        }),
+      const result = await enqueueMessage({
+        accountId: account.id,
+        userId: account.user_id,
+        recipientId: senderId,
+        messagePayload: {
+          text: messageText,
+          link: rule.action_config?.link || undefined,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
       });
-      const dmData = await dmRes.json();
-      if (dmData.error) throw new Error(`Meta DM API: ${dmData.error.message}`);
 
-      // Update log status to sent
-      await supabase.from("dm_trigger_log").update({
-        status: "sent",
-        sent_at: new Date().toISOString(),
-        meta_message_id: dmData.message_id,
-      }).eq("automation_id", automation.id).eq("comment_id", commentId);
+      if (result.blocked) {
+        console.log(`[DM] Blocked by compliance: ${result.blockReason}`);
+        await supabase.from("dm_trigger_log").update({
+          status: "blocked",
+          error: result.blockReason?.substring(0, 500),
+        }).eq("automation_id", rule.id).eq("comment_id", commentId);
+      } else if (result.queued) {
+        console.log(`[DM] Enqueued for ${senderId} via rule ${rule.name} (queue=${result.queueId})`);
+        await supabase.from("dm_trigger_log").update({
+          status: "queued",
+        }).eq("automation_id", rule.id).eq("comment_id", commentId);
 
-      console.log(`[DM] Sent to ${senderId} via automation ${automation.id}`);
+        // Increment trigger count
+        await supabase.from("automation_rules").update({
+          trigger_count: (rule.trigger_count || 0) + 1,
+          last_triggered: new Date().toISOString(),
+        }).eq("id", rule.id);
+      }
 
-      // Increment automation send count
-      await supabase.from("dm_automations").update({
-        sent_count: (automation.sent_count || 0) + 1,
-        last_triggered_at: new Date().toISOString(),
-      }).eq("id", automation.id);
-
-    } catch (dmErr: any) {
-      console.error(`[DM] Send failed:`, dmErr.message);
+    } catch (err: any) {
+      console.error(`[DM] Enqueue failed:`, err.message);
       await supabase.from("dm_trigger_log").update({
         status: "failed",
-        error: dmErr.message.substring(0, 500),
-      }).eq("automation_id", automation.id).eq("comment_id", commentId);
+        error: err.message.substring(0, 500),
+      }).eq("automation_id", rule.id).eq("comment_id", commentId);
     }
   }
 }
@@ -702,7 +758,9 @@ app.listen(PORT, () => {
   console.log(`📅 Post publisher: every minute`);
   console.log(`🔑 Token refresh: every 6 hours`);
   console.log(`📨 Webhook processor: every 30 seconds`);
-  console.log(`💬 DM automation: dedup via dm_trigger_log table`);
+  console.log(`📤 Send queue processor: every 5 seconds`);
+  console.log(`🛡️ Compliance pipeline: Event → Compliance → Rate Limiter → Send Queue → Meta API`);
+  console.log(`💬 DM automation: dedup via dm_trigger_log + compliance layer`);
   console.log(`🌐 API routes: /api/keys /api/credits /api/analyze /api/insights /api/admin`);
 });
 
