@@ -156,7 +156,7 @@ export async function processMessageQueue(): Promise<number> {
   // Fetch ready messages, oldest first, limited batch
   const { data: messages, error } = await supabase
     .from("message_queue")
-    .select("*, connected_accounts(access_token, platform_user_id, platform)")
+    .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
     .in("status", ["ready", "queued"])
     .lte("scheduled_send_at", new Date().toISOString())
     .order("priority", { ascending: true })
@@ -218,6 +218,7 @@ export async function processMessageQueue(): Promise<number> {
       const metaResult = await sendViaMetaAPI({
         token,
         igUserId: account.platform_user_id,
+        pageId: account.page_id,              // needed for Private Reply endpoint
         recipientId: msg.recipient_id,
         payload,
         messageType: msg.message_type,
@@ -306,6 +307,7 @@ export async function recoverStaleMessages(): Promise<number> {
 interface MetaSendInput {
   token: string;
   igUserId: string;
+  pageId?: string;           // Facebook Page ID — required for Private Reply
   recipientId: string;
   payload: MessagePayload;
   messageType: string;
@@ -362,11 +364,13 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }
 
-    console.log(`[SendQueue] Sending Private Reply to comment ${recipientId} via ${platform} (igUserId=${igUserId})`);
-
-    // Private Reply uses the IG User ID (not /me/) as the endpoint sender
+    // Private Reply uses the Page ID as the sender endpoint (NOT the IG User ID)
+    // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies
+    // Endpoint: POST /{page-id}/messages with recipient: { comment_id }
+    const senderId = input.pageId || igUserId; // prefer page_id, fall back to igUserId
+    console.log(`[SendQueue] Private Reply → comment=${recipientId} sender=${senderId} (page=${input.pageId}, igUser=${igUserId})`);
     const res = await fetch(
-      `https://graph.facebook.com/v21.0/${igUserId}/messages?access_token=${token}`,
+      `https://graph.facebook.com/v21.0/${senderId}/messages?access_token=${token}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
