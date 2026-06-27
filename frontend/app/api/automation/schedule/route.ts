@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { platform, content_type, caption, first_comment, media_url, scheduled_at, status } = body;
+    const { platform, content_type, caption, first_comment, media_url, scheduled_at, status, audio_name, dm_automation_id } = body;
 
     if (!platform || !content_type || !caption || !scheduled_at) {
       return NextResponse.json({ error: "platform, content_type, caption, scheduled_at are required" }, { status: 400 });
@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
         media_url: media_url || null,
         scheduled_at,
         status: status || "scheduled",
+        audio_name: audio_name || null,
+        dm_automation_id: dm_automation_id || null,
       })
       .select()
       .single();
