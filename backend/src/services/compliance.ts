@@ -21,7 +21,7 @@ export interface ComplianceCheckInput {
   userId: string;             // auth.users.id (account owner)
   recipientId: string;        // external user's platform ID
   messageText: string;        // message being sent
-  messageType: "dm" | "comment_reply" | "broadcast";
+  messageType: "dm" | "comment_reply" | "private_reply" | "broadcast";
   messageTag?: string;        // Meta-approved message tag (if any)
   ruleId?: string;            // automation_rules.id (if automation-triggered)
   queueId?: string;           // message_queue.id (for logging)
@@ -108,7 +108,9 @@ export async function checkCompliance(input: ComplianceCheckInput): Promise<Comp
     return result;
   }
 
-  // ── 3. 24h messaging window (DMs only — comment replies are exempt) ──────
+  // ── 3. 24h messaging window (DMs only — comment/private replies are exempt) ─
+  // private_reply: user just commented so they initiated contact — always allowed
+  // comment_reply: public reply, not a DM — always allowed
   if (messageType === "dm" || messageType === "broadcast") {
     const lastInteraction = conversation?.last_user_interaction_at || conversation?.last_message_at;
 
