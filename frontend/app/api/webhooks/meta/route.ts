@@ -8,6 +8,16 @@ const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
 // ─────────────────────────────────────────────────────────────
+// Keyword matching — use WORD BOUNDARY regex, not substring includes().
+// This prevents "test5" keyword matching "test55" comment ("test55".includes("test5") === true).
+// \btest5\b correctly rejects "test55" since "55" has no word boundary between the two digits.
+// ─────────────────────────────────────────────────────────────
+function keywordMatch(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Anti-ban: randomized human-like delays
 // Competitors use delays to mimic human behavior and avoid Meta's
 // bot-detection which triggers account bans.
@@ -300,14 +310,15 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     .eq("is_active", true);
 
   for (const rule of (keywordRules || [])) {
+    // Keyword match — use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];
     const matchType: string = rule.trigger_config?.match_type || "any";
 
     if (keywords.length === 0) continue; // Skip rules with no keywords
 
     const matched = matchType === "all"
-      ? keywords.every(k => messageText.includes(k.toLowerCase()))
-      : keywords.some(k => messageText.includes(k.toLowerCase()));
+      ? keywords.every(k => keywordMatch(messageText, k))
+      : keywords.some(k => keywordMatch(messageText, k));
 
     if (matched) {
       console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
@@ -405,14 +416,14 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     const ruleMediaId = rule.trigger_config?.media_id;
     if (ruleMediaId && ruleMediaId !== mediaId) continue;
 
-    // Keyword match
+    // Keyword match — use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];
     const matchType: string = rule.trigger_config?.match_type || "any";
     const matched = keywords.length === 0
       ? true
       : matchType === "all"
-        ? keywords.every((k: string) => commentText.includes(k.toLowerCase()))
-        : keywords.some((k: string) => commentText.includes(k.toLowerCase()));
+        ? keywords.every((k: string) => keywordMatch(commentText, k))
+        : keywords.some((k: string) => keywordMatch(commentText, k));
 
     if (!matched) {
       console.log(`[Webhook] Keywords didn't match for rule "${rule.name}"`);

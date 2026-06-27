@@ -639,6 +639,12 @@ async function processUnhandledWebhookEvents(): Promise<void> {
 // ─────────────────────────────────────────────
 import { enqueueMessage } from "./services/send-queue";
 
+// Word-boundary keyword matching (prevents "test5" matching "test55")
+function keywordMatch(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
+}
+
 async function handleCommentDMTrigger(event: any): Promise<void> {
   const payload = event.event_data || {};
   const commentId: string = payload.comment_id || payload.id;
@@ -673,8 +679,8 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
     const matchType: string = rule.trigger_config?.match_type || "any";
     const matched = keywords.length === 0
       || (matchType === "all"
-        ? keywords.every(kw => commentText.includes(kw))
-        : keywords.some(kw => commentText.includes(kw)));
+        ? keywords.every(kw => keywordMatch(commentText, kw))
+        : keywords.some(kw => keywordMatch(commentText, kw)));
     if (!matched) continue;
 
     // DEDUP: Check if we already processed this comment for this rule

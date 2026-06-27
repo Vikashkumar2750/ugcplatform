@@ -112,6 +112,21 @@ export async function GET(request: NextRequest) {
     eventTypes[e.event_type] = (eventTypes[e.event_type] || 0) + 1;
   }
 
+  // 6. Check message queue (DM send status)
+  let messageQueue: any[] = [];
+  try {
+    const { data } = await supabase
+      .from("message_queue")
+      .select("id, message_type, recipient_id, status, compliance_status, error, retry_count, scheduled_send_at, sent_at, created_at, message_payload")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    messageQueue = (data || []).map(m => ({
+      ...m,
+      message_preview: (m.message_payload as any)?.text?.substring(0, 60) || null,
+      message_payload: undefined,
+    }));
+  } catch {}
+
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     diagnosis: {
@@ -134,6 +149,7 @@ export async function GET(request: NextRequest) {
       "5_event_type_breakdown": eventTypes,
       "6_recent_webhook_events": recentEvents.length > 0 ? recentEvents : (eventsError ? `Error: ${eventsError}` : "NO EVENTS RECEIVED ❌"),
       "7_raw_webhook_logs": rawLogs.length > 0 ? rawLogs : "No raw logs yet",
+      "8_message_queue": messageQueue.length > 0 ? messageQueue : "No messages in queue yet",
     },
     conclusion: `${recentEvents.length} events | Types: ${JSON.stringify(eventTypes)}`,
     action_needed: !eventTypes["comments"] && !eventTypes["feed"]
