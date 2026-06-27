@@ -16,6 +16,9 @@
 # next.js
 /.next/
 /out/
+**/.next/
+**/out/
+token.txt
 
 # production
 /build
@@ -43,3 +46,16 @@ next-env.d.ts
 # Agent skills (local only)
 .agents/
 skills-lock.json
+
+# Test files with secrets (NEVER commit)
+test-bedrock-sdk.js
+check-keys.js
+test-browser.js
+test-ollama.js
+test-settings.js
+test-screenshots/
+commit_msg.txt
+
+# Root-level package files (only frontend/backend have their own)
+/package.json
+/package-lock.json
