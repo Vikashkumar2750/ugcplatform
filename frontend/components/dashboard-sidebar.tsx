@@ -50,10 +50,18 @@ export function DashboardSidebar({ currentPath }: { currentPath: string }) {
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
+      // Clear client-side Supabase session
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {}
+    try {
       await fetch("/api/auth/logout", { method: "POST" });
-    } finally {
-      router.push("/login");
-    }
+    } catch {}
+    // Clear any cached data
+    try { localStorage.removeItem("ce_prefs"); } catch {}
+    // Hard redirect to clear all client state
+    window.location.href = "/login";
   };
 
   return (

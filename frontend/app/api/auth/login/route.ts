@@ -1,9 +1,14 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@techaasvik.in";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
-const SESSION_SECRET = process.env.SESSION_SECRET || "Content Engineer_super_secret_2025_techaasvik";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const SESSION_SECRET = process.env.SESSION_SECRET || "";
+
+// SECURITY: Abort if no secrets configured
+if (!SESSION_SECRET) {
+  console.warn("[SECURITY] SESSION_SECRET not configured — admin login disabled");
+}
 
 function signToken(payload: string): string {
   return createHmac("sha256", SESSION_SECRET).update(payload).digest("hex");
@@ -19,6 +24,7 @@ export async function POST(req: NextRequest) {
 
     // --- Super Admin check (env-based, no DB needed) ---
     if (
+      ADMIN_EMAIL && ADMIN_PASSWORD && SESSION_SECRET &&
       email.toLowerCase().trim() === ADMIN_EMAIL.toLowerCase().trim() &&
       password === ADMIN_PASSWORD
     ) {

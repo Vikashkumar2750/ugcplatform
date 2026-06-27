@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 function getAdminEmail() {
-  return (process.env.ADMIN_EMAIL || "admin@techaasvik.in").toLowerCase().trim();
+  return (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 }
 
 export function isAdminCookieValid(cookieValue: string | undefined): boolean {

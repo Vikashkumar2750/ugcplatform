@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -46,7 +46,8 @@ function AdminSidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+    // Hard redirect clears all client state
     window.location.href = "/login";
   };
 
@@ -127,7 +128,7 @@ function AdminSidebar() {
           <div className="px-3 py-2 mb-1">
             <p className="text-[10px] text-zinc-500 font-medium">Logged in as</p>
             <p className="text-xs text-zinc-300 font-semibold truncate">
-              admin@techaasvik.in
+              Admin
             </p>
           </div>
         )}
@@ -170,7 +171,7 @@ export default function AdminDashboard({ children }: { children: React.ReactNode
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="text-sm font-bold text-zinc-100">Super Admin Panel</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-bold border border-red-500/20">
-              admin@techaasvik.in
+              Super Admin
             </span>
           </div>
         </div>

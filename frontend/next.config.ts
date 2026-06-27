@@ -3,8 +3,6 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
-
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
@@ -16,16 +14,6 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.fbcdn.net" },
       { protocol: "https", hostname: "content-engineer-api.onrender.com" },
     ],
-  },
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          { key: "X-Backend-URL", value: BACKEND_URL },
-        ],
-      },
-    ];
   },
 };
 

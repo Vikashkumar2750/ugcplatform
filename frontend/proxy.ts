@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 
 // Read per-request so env changes in dev are picked up
 function getAdminEmail() {
-  return (process.env.ADMIN_EMAIL || "admin@techaasvik.in").toLowerCase().trim();
+  return (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 }
 
 const PUBLIC_ROUTES = [
@@ -12,14 +12,22 @@ const PUBLIC_ROUTES = [
   "/pricing",
   "/privacy",
   "/terms",
+  "/about",
+  "/contact",
+  "/refund-policy",
+  "/disclaimer",
+  "/data-deletion-status",
+  "/docs",
+  // API routes that handle their own auth
+  "/api/auth",
   "/api/leads",
   "/api/admin",
   "/api/payments",
   "/api/webhooks",
-  "/api/auth",
   "/api/connect",
-  "/docs",
-  "/data-deletion-status",
+  "/api/cron",
+  "/api/automation",
+  "/api/insights",
 ];
 
 function isAdminSessionValid(cookieValue: string | undefined): boolean {

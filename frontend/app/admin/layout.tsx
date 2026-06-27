@@ -9,7 +9,7 @@ function isAdminCookieValid(cookieValue: string | undefined): boolean {
     if (dotIdx === -1) return false;
     const payloadB64 = cookieValue.substring(0, dotIdx);
     const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf-8"));
-    const adminEmail = (process.env.ADMIN_EMAIL || "admin@techaasvik.in").toLowerCase().trim();
+    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
     const emailMatch = payload.email?.toLowerCase().trim() === adminEmail;
     const roleMatch = payload.role === "admin";
     const isExpired = Date.now() - payload.ts > 7 * 24 * 60 * 60 * 1000;

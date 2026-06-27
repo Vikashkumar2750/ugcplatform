@@ -24,10 +24,11 @@ async function getAuthToken(): Promise<string> {
 type TestStatus = "idle" | "ok" | "error";
 
 const LLM_PROVIDERS = [
-  { id: "gemini",    name: "Google Gemini",    label: "Gemini API Key",    helpUrl: "https://aistudio.google.com/app/apikey",    placeholder: "AIza..." },
-  { id: "anthropic", name: "Claude (Anthropic)",label: "Anthropic API Key", helpUrl: "https://console.anthropic.com",             placeholder: "sk-ant-..." },
-  { id: "openai",    name: "OpenAI (ChatGPT)", label: "OpenAI API Key",    helpUrl: "https://platform.openai.com/api-keys",      placeholder: "sk-..." },
-  { id: "bedrock",   name: "AWS Bedrock",      label: "Bedrock Bearer Token", helpUrl: "https://aws.amazon.com/bedrock",         placeholder: "ABSK..." },
+  { id: "openrouter", name: "OpenRouter",       label: "OpenRouter API Key",  helpUrl: "https://openrouter.ai/keys",               placeholder: "sk-or-..." },
+  { id: "gemini",     name: "Google Gemini",     label: "Gemini API Key",      helpUrl: "https://aistudio.google.com/app/apikey",    placeholder: "AIza..." },
+  { id: "anthropic",  name: "Claude (Anthropic)", label: "Anthropic API Key",  helpUrl: "https://console.anthropic.com",             placeholder: "sk-ant-..." },
+  { id: "openai",     name: "OpenAI (ChatGPT)",  label: "OpenAI API Key",     helpUrl: "https://platform.openai.com/api-keys",      placeholder: "sk-..." },
+  { id: "bedrock",    name: "AWS Bedrock",        label: "Bedrock Bearer Token", helpUrl: "https://aws.amazon.com/bedrock",          placeholder: "ABSK..." },
 ];
 
 const SCRAPER_PROVIDERS = [
