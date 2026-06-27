@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Radio, Plus, Trash2, ToggleLeft, ToggleRight,
   ChevronDown, ChevronUp, Loader2, RefreshCw, X,
   MessageSquare, Clock, GitBranch, UserPlus, Hash,
-  AtSign, Heart, Bookmark, Share2, Send, Zap,
-  ArrowRight, Copy, Eye, Rocket, Pause, Undo2,
-  AlertCircle, CheckCircle2, Tag, Filter, Users,
-  Globe, Image as ImageIcon, Bot, Sparkles, Lock
+  AtSign, Heart, Share2, Send, Zap,
+  ArrowRight, ArrowDown, Copy, Rocket, Pause, Undo2,
+  AlertCircle, CheckCircle2, Users,
+  Globe, Image as ImageIcon, Bot, Sparkles, Lock,
+  Layout, BookOpen, ChevronRight, Play
 } from "lucide-react";
 
-// ─── All trigger types (2026-level competitor features) ────────────────
+// ─── Trigger Types ─────────────────────────────────────────────────────
 const ALL_TRIGGER_TYPES = [
   { value: "dm_keyword", label: "Keyword in DM", desc: "Auto-reply when DM contains specific keywords", icon: Hash, category: "dm" },
   { value: "dm_new_follower", label: "New Follower Welcome", desc: "Welcome message when someone follows you", icon: UserPlus, category: "dm" },
@@ -19,7 +20,6 @@ const ALL_TRIGGER_TYPES = [
   { value: "story_mention", label: "Story Mention", desc: "Thank users who mention you in their story", icon: AtSign, category: "dm" },
   { value: "comment_to_dm", label: "Comment → DM", desc: "DM users who comment with a keyword", icon: MessageSquare, category: "comment" },
   { value: "comment_auto_reply", label: "Auto Comment Reply", desc: "Automatically reply to comments", icon: MessageSquare, category: "comment" },
-  { value: "ice_breaker", label: "Ice Breaker", desc: "Suggested conversation starters shown in DM", icon: Sparkles, category: "dm" },
   { value: "ai_auto_reply", label: "AI Auto-Reply", desc: "GPT-powered smart replies with confidence scoring", icon: Bot, category: "dm" },
   { value: "drip_sequence", label: "Drip Sequence", desc: "Multi-step message sequence with delays", icon: Clock, category: "sequence" },
   { value: "conditional_flow", label: "Conditional Flow", desc: "If/else branching based on user response", icon: GitBranch, category: "flow" },
@@ -36,50 +36,305 @@ const CATEGORIES = [
   { value: "broadcast", label: "Broadcast" },
 ];
 
+// ─── Pre-built Templates ───────────────────────────────────────────────
+const TEMPLATES = [
+  {
+    id: "lead_magnet",
+    name: "Comment → DM Lead Magnet",
+    desc: "When someone comments a keyword, reply publicly and DM them a link to your guide/freebie",
+    icon: "🎯",
+    category: "comment",
+    config: {
+      type: "comment_to_dm",
+      name: "Lead Magnet — Comment DM",
+      keywords: ["link", "guide", "send"],
+      matchType: "any",
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "Hey! 🙌 Thanks for your interest — here's the guide I mentioned 👇\n\nReply STOP to unsubscribe.", link: "https://your-link.com" } },
+      ],
+    },
+  },
+  {
+    id: "welcome_follower",
+    name: "Welcome New Followers",
+    desc: "Automatically send a warm welcome DM when someone follows you",
+    icon: "👋",
+    category: "dm",
+    config: {
+      type: "dm_new_follower",
+      name: "Welcome New Follower 🙏",
+      keywords: [],
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "Namaste! 🙏 Thanks for following!\n\nI share content about [your niche] here. Let me know if you have any questions!\n\nReply STOP to unsubscribe." } },
+      ],
+    },
+  },
+  {
+    id: "story_mention_thanks",
+    name: "Story Mention Thank You",
+    desc: "Thank users who mention you in their Instagram stories",
+    icon: "📖",
+    category: "dm",
+    config: {
+      type: "story_mention",
+      name: "Story Mention Thank You ❤️",
+      keywords: [],
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "Hey! Thanks so much for the mention in your story! ❤️ Really appreciate the love 🙏\n\nReply STOP to unsubscribe." } },
+      ],
+    },
+  },
+  {
+    id: "drip_3day",
+    name: "3-Day Drip Sequence",
+    desc: "Send 3 messages over 3 days — perfect for nurturing leads or onboarding",
+    icon: "🔄",
+    category: "sequence",
+    config: {
+      type: "drip_sequence",
+      name: "3-Day Nurture Sequence",
+      keywords: ["interested", "yes"],
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "Day 1: Welcome! Here's what you need to know to get started 👇" } },
+        { id: "s2", order: 1, type: "delay" as const, config: { seconds: 86400 } },
+        { id: "s3", order: 2, type: "message" as const, config: { text: "Day 2: Quick tip — most people see results in the first week when they follow these 3 steps..." } },
+        { id: "s4", order: 3, type: "delay" as const, config: { seconds: 86400 } },
+        { id: "s5", order: 4, type: "message" as const, config: { text: "Day 3: Ready to take the next step? Here's an exclusive offer just for you 🎁" } },
+      ],
+    },
+  },
+  {
+    id: "ai_smart_reply",
+    name: "AI Smart Reply",
+    desc: "Use AI to generate contextual replies — low-confidence replies go to review inbox",
+    icon: "🤖",
+    category: "dm",
+    config: {
+      type: "ai_auto_reply",
+      name: "AI Smart Reply Bot",
+      keywords: [],
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "[AI Generated Reply]\n\nThis will be replaced by GPT-powered smart response based on your business context." } },
+      ],
+    },
+  },
+  {
+    id: "lead_capture_funnel",
+    name: "Lead Capture Funnel",
+    desc: "Collect name, email, and phone via a conversational DM flow",
+    icon: "📋",
+    category: "dm",
+    config: {
+      type: "lead_capture",
+      name: "Lead Capture — Full Funnel",
+      keywords: ["join", "signup", "register"],
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "Awesome! Let me get your details so we can set you up 🚀\n\nFirst, what's your full name?" } },
+        { id: "s2", order: 1, type: "collect_input" as const, config: { field: "name", prompt: "What's your full name?" } },
+        { id: "s3", order: 2, type: "message" as const, config: { text: "Great! Now, what's your email address? 📧" } },
+        { id: "s4", order: 3, type: "collect_input" as const, config: { field: "email", prompt: "What's your email?" } },
+        { id: "s5", order: 4, type: "message" as const, config: { text: "Perfect! You're all set ✅ We'll reach out to you soon!" } },
+      ],
+    },
+  },
+  {
+    id: "product_launch",
+    name: "Product Launch Promo",
+    desc: "Comment keyword → DM coupon code + public reply with CTA",
+    icon: "📢",
+    category: "comment",
+    config: {
+      type: "comment_to_dm",
+      name: "Launch Promo — Coupon DM",
+      keywords: ["price", "buy", "order", "discount"],
+      matchType: "any",
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "🎉 Thanks for your interest!\n\nHere's your exclusive 20% discount code: LAUNCH20\n\nUse it at: https://your-store.com\n\nReply STOP to unsubscribe.", link: "https://your-store.com" } },
+      ],
+    },
+  },
+  {
+    id: "giveaway",
+    name: "Giveaway Auto-Entry",
+    desc: "Comment keyword to enter — auto-DM confirmation + tag as participant",
+    icon: "🎁",
+    category: "comment",
+    config: {
+      type: "comment_to_dm",
+      name: "Giveaway Entry",
+      keywords: ["giveaway", "enter", "win", "contest"],
+      matchType: "any",
+      steps: [
+        { id: "s1", order: 0, type: "message" as const, config: { text: "🎉 You're IN! Your giveaway entry is confirmed ✅\n\nWinner announced on [date]. Good luck! 🍀\n\nReply STOP to unsubscribe." } },
+        { id: "s2", order: 1, type: "tag" as const, config: { tag: "giveaway_participant" } },
+      ],
+    },
+  },
+];
+
 interface FlowRule {
-  id: string;
-  name: string;
-  type: string;
-  trigger_config: any;
-  action_config: any;
-  is_active: boolean;
-  trigger_count: number;
-  version: number;
-  publish_status: string;
-  created_at: string;
-  last_triggered?: string;
-  steps?: FlowStep[];
+  id: string; name: string; type: string;
+  trigger_config: any; action_config: any;
+  is_active: boolean; trigger_count: number;
+  version: number; publish_status: string;
+  created_at: string; last_triggered?: string;
 }
 
 interface FlowStep {
-  id: string;
-  order: number;
+  id: string; order: number;
   type: "message" | "delay" | "condition" | "collect_input" | "tag";
   config: any;
 }
 
-// ─── Flow Builder Modal ────────────────────────────────────────────────
-function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState("dm_keyword");
+const STEP_TYPES = [
+  { type: "message" as const, label: "💬 Message", color: "border-blue-500/30 bg-blue-500/5", nodeColor: "border-blue-400 bg-blue-500/10" },
+  { type: "delay" as const, label: "⏰ Delay", color: "border-amber-500/30 bg-amber-500/5", nodeColor: "border-amber-400 bg-amber-500/10" },
+  { type: "condition" as const, label: "🔀 Condition", color: "border-purple-500/30 bg-purple-500/5", nodeColor: "border-purple-400 bg-purple-500/10" },
+  { type: "collect_input" as const, label: "📋 Collect", color: "border-emerald-500/30 bg-emerald-500/5", nodeColor: "border-emerald-400 bg-emerald-500/10" },
+  { type: "tag" as const, label: "🏷️ Tag", color: "border-orange-500/30 bg-orange-500/5", nodeColor: "border-orange-400 bg-orange-500/10" },
+];
+
+// ─── Visual Flow Node ──────────────────────────────────────────────────
+function FlowNode({ step, index, total, onUpdate, onRemove, isSelected, onSelect }: {
+  step: FlowStep; index: number; total: number;
+  onUpdate: (config: any) => void; onRemove: () => void;
+  isSelected: boolean; onSelect: () => void;
+}) {
+  const stepType = STEP_TYPES.find(s => s.type === step.type);
+  const nodeColor = stepType?.nodeColor || "border-border bg-card";
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* Connector line from above */}
+      {index > 0 && (
+        <div className="flex flex-col items-center -mb-1">
+          <div className="w-px h-6 bg-gradient-to-b from-amber-400/50 to-amber-400/20" />
+          <ArrowDown className="w-3.5 h-3.5 text-amber-400/50 -mt-1" />
+        </div>
+      )}
+
+      {/* Node */}
+      <div onClick={onSelect}
+        className={`relative w-full max-w-md rounded-xl border-2 p-4 cursor-pointer transition-all ${
+          isSelected ? `${nodeColor} shadow-lg shadow-amber-400/5 scale-[1.02]` : `border-border bg-card hover:border-foreground/20`
+        }`}>
+        {/* Node header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-amber-400/20 text-amber-500 text-[10px] font-bold flex items-center justify-center">
+              {index + 1}
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              {stepType?.label || step.type}
+            </span>
+          </div>
+          {total > 1 && (
+            <button onClick={e => { e.stopPropagation(); onRemove(); }}
+              className="text-muted-foreground/50 hover:text-red-500 transition">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Node content (inline editing) */}
+        {step.type === "message" && (
+          <div className="space-y-2">
+            <textarea value={step.config.text || ""} onChange={e => onUpdate({ ...step.config, text: e.target.value })}
+              onClick={e => e.stopPropagation()}
+              rows={3} placeholder="Type your message..."
+              className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none resize-none focus:border-amber-400/50" />
+            <input value={step.config.link || ""} onChange={e => onUpdate({ ...step.config, link: e.target.value })}
+              onClick={e => e.stopPropagation()}
+              placeholder="Link (optional) — https://..."
+              className="w-full px-3 py-1.5 rounded-lg border border-border text-xs bg-background focus:outline-none" />
+          </div>
+        )}
+
+        {step.type === "delay" && (
+          <select value={step.config.seconds || 300} onChange={e => onUpdate({ seconds: Number(e.target.value) })}
+            onClick={e => e.stopPropagation()}
+            className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background">
+            <option value={60}>1 minute</option>
+            <option value={300}>5 minutes</option>
+            <option value={1800}>30 minutes</option>
+            <option value={3600}>1 hour</option>
+            <option value={14400}>4 hours</option>
+            <option value={86400}>24 hours</option>
+            <option value={172800}>48 hours</option>
+          </select>
+        )}
+
+        {step.type === "condition" && (
+          <div className="space-y-2" onClick={e => e.stopPropagation()}>
+            <input value={step.config.keyword || ""} onChange={e => onUpdate({ ...step.config, keyword: e.target.value })}
+              placeholder="If user replies with..."
+              className="w-full px-3 py-1.5 rounded-lg border border-border text-sm bg-background focus:outline-none" />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] font-medium text-emerald-400 uppercase">✅ Then</label>
+                <textarea value={step.config.thenMessage || ""} onChange={e => onUpdate({ ...step.config, thenMessage: e.target.value })}
+                  rows={2} placeholder="If matched..."
+                  className="w-full px-3 py-1.5 rounded-lg border border-emerald-500/30 text-xs bg-background focus:outline-none resize-none mt-1" />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-red-400 uppercase">❌ Else</label>
+                <textarea value={step.config.elseMessage || ""} onChange={e => onUpdate({ ...step.config, elseMessage: e.target.value })}
+                  rows={2} placeholder="If not matched..."
+                  className="w-full px-3 py-1.5 rounded-lg border border-red-500/30 text-xs bg-background focus:outline-none resize-none mt-1" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step.type === "collect_input" && (
+          <div className="space-y-2" onClick={e => e.stopPropagation()}>
+            <select value={step.config.field || "email"} onChange={e => onUpdate({ ...step.config, field: e.target.value })}
+              className="w-full px-3 py-1.5 rounded-lg border border-border text-sm bg-background">
+              <option value="name">Name</option>
+              <option value="email">Email</option>
+              <option value="phone">Phone</option>
+              <option value="city">City</option>
+              <option value="custom">Custom field</option>
+            </select>
+            <input value={step.config.prompt || ""} onChange={e => onUpdate({ ...step.config, prompt: e.target.value })}
+              placeholder="What should we ask?"
+              className="w-full px-3 py-1.5 rounded-lg border border-border text-xs bg-background focus:outline-none" />
+          </div>
+        )}
+
+        {step.type === "tag" && (
+          <input value={step.config.tag || ""} onChange={e => onUpdate({ tag: e.target.value })}
+            onClick={e => e.stopPropagation()}
+            placeholder="Tag name, e.g. 'interested', 'vip', 'lead'"
+            className="w-full px-3 py-1.5 rounded-lg border border-border text-sm bg-background focus:outline-none" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Visual Flow Builder ───────────────────────────────────────────────
+function FlowBuilderModal({ onClose, onSaved, template }: {
+  onClose: () => void; onSaved: () => void;
+  template?: typeof TEMPLATES[0] | null;
+}) {
+  const [name, setName] = useState(template?.config.name || "");
+  const [type, setType] = useState(template?.config.type || "dm_keyword");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [step, setStep] = useState(1); // 1: trigger, 2: config, 3: steps
+  const [step, setStep] = useState(template ? 3 : 1); // Skip to builder if template
 
   // Trigger config
   const [keywordInput, setKeywordInput] = useState("");
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [matchType, setMatchType] = useState("any");
+  const [keywords, setKeywords] = useState<string[]>(template?.config.keywords || []);
+  const [matchType, setMatchType] = useState(template?.config.matchType || "any");
 
-  // Action / Steps
-  const [steps, setSteps] = useState<FlowStep[]>([
-    { id: "s1", order: 0, type: "message", config: { text: "" } },
-  ]);
-
-  // Scope
-  const [scope, setScope] = useState<"global" | "specific">("global");
-  const [selectedPost, setSelectedPost] = useState<any>(null);
+  // Flow steps
+  const [steps, setSteps] = useState<FlowStep[]>(
+    template?.config.steps || [{ id: "s1", order: 0, type: "message", config: { text: "" } }]
+  );
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
   const addKeyword = () => {
     const kw = keywordInput.trim().toLowerCase();
@@ -90,7 +345,7 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   };
 
   const addStep = (stepType: FlowStep["type"]) => {
-    setSteps([...steps, {
+    const newStep: FlowStep = {
       id: `s${Date.now()}`,
       order: steps.length,
       type: stepType,
@@ -99,7 +354,9 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         : stepType === "condition" ? { keyword: "", thenMessage: "", elseMessage: "" }
         : stepType === "collect_input" ? { field: "email", prompt: "" }
         : { tag: "" },
-    }]);
+    };
+    setSteps([...steps, newStep]);
+    setSelectedStepId(newStep.id);
   };
 
   const updateStep = (id: string, config: any) => {
@@ -109,6 +366,7 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const removeStep = (id: string) => {
     if (steps.length <= 1) return;
     setSteps(steps.filter(s => s.id !== id));
+    if (selectedStepId === id) setSelectedStepId(null);
   };
 
   const handleSave = async () => {
@@ -116,24 +374,18 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     const firstMsg = steps.find(s => s.type === "message");
     if (!firstMsg?.config.text) { setError("At least one message is required"); return; }
 
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
       const res = await fetch("/api/automation/rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          type,
-          platform: "instagram",
-          keywords,
-          matchType,
+          name, type, platform: "instagram",
+          keywords, matchType,
           dmMessage: firstMsg.config.text,
           dmLink: firstMsg.config.link || "",
           delay: 0,
           steps: steps.length > 1 ? steps : undefined,
-          scope,
-          mediaId: selectedPost?.id,
         }),
       });
       const data = await res.json();
@@ -155,32 +407,31 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card rounded-2xl border border-border w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
-        <div className="p-6 space-y-5">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-heading font-bold text-lg flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-500" />
-                {step === 1 ? "Choose Trigger" : step === 2 ? "Configure Trigger" : "Build Flow"}
-              </h2>
-              <div className="flex items-center gap-2 mt-2">
-                {[1, 2, 3].map(s => (
-                  <div key={s} className={`h-1 flex-1 rounded-full transition ${step >= s ? "bg-amber-400" : "bg-border"}`} />
-                ))}
-              </div>
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
+          <div>
+            <h2 className="font-heading font-bold text-lg flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-500" />
+              {step === 1 ? "Choose Trigger" : step === 2 ? "Configure Trigger" : "Build Workflow"}
+            </h2>
+            <div className="flex items-center gap-2 mt-2">
+              {[1, 2, 3].map(s => (
+                <div key={s} className={`h-1 flex-1 rounded-full transition ${step >= s ? "bg-amber-400" : "bg-border"}`} />
+              ))}
             </div>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-              <X className="w-5 h-5" />
-            </button>
           </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
+        <div className="p-6 space-y-5">
           {error && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
             </div>
           )}
 
-          {/* STEP 1: Choose trigger type */}
+          {/* STEP 1: Choose trigger */}
           {step === 1 && (
             <>
               <div className="flex items-center gap-1 flex-wrap">
@@ -196,9 +447,7 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto">
                 {filtered.map(t => (
                   <button key={t.value} onClick={() => { setType(t.value); setStep(2); }}
-                    className={`flex items-start gap-3 p-4 rounded-xl border transition-all text-left hover:border-amber-400/50 hover:bg-amber-400/5 ${
-                      type === t.value ? "border-amber-400/60 bg-amber-400/8" : "border-border"
-                    }`}>
+                    className="flex items-start gap-3 p-4 rounded-xl border border-border transition-all text-left hover:border-amber-400/50 hover:bg-amber-400/5">
                     <div className="w-9 h-9 rounded-lg bg-amber-400/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <t.icon className="w-4 h-4 text-amber-500" />
                     </div>
@@ -212,7 +461,7 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </>
           )}
 
-          {/* STEP 2: Configure trigger */}
+          {/* STEP 2: Configure */}
           {step === 2 && (
             <div className="space-y-4">
               <div className="space-y-1.5">
@@ -222,7 +471,6 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                   className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
               </div>
 
-              {/* Keyword config for keyword-based triggers */}
               {["dm_keyword", "comment_to_dm", "comment_auto_reply"].includes(type) && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Trigger Keywords</label>
@@ -255,52 +503,13 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 </div>
               )}
 
-              {/* Lead capture fields */}
-              {type === "lead_capture" && (
-                <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-500/5 to-cyan-500/5 border border-emerald-500/20 space-y-2">
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Users className="w-4 h-4 text-emerald-400" /> Lead Capture Fields
-                  </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["Name", "Email", "Phone", "City", "Interest", "Budget"].map(field => (
-                      <label key={field} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border text-xs cursor-pointer hover:border-emerald-400/40 transition">
-                        <input type="checkbox" className="accent-emerald-500" defaultChecked={["Name", "Email"].includes(field)} />
-                        {field}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* AI config */}
               {type === "ai_auto_reply" && (
                 <div className="p-4 rounded-xl bg-gradient-to-br from-violet-500/5 to-purple-500/5 border border-violet-500/20 space-y-3">
                   <p className="text-sm font-medium flex items-center gap-2">
                     <Bot className="w-4 h-4 text-violet-400" /> AI Configuration
                   </p>
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium">Business Context</label>
-                    <textarea rows={3} placeholder="Describe your business, products, services..."
-                      className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium">Reply Style</label>
-                      <select className="w-full px-3 py-2 mt-1 rounded-xl border border-border text-sm bg-background">
-                        <option value="friendly">Friendly 😊</option>
-                        <option value="professional">Professional 👔</option>
-                        <option value="casual">Casual 🤙</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium">Language</label>
-                      <select className="w-full px-3 py-2 mt-1 rounded-xl border border-border text-sm bg-background">
-                        <option value="en">English</option>
-                        <option value="hi">Hindi</option>
-                        <option value="hinglish">Hinglish</option>
-                      </select>
-                    </div>
-                  </div>
+                  <textarea rows={3} placeholder="Describe your business, products, services..."
+                    className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-400/10 text-xs">
                     <Sparkles className="w-3.5 h-3.5 text-violet-400" />
                     <span>Replies below 70% confidence are sent to AI Inbox for review</span>
@@ -314,129 +523,58 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 </button>
                 <button onClick={() => setStep(3)} disabled={!name}
                   className="flex-1 py-2.5 rounded-xl btn-amber text-sm font-bold disabled:opacity-40">
-                  Next: Build Flow →
+                  Next: Build Workflow →
                 </button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: Build message flow */}
+          {/* STEP 3: Visual Flow Builder */}
           {step === 3 && (
             <div className="space-y-4">
-              {/* Steps */}
-              <div className="space-y-3">
-                {steps.map((flowStep, i) => (
-                  <div key={flowStep.id} className="relative">
-                    {i > 0 && (
-                      <div className="absolute -top-3 left-5 w-px h-3 bg-border" />
-                    )}
-                    <div className="rounded-xl border border-border bg-card p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 rounded-full bg-amber-400/20 text-amber-500 text-[10px] font-bold flex items-center justify-center">
-                            {i + 1}
-                          </span>
-                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            {flowStep.type === "message" ? "💬 Message" :
-                             flowStep.type === "delay" ? "⏰ Delay" :
-                             flowStep.type === "condition" ? "🔀 Condition" :
-                             flowStep.type === "collect_input" ? "📋 Collect" :
-                             "🏷️ Tag"}
-                          </span>
-                        </div>
-                        {steps.length > 1 && (
-                          <button onClick={() => removeStep(flowStep.id)} className="text-muted-foreground hover:text-red-500">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-
-                      {flowStep.type === "message" && (
-                        <div className="space-y-2">
-                          <textarea value={flowStep.config.text} onChange={e => updateStep(flowStep.id, { ...flowStep.config, text: e.target.value })}
-                            rows={3} placeholder="Namaste! 🙏 Thanks for reaching out..."
-                            className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                          <input value={flowStep.config.link || ""} onChange={e => updateStep(flowStep.id, { ...flowStep.config, link: e.target.value })}
-                            placeholder="Link (optional) — https://..."
-                            className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                        </div>
-                      )}
-
-                      {flowStep.type === "delay" && (
-                        <select value={flowStep.config.seconds} onChange={e => updateStep(flowStep.id, { seconds: Number(e.target.value) })}
-                          className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background">
-                          <option value={60}>1 minute</option>
-                          <option value={300}>5 minutes</option>
-                          <option value={1800}>30 minutes</option>
-                          <option value={3600}>1 hour</option>
-                          <option value={14400}>4 hours</option>
-                          <option value={86400}>24 hours</option>
-                        </select>
-                      )}
-
-                      {flowStep.type === "condition" && (
-                        <div className="space-y-2">
-                          <input value={flowStep.config.keyword || ""} onChange={e => updateStep(flowStep.id, { ...flowStep.config, keyword: e.target.value })}
-                            placeholder="If user replies with..."
-                            className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="text-[10px] font-medium text-emerald-400 uppercase">✅ Then send</label>
-                              <textarea value={flowStep.config.thenMessage || ""} onChange={e => updateStep(flowStep.id, { ...flowStep.config, thenMessage: e.target.value })}
-                                rows={2} placeholder="Response if matched..."
-                                className="w-full px-3 py-2 rounded-xl border border-emerald-500/30 text-sm bg-background focus:outline-none resize-none mt-1" />
-                            </div>
-                            <div>
-                              <label className="text-[10px] font-medium text-red-400 uppercase">❌ Else send</label>
-                              <textarea value={flowStep.config.elseMessage || ""} onChange={e => updateStep(flowStep.id, { ...flowStep.config, elseMessage: e.target.value })}
-                                rows={2} placeholder="Response if not matched..."
-                                className="w-full px-3 py-2 rounded-xl border border-red-500/30 text-sm bg-background focus:outline-none resize-none mt-1" />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {flowStep.type === "collect_input" && (
-                        <div className="space-y-2">
-                          <select value={flowStep.config.field} onChange={e => updateStep(flowStep.id, { ...flowStep.config, field: e.target.value })}
-                            className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background">
-                            <option value="name">Name</option>
-                            <option value="email">Email</option>
-                            <option value="phone">Phone</option>
-                            <option value="city">City</option>
-                            <option value="custom">Custom field</option>
-                          </select>
-                          <input value={flowStep.config.prompt || ""} onChange={e => updateStep(flowStep.id, { ...flowStep.config, prompt: e.target.value })}
-                            placeholder="What should we ask? e.g. 'What's your email?'"
-                            className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                        </div>
-                      )}
-
-                      {flowStep.type === "tag" && (
-                        <input value={flowStep.config.tag || ""} onChange={e => updateStep(flowStep.id, { tag: e.target.value })}
-                          placeholder="Tag name, e.g. 'interested', 'vip', 'lead'"
-                          className="w-full px-3 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                      )}
+              {/* Trigger node (non-removable) */}
+              <div className="flex flex-col items-center">
+                <div className="w-full max-w-md rounded-xl border-2 border-amber-400/60 bg-gradient-to-br from-amber-400/10 to-orange-400/10 p-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-400/20 flex items-center justify-center">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-amber-500">⚡ Trigger</p>
+                      <p className="text-sm font-medium">{ALL_TRIGGER_TYPES.find(t => t.value === type)?.label}</p>
                     </div>
                   </div>
-                ))}
+                  {keywords.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {keywords.map(k => (
+                        <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-500">{k}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Add step buttons */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs text-muted-foreground">Add step:</span>
-                {[
-                  { type: "message" as const, label: "💬 Message", color: "border-blue-500/30 hover:bg-blue-500/10" },
-                  { type: "delay" as const, label: "⏰ Delay", color: "border-amber-500/30 hover:bg-amber-500/10" },
-                  { type: "condition" as const, label: "🔀 Condition", color: "border-purple-500/30 hover:bg-purple-500/10" },
-                  { type: "collect_input" as const, label: "📋 Collect", color: "border-emerald-500/30 hover:bg-emerald-500/10" },
-                  { type: "tag" as const, label: "🏷️ Tag", color: "border-orange-500/30 hover:bg-orange-500/10" },
-                ].map(s => (
-                  <button key={s.type} onClick={() => addStep(s.type)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition ${s.color}`}>
-                    {s.label}
-                  </button>
-                ))}
+              {/* Flow nodes */}
+              {steps.map((flowStep, i) => (
+                <FlowNode key={flowStep.id} step={flowStep} index={i} total={steps.length}
+                  onUpdate={config => updateStep(flowStep.id, config)}
+                  onRemove={() => removeStep(flowStep.id)}
+                  isSelected={selectedStepId === flowStep.id}
+                  onSelect={() => setSelectedStepId(flowStep.id === selectedStepId ? null : flowStep.id)} />
+              ))}
+
+              {/* Add step connector + buttons */}
+              <div className="flex flex-col items-center">
+                <div className="w-px h-4 bg-border" />
+                <div className="flex items-center gap-1.5 flex-wrap justify-center p-2 rounded-xl border border-dashed border-border bg-muted/20">
+                  <span className="text-[10px] text-muted-foreground font-medium mr-1">+ Add:</span>
+                  {STEP_TYPES.map(s => (
+                    <button key={s.type} onClick={() => addStep(s.type)}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition ${s.color} hover:opacity-80`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Compliance reminder */}
@@ -462,19 +600,37 @@ function FlowBuilderModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   );
 }
 
+// ─── Template Card ─────────────────────────────────────────────────────
+function TemplateCard({ template, onUse }: { template: typeof TEMPLATES[0]; onUse: () => void }) {
+  return (
+    <div className="p-4 rounded-xl border border-border bg-card hover:border-amber-400/30 transition group">
+      <div className="flex items-start gap-3">
+        <span className="text-2xl">{template.icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm">{template.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{template.desc}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">{template.category}</span>
+            <span className="text-[10px] text-muted-foreground">{template.config.steps.length} steps</span>
+          </div>
+        </div>
+        <button onClick={onUse}
+          className="px-3 py-1.5 rounded-lg bg-amber-400 text-black text-xs font-bold hover:bg-amber-500 transition opacity-0 group-hover:opacity-100 flex items-center gap-1">
+          <Play className="w-3 h-3" /> Use
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Flow Card ─────────────────────────────────────────────────────────
 function FlowCard({ rule, onToggle, onDelete, onPublish, onPause, onRollback }: {
-  rule: FlowRule;
-  onToggle: () => void;
-  onDelete: () => void;
-  onPublish: () => void;
-  onPause: () => void;
-  onRollback: () => void;
+  rule: FlowRule; onToggle: () => void; onDelete: () => void;
+  onPublish: () => void; onPause: () => void; onRollback: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const triggerInfo = ALL_TRIGGER_TYPES.find(t => t.value === rule.type);
   const TriggerIcon = triggerInfo?.icon || Zap;
-
   const statusBadge = {
     published: { label: "Live", color: "bg-emerald-400/15 text-emerald-400 border-emerald-400/30" },
     draft: { label: "Draft", color: "bg-amber-400/15 text-amber-400 border-amber-400/30" },
@@ -493,9 +649,7 @@ function FlowCard({ rule, onToggle, onDelete, onPublish, onPause, onRollback }: 
             <span className={`text-[10px] px-2 py-0.5 rounded-md border font-bold ${statusBadge.color}`}>
               {statusBadge.label}
             </span>
-            {rule.version > 1 && (
-              <span className="text-[10px] text-muted-foreground">v{rule.version}</span>
-            )}
+            {rule.version > 1 && <span className="text-[10px] text-muted-foreground">v{rule.version}</span>}
           </div>
           <p className="text-xs text-muted-foreground">{triggerInfo?.desc}</p>
           <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
@@ -517,7 +671,6 @@ function FlowCard({ rule, onToggle, onDelete, onPublish, onPause, onRollback }: 
 
       {expanded && (
         <div className="border-t border-border p-4 space-y-3">
-          {/* Keywords */}
           {rule.trigger_config?.keywords?.length > 0 && (
             <div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Keywords ({rule.trigger_config.match_type || "any"})</p>
@@ -528,30 +681,23 @@ function FlowCard({ rule, onToggle, onDelete, onPublish, onPause, onRollback }: 
               </div>
             </div>
           )}
-
-          {/* Message preview */}
           <div>
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Message</p>
             <p className="text-sm bg-muted/40 rounded-xl p-3 leading-relaxed">{rule.action_config?.message}</p>
           </div>
-
-          {/* Version control actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-border">
             {rule.publish_status !== "published" && (
-              <button onClick={onPublish}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 text-xs font-bold hover:bg-emerald-500/25 transition">
+              <button onClick={onPublish} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 text-xs font-bold hover:bg-emerald-500/25 transition">
                 <Rocket className="w-3 h-3" /> Publish
               </button>
             )}
             {rule.publish_status === "published" && (
-              <button onClick={onPause}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-400 text-xs font-bold hover:bg-amber-500/25 transition">
+              <button onClick={onPause} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-400 text-xs font-bold hover:bg-amber-500/25 transition">
                 <Pause className="w-3 h-3" /> Pause
               </button>
             )}
             {rule.version > 1 && (
-              <button onClick={onRollback}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 text-xs font-bold hover:bg-blue-500/25 transition">
+              <button onClick={onRollback} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 text-xs font-bold hover:bg-blue-500/25 transition">
                 <Undo2 className="w-3 h-3" /> Rollback
               </button>
             )}
@@ -571,7 +717,9 @@ export default function FlowsPage() {
   const [rules, setRules] = useState<FlowRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
+  const [activeTab, setActiveTab] = useState<"automations" | "templates">("automations");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [selectedTemplate, setSelectedTemplate] = useState<typeof TEMPLATES[0] | null>(null);
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
@@ -608,12 +756,21 @@ export default function FlowsPage() {
     await fetch(`/api/automation/rules?id=${id}`, { method: "DELETE" });
   };
 
+  const useTemplate = (tpl: typeof TEMPLATES[0]) => {
+    setSelectedTemplate(tpl);
+    setShowBuilder(true);
+  };
+
   const filteredRules = categoryFilter === "all"
     ? rules
     : rules.filter(r => {
         const info = ALL_TRIGGER_TYPES.find(t => t.value === r.type);
         return info?.category === categoryFilter;
       });
+
+  const filteredTemplates = categoryFilter === "all"
+    ? TEMPLATES
+    : TEMPLATES.filter(t => t.category === categoryFilter);
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -624,7 +781,7 @@ export default function FlowsPage() {
             Automation Flows
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Build multi-step automations with conditions, delays, and lead capture
+            Visual workflow builder with pre-built templates
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -632,18 +789,35 @@ export default function FlowsPage() {
             className="p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground transition">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-          <button onClick={() => setShowBuilder(true)}
+          <button onClick={() => { setSelectedTemplate(null); setShowBuilder(true); }}
             className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
             <Plus className="w-4 h-4" /> New Automation
           </button>
         </div>
       </div>
 
+      {/* Tabs: Automations / Templates */}
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-muted/50 w-fit">
+        {([
+          { key: "automations" as const, label: "⚡ My Automations", count: rules.length },
+          { key: "templates" as const, label: "📋 Templates", count: TEMPLATES.length },
+        ]).map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              activeTab === tab.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}>
+            {tab.label}
+            <span className="ml-1.5 text-[10px] opacity-60">({tab.count})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Category filter */}
       <div className="flex items-center gap-1 flex-wrap">
         {CATEGORIES.map(c => {
-          const count = c.value === "all" ? rules.length
-            : rules.filter(r => ALL_TRIGGER_TYPES.find(t => t.value === r.type)?.category === c.value).length;
+          const count = activeTab === "automations"
+            ? (c.value === "all" ? rules.length : rules.filter(r => ALL_TRIGGER_TYPES.find(t => t.value === r.type)?.category === c.value).length)
+            : (c.value === "all" ? TEMPLATES.length : TEMPLATES.filter(t => t.category === c.value).length);
           return (
             <button key={c.value} onClick={() => setCategoryFilter(c.value)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
@@ -656,8 +830,21 @@ export default function FlowsPage() {
         })}
       </div>
 
-      {/* Rules list */}
-      {loading ? (
+      {/* Content */}
+      {activeTab === "templates" ? (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">Click "Use" to start with a pre-built template — customize it to fit your needs.</p>
+          {filteredTemplates.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">No templates in this category</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredTemplates.map(tpl => (
+                <TemplateCard key={tpl.id} template={tpl} onUse={() => useTemplate(tpl)} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
           <Loader2 className="w-5 h-5 animate-spin" /> Loading automations...
         </div>
@@ -665,11 +852,17 @@ export default function FlowsPage() {
         <div className="text-center py-16 border-2 border-dashed border-border rounded-2xl">
           <Radio className="w-12 h-12 mx-auto mb-3 text-muted-foreground/30" />
           <p className="font-medium text-muted-foreground">No automations yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Create your first automation to start growing on autopilot</p>
-          <button onClick={() => setShowBuilder(true)}
-            className="mt-4 btn-amber px-6 py-2.5 rounded-xl text-sm font-bold">
-            Create First Automation
-          </button>
+          <p className="text-sm text-muted-foreground mt-1">Start from a template or build from scratch</p>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            <button onClick={() => setActiveTab("templates")}
+              className="px-4 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition flex items-center gap-2">
+              <BookOpen className="w-4 h-4" /> Browse Templates
+            </button>
+            <button onClick={() => { setSelectedTemplate(null); setShowBuilder(true); }}
+              className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold">
+              Build from Scratch
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -684,7 +877,13 @@ export default function FlowsPage() {
         </div>
       )}
 
-      {showBuilder && <FlowBuilderModal onClose={() => setShowBuilder(false)} onSaved={fetchRules} />}
+      {showBuilder && (
+        <FlowBuilderModal
+          onClose={() => { setShowBuilder(false); setSelectedTemplate(null); }}
+          onSaved={fetchRules}
+          template={selectedTemplate}
+        />
+      )}
     </div>
   );
 }

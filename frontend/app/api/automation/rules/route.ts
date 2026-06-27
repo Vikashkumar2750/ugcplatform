@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   if (type) {
     if (type === "comments") {
-      query = query.in("type", ["comment_reply", "comment_to_dm", "hide_comment"]);
+      query = query.in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"]);
     } else if (type === "dm") {
       query = query.in("type", ["dm_keyword", "dm_new_follower", "story_reply"]);
     } else {
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption } = body;
+  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
@@ -82,6 +82,8 @@ export async function POST(req: NextRequest) {
     reply_text: replyText || "",
     link: dmLink || "",
     delay_seconds: delay || 0,
+    hide: hide || false,
+    actions_enabled: actionsEnabled || null,
   };
 
   const { data, error } = await supabase

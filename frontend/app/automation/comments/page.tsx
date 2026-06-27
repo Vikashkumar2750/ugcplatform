@@ -4,14 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, MessageCircle,
   ChevronDown, ChevronUp, EyeOff, Loader2, RefreshCw,
-  Globe, Image as ImageIcon, CheckCircle2, AlertCircle, X
+  Globe, Image as ImageIcon, CheckCircle2, AlertCircle, X,
+  MessageSquare, Send, Link as LinkIcon, Eye
 } from "lucide-react";
-
-const COMMENT_TRIGGER_TYPES = [
-  { value: "comment_to_dm", label: "Comment → DM", desc: "DM anyone who comments with a keyword" },
-  { value: "comment_reply", label: "Auto-reply to Comment", desc: "Reply publicly to matching comments" },
-  { value: "hide_comment", label: "Hide Spam Comments", desc: "Auto-hide comments with specific words" },
-];
 
 interface MediaPost {
   id: string; type: string; url: string;
@@ -21,7 +16,7 @@ interface MediaPost {
 interface CommentRule {
   id: string; name: string; type: string;
   trigger_config: { keywords: string[]; match_type: string; media_id: string | null; media_thumb?: string; media_caption?: string };
-  action_config: { reply_text?: string; message?: string; link?: string };
+  action_config: { reply_text?: string; message?: string; link?: string; hide?: boolean; actions_enabled?: { reply: boolean; dm: boolean; hide: boolean } };
   is_active: boolean; trigger_count: number; created_at: string;
 }
 
@@ -97,34 +92,68 @@ function PostPickerModal({ onSelect, onClose }: {
   );
 }
 
-// ─── New Rule Modal ────────────────────────────────────────────────────
+// ─── Action Toggle ─────────────────────────────────────────────────────
+function ActionToggle({ icon: Icon, label, desc, active, onChange, color }: {
+  icon: any; label: string; desc: string; active: boolean; onChange: () => void; color: string;
+}) {
+  return (
+    <button onClick={onChange}
+      className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all text-left w-full ${
+        active ? `${color} border-current/30` : "border-border text-muted-foreground hover:border-foreground/20"
+      }`}>
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${active ? "bg-current/10" : "bg-muted/50"}`}>
+        <Icon className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm">{label}</p>
+        <p className="text-[11px] opacity-70 mt-0.5">{desc}</p>
+      </div>
+      <div className={`w-9 h-5 rounded-full transition flex-shrink-0 mt-1 ${active ? "bg-current/60" : "bg-muted-foreground/30"}`}>
+        <div className={`w-4 h-4 rounded-full bg-white transition-all mt-0.5 ${active ? "ml-4" : "ml-0.5"}`} />
+      </div>
+    </button>
+  );
+}
+
+// ─── New Rule Modal (UNIFIED: DM + Reply + Hide in ONE rule) ───────────
 function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState("comment_to_dm");
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [matchType, setMatchType] = useState<"any" | "all">("any");
+
+  // Unified actions — user can enable any combination
+  const [enableReply, setEnableReply] = useState(true);
+  const [enableDM, setEnableDM] = useState(true);
+  const [enableHide, setEnableHide] = useState(false);
+
+  // Action content
   const [replyText, setReplyText] = useState("");
   const [dmMessage, setDmMessage] = useState("");
   const [dmLink, setDmLink] = useState("");
 
-  // Scope: global vs per-post
+  // Scope
   const [scope, setScope] = useState<"global" | "specific">("global");
   const [selectedPost, setSelectedPost] = useState<MediaPost | null>(null);
   const [showPostPicker, setShowPostPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [step, setStep] = useState(1); // 1: trigger, 2: actions
 
   const addKeyword = () => {
-    if (keywordInput.trim() && !keywords.includes(keywordInput.trim())) {
-      setKeywords([...keywords, keywordInput.trim()]);
+    const kw = keywordInput.trim().toLowerCase();
+    if (kw && !keywords.includes(kw)) {
+      setKeywords([...keywords, kw]);
       setKeywordInput("");
     }
   };
 
   const handleSave = async () => {
     if (!name) { setError("Rule name is required"); return; }
+    if (!enableReply && !enableDM && !enableHide) { setError("Enable at least one action"); return; }
+    if (enableReply && !replyText.trim()) { setError("Reply text is required"); return; }
+    if (enableDM && !dmMessage.trim()) { setError("DM message is required"); return; }
     if (scope === "specific" && !selectedPost) { setError("Please select a post"); return; }
 
     setSaving(true); setError("");
@@ -133,8 +162,16 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name, type, platform: "instagram", keywords, matchType,
-          replyText, dmMessage, dmLink,
+          name,
+          type: "comment_automation",
+          platform: "instagram",
+          keywords,
+          matchType,
+          replyText: enableReply ? replyText : "",
+          dmMessage: enableDM ? dmMessage : "",
+          dmLink: enableDM ? dmLink : "",
+          hide: enableHide,
+          actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
           mediaId: scope === "specific" ? selectedPost?.id : null,
           mediaThumb: scope === "specific" ? selectedPost?.thumbnail : null,
           mediaCaption: scope === "specific" ? selectedPost?.caption : null,
@@ -161,147 +198,190 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
       )}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-card rounded-2xl border border-border w-full max-w-lg max-h-[92vh] overflow-y-auto">
-          <div className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-heading font-bold text-lg">New Comment Rule</h2>
-              <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+        <div className="relative bg-card rounded-2xl border border-border w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl">
+          <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-center justify-between z-10">
+            <div>
+              <h2 className="font-heading font-bold text-lg">
+                {step === 1 ? "When someone comments..." : "What should happen?"}
+              </h2>
+              <div className="flex gap-1.5 mt-2">
+                {[1, 2].map(s => (
+                  <div key={s} className={`h-1 flex-1 rounded-full transition ${step >= s ? "bg-amber-400" : "bg-border"}`} />
+                ))}
+              </div>
             </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+          </div>
 
+          <div className="p-6 space-y-5">
             {error && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
               </div>
             )}
 
-            {/* Rule name */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Rule name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Send guide on 'link' comment"
-                className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
-            </div>
+            {step === 1 && (
+              <>
+                {/* Rule name */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Rule name</label>
+                  <input value={name} onChange={e => setName(e.target.value)}
+                    placeholder="e.g. Send guide when someone comments 'link'"
+                    className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30" />
+                </div>
 
-            {/* Rule type */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Rule type</label>
-              {COMMENT_TRIGGER_TYPES.map(t => (
-                <button key={t.value} onClick={() => setType(t.value)}
-                  className={`w-full text-left p-3 rounded-xl border transition-all text-sm ${type === t.value ? "border-amber-400/60 bg-amber-400/8" : "border-border hover:border-foreground/30"}`}>
-                  <p className="font-medium">{t.label}</p>
-                  <p className="text-xs text-muted-foreground">{t.desc}</p>
-                </button>
-              ))}
-            </div>
-
-            {/* ── SCOPE TOGGLE ─────────────────────────────────────── */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Apply to</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => { setScope("global"); setSelectedPost(null); }}
-                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition ${scope === "global" ? "border-amber-400/60 bg-amber-400/8 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"}`}>
-                  <Globe className="w-4 h-4" />
-                  <div className="text-left">
-                    <p className="font-medium text-xs">All Posts</p>
-                    <p className="text-[10px] text-muted-foreground">Triggers on every post</p>
-                  </div>
-                </button>
-                <button onClick={() => setScope("specific")}
-                  className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition ${scope === "specific" ? "border-amber-400/60 bg-amber-400/8 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"}`}>
-                  <ImageIcon className="w-4 h-4" />
-                  <div className="text-left">
-                    <p className="font-medium text-xs">Specific Post</p>
-                    <p className="text-[10px] text-muted-foreground">Choose one reel/post</p>
-                  </div>
-                </button>
-              </div>
-
-              {scope === "specific" && (
-                <div className="mt-2">
-                  {selectedPost ? (
-                    <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-400/40 bg-amber-400/5">
-                      <img src={selectedPost.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{selectedPost.caption || "No caption"}</p>
-                        <p className="text-[10px] text-amber-500 mt-0.5">{selectedPost.type}</p>
+                {/* Scope */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Apply to</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { setScope("global"); setSelectedPost(null); }}
+                      className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition ${scope === "global" ? "border-amber-400/60 bg-amber-400/8 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"}`}>
+                      <Globe className="w-4 h-4" />
+                      <div className="text-left">
+                        <p className="font-medium text-xs">All Posts</p>
+                        <p className="text-[10px] text-muted-foreground">Triggers on every post</p>
                       </div>
-                      <button onClick={() => setShowPostPicker(true)} className="text-xs text-amber-500 hover:text-amber-400 font-medium">Change</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setShowPostPicker(true)}
-                      className="w-full py-3 rounded-xl border-2 border-dashed border-border hover:border-amber-400/40 text-sm text-muted-foreground hover:text-foreground transition flex items-center justify-center gap-2">
-                      <ImageIcon className="w-4 h-4" /> Pick a post or reel
                     </button>
+                    <button onClick={() => setScope("specific")}
+                      className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition ${scope === "specific" ? "border-amber-400/60 bg-amber-400/8 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"}`}>
+                      <ImageIcon className="w-4 h-4" />
+                      <div className="text-left">
+                        <p className="font-medium text-xs">Specific Post</p>
+                        <p className="text-[10px] text-muted-foreground">Choose one reel/post</p>
+                      </div>
+                    </button>
+                  </div>
+                  {scope === "specific" && (
+                    <div className="mt-2">
+                      {selectedPost ? (
+                        <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-400/40 bg-amber-400/5">
+                          <img src={selectedPost.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{selectedPost.caption || "No caption"}</p>
+                            <p className="text-[10px] text-amber-500 mt-0.5">{selectedPost.type}</p>
+                          </div>
+                          <button onClick={() => setShowPostPicker(true)} className="text-xs text-amber-500 hover:text-amber-400 font-medium">Change</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setShowPostPicker(true)}
+                          className="w-full py-3 rounded-xl border-2 border-dashed border-border hover:border-amber-400/40 text-sm text-muted-foreground hover:text-foreground transition flex items-center justify-center gap-2">
+                          <ImageIcon className="w-4 h-4" /> Pick a post or reel
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Keywords */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Trigger keywords</label>
-                <div className="flex gap-1">
-                  {(["any", "all"] as const).map(m => (
-                    <button key={m} onClick={() => setMatchType(m)}
-                      className={`px-2 py-0.5 rounded text-xs font-medium transition ${matchType === m ? "bg-amber-400/20 text-amber-500" : "text-muted-foreground hover:text-foreground"}`}>
-                      Match {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <input value={keywordInput} onChange={e => setKeywordInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addKeyword())}
-                  placeholder="e.g. guide, link, info (leave empty = all comments)"
-                  className="flex-1 px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                <button onClick={addKeyword} className="px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60">Add</button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {keywords.map(k => (
-                  <span key={k} className="px-2.5 py-1 rounded-full bg-muted text-xs flex items-center gap-1.5">
-                    {k}
-                    <button onClick={() => setKeywords(keywords.filter(kw => kw !== k))} className="hover:text-red-500">×</button>
-                  </span>
-                ))}
-              </div>
-              {keywords.length === 0 && <p className="text-xs text-muted-foreground">⚠️ Empty = rule triggers on ALL comments</p>}
-            </div>
-
-            {/* Action: comment reply */}
-            {type === "comment_reply" && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Public reply text</label>
-                <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={3}
-                  placeholder="Thanks for commenting! Maine tumhe DM kiya hai 🙌"
-                  className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-              </div>
-            )}
-
-            {/* Action: DM */}
-            {(type === "comment_to_dm") && (
-              <>
+                {/* Keywords */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">DM message to send</label>
-                  <textarea value={dmMessage} onChange={e => setDmMessage(e.target.value)} rows={4}
-                    placeholder="Namaste! Tumne comment kiya tha — yeh raha tumhara guide 👇"
-                    className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                  <p className="text-xs text-muted-foreground">💡 Include opt-out: &ldquo;Reply STOP to unsubscribe&rdquo;</p>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Trigger keywords</label>
+                    <div className="flex gap-1">
+                      {(["any", "all"] as const).map(m => (
+                        <button key={m} onClick={() => setMatchType(m)}
+                          className={`px-2 py-0.5 rounded text-xs font-medium transition ${matchType === m ? "bg-amber-400/20 text-amber-500" : "text-muted-foreground hover:text-foreground"}`}>
+                          Match {m}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <input value={keywordInput} onChange={e => setKeywordInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addKeyword())}
+                      placeholder="e.g. guide, link, info (leave empty = all comments)"
+                      className="flex-1 px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none" />
+                    <button onClick={addKeyword} className="px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60">Add</button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {keywords.map(k => (
+                      <span key={k} className="px-2.5 py-1 rounded-full bg-amber-400/10 text-amber-500 text-xs flex items-center gap-1.5 border border-amber-400/20">
+                        {k}
+                        <button onClick={() => setKeywords(keywords.filter(kw => kw !== k))} className="hover:text-red-500">×</button>
+                      </span>
+                    ))}
+                  </div>
+                  {keywords.length === 0 && <p className="text-xs text-muted-foreground">⚠️ Empty = rule triggers on ALL comments</p>}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Link (optional)</label>
-                  <input value={dmLink} onChange={e => setDmLink(e.target.value)} placeholder="https://your-link.com"
-                    className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
-                </div>
+
+                <button onClick={() => setStep(2)} disabled={!name.trim()}
+                  className="w-full py-3 rounded-xl btn-amber text-sm font-bold disabled:opacity-40">
+                  Next: Choose Actions →
+                </button>
               </>
             )}
 
-            <div className="flex gap-3 pt-2">
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition">Cancel</button>
-              <button onClick={handleSave} disabled={saving || !name}
-                className="flex-1 py-2.5 rounded-xl btn-amber text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Save Rule"}
-              </button>
-            </div>
+            {step === 2 && (
+              <>
+                {/* Unified Action Toggles */}
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Enable actions <span className="text-xs text-muted-foreground">(select one or more)</span></p>
+                  <ActionToggle icon={MessageCircle} label="Auto-Reply to Comment" desc="Post a public reply under the comment"
+                    active={enableReply} onChange={() => setEnableReply(!enableReply)} color="text-blue-500 bg-blue-500/8" />
+                  <ActionToggle icon={Send} label="Send DM" desc="Send a private message to the commenter"
+                    active={enableDM} onChange={() => setEnableDM(!enableDM)} color="text-violet-500 bg-violet-500/8" />
+                  <ActionToggle icon={EyeOff} label="Hide Comment" desc="Auto-hide matching comments (spam filter)"
+                    active={enableHide} onChange={() => setEnableHide(!enableHide)} color="text-red-400 bg-red-400/8" />
+                </div>
+
+                {/* Reply text */}
+                {enableReply && (
+                  <div className="space-y-1.5 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <MessageCircle className="w-3.5 h-3.5 text-blue-500" /> Public reply text
+                    </label>
+                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={3}
+                      placeholder="Thanks for commenting! Check your DM 📩🙌"
+                      className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                    <p className="text-[10px] text-muted-foreground">This reply will appear publicly under their comment</p>
+                  </div>
+                )}
+
+                {/* DM message */}
+                {enableDM && (
+                  <div className="space-y-2 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Send className="w-3.5 h-3.5 text-violet-500" /> DM message to send
+                    </label>
+                    <textarea value={dmMessage} onChange={e => setDmMessage(e.target.value)} rows={4}
+                      placeholder="Namaste! 🙏 Tumne comment kiya tha — yeh raha tumhara guide 👇"
+                      className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium flex items-center gap-1.5">
+                        <LinkIcon className="w-3 h-3" /> Link (optional)
+                      </label>
+                      <input value={dmLink} onChange={e => setDmLink(e.target.value)} placeholder="https://your-link.com"
+                        className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">💡 Include opt-out: &ldquo;Reply STOP to unsubscribe&rdquo;</p>
+                  </div>
+                )}
+
+                {/* Summary */}
+                {(enableReply || enableDM || enableHide) && (
+                  <div className="p-3 rounded-xl bg-muted/30 border border-border">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Rule Summary</p>
+                    <p className="text-xs text-muted-foreground">
+                      When someone comments {keywords.length > 0 ? <span className="text-amber-500 font-medium">{keywords.join(", ")}</span> : "anything"} on {scope === "global" ? "any post" : "the selected post"}:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {enableReply && <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/20 font-medium">💬 Auto-reply</span>}
+                      {enableDM && <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20 font-medium">📩 Send DM</span>}
+                      {enableHide && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-400/15 text-red-400 border border-red-400/20 font-medium">🙈 Hide comment</span>}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                  <button onClick={() => setStep(1)} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted/60 transition">
+                    ← Back
+                  </button>
+                  <button onClick={handleSave} disabled={saving || (!enableReply && !enableDM && !enableHide)}
+                    className="flex-1 py-2.5 rounded-xl btn-amber text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2">
+                    {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : "Create Rule"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -312,27 +392,54 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 // ─── Rule Card ─────────────────────────────────────────────────────────
 function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
-  const typeLabel = COMMENT_TRIGGER_TYPES.find(t => t.value === rule.type)?.label;
   const isSpecific = !!rule.trigger_config?.media_id;
   const keywords = rule.trigger_config?.keywords || [];
+
+  // Determine actions from rule
+  const actions = rule.action_config?.actions_enabled || {
+    reply: !!rule.action_config?.reply_text,
+    dm: !!rule.action_config?.message,
+    hide: rule.type === "hide_comment" || !!rule.action_config?.hide,
+  };
+
+  // Legacy type label
+  const legacyLabel = rule.type === "comment_to_dm" ? "Comment → DM"
+    : rule.type === "comment_reply" ? "Auto-reply"
+    : rule.type === "hide_comment" ? "Hide Spam"
+    : "Comment Rule";
 
   return (
     <div className={`rounded-2xl border transition-all ${rule.is_active ? "border-border bg-card" : "border-border bg-muted/30 opacity-60"}`}>
       <div className="p-4 flex items-start gap-3">
         <div className="w-9 h-9 rounded-xl bg-amber-400/10 flex items-center justify-center flex-shrink-0">
-          {rule.type === "hide_comment" ? <EyeOff className="w-4 h-4 text-amber-500" /> : <MessageCircle className="w-4 h-4 text-amber-500" />}
+          <MessageCircle className="w-4 h-4 text-amber-500" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <p className="font-semibold text-sm truncate">{rule.name}</p>
-            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex-shrink-0">{typeLabel}</span>
+            {/* Action badges */}
+            {actions.reply && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-0.5">
+                <MessageCircle className="w-2.5 h-2.5" /> Reply
+              </span>
+            )}
+            {actions.dm && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 flex items-center gap-0.5">
+                <Send className="w-2.5 h-2.5" /> DM
+              </span>
+            )}
+            {actions.hide && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-400/10 text-red-400 border border-red-400/20 flex items-center gap-0.5">
+                <EyeOff className="w-2.5 h-2.5" /> Hide
+              </span>
+            )}
             {isSpecific ? (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-1 flex-shrink-0">
-                <ImageIcon className="w-2.5 h-2.5" /> Specific post
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20 flex items-center gap-0.5">
+                <ImageIcon className="w-2.5 h-2.5" /> Post
               </span>
             ) : (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1 flex-shrink-0">
-                <Globe className="w-2.5 h-2.5" /> All posts
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-0.5">
+                <Globe className="w-2.5 h-2.5" /> All
               </span>
             )}
           </div>
@@ -353,7 +460,6 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
 
       {expanded && (
         <div className="border-t border-border p-4 space-y-3 text-sm">
-          {/* Post thumbnail if specific */}
           {isSpecific && rule.trigger_config.media_thumb && (
             <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
               <img src={rule.trigger_config.media_thumb} alt="" className="w-10 h-10 rounded-lg object-cover" />
@@ -365,14 +471,14 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
           )}
           {rule.action_config?.reply_text && (
             <div>
-              <p className="text-xs font-bold text-muted-foreground mb-1">PUBLIC REPLY</p>
-              <p className="bg-muted/40 rounded-lg p-3 text-sm">{rule.action_config.reply_text}</p>
+              <p className="text-xs font-bold text-blue-400 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> PUBLIC REPLY</p>
+              <p className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-3 text-sm">{rule.action_config.reply_text}</p>
             </div>
           )}
           {rule.action_config?.message && (
             <div>
-              <p className="text-xs font-bold text-muted-foreground mb-1">DM MESSAGE</p>
-              <p className="bg-muted/40 rounded-lg p-3 text-sm">{rule.action_config.message}</p>
+              <p className="text-xs font-bold text-violet-400 mb-1 flex items-center gap-1"><Send className="w-3 h-3" /> DM MESSAGE</p>
+              <p className="bg-violet-500/5 border border-violet-500/10 rounded-lg p-3 text-sm">{rule.action_config.message}</p>
               {rule.action_config?.link && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">🔗 {rule.action_config.link}</p>}
             </div>
           )}
@@ -422,7 +528,7 @@ export default function CommentsAutomationPage() {
             <MessageCircle className="w-6 h-6 text-amber-500" /> Comment Automation
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Auto-reply, send DMs from comments — on all posts or a specific reel
+            One rule, multiple actions — auto-reply, DM, and hide in a single automation
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -435,17 +541,21 @@ export default function CommentsAutomationPage() {
         </div>
       </div>
 
-      {/* Callout */}
+      {/* How it works */}
       <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
-        <p className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-1.5">💡 Two modes available</p>
-        <div className="grid sm:grid-cols-2 gap-3 text-xs text-muted-foreground">
+        <p className="text-sm font-bold text-amber-600 dark:text-amber-400 mb-2">⚡ One rule does it all</p>
+        <div className="grid sm:grid-cols-3 gap-3 text-xs text-muted-foreground">
           <div className="flex items-start gap-2">
-            <Globe className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <span><strong className="text-foreground">All Posts:</strong> Rule triggers on any post&apos;s comments — good for always-on rules like welcome DMs.</span>
+            <MessageCircle className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+            <span><strong className="text-foreground">Auto-Reply:</strong> Post a public reply under matching comments</span>
           </div>
           <div className="flex items-start gap-2">
-            <ImageIcon className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-            <span><strong className="text-foreground">Specific Post:</strong> Pick one reel/post — rule only fires on that post. Perfect for promotions.</span>
+            <Send className="w-3.5 h-3.5 text-violet-400 mt-0.5 flex-shrink-0" />
+            <span><strong className="text-foreground">Send DM:</strong> Privately DM the commenter with a message + link</span>
+          </div>
+          <div className="flex items-start gap-2">
+            <EyeOff className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+            <span><strong className="text-foreground">Hide:</strong> Auto-hide spam or unwanted comments</span>
           </div>
         </div>
       </div>
@@ -458,19 +568,16 @@ export default function CommentsAutomationPage() {
         <div className="text-center py-16 border-2 border-dashed border-border rounded-2xl">
           <MessageCircle className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
           <p className="font-medium text-muted-foreground">No comment rules yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Create a rule to automate comment replies and DMs</p>
+          <p className="text-sm text-muted-foreground mt-1">Create a rule to auto-reply AND DM in one click</p>
           <button onClick={() => setShowModal(true)} className="mt-4 btn-amber px-6 py-2.5 rounded-xl text-sm font-bold">
             Create First Rule
           </button>
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Stats row */}
           <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Total: <span className="text-foreground font-medium">{rules.length}</span></span>
             <span>Active: <span className="text-green-400 font-medium">{rules.filter(r => r.is_active).length}</span></span>
-            <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> All posts: <span className="text-blue-400 font-medium">{rules.filter(r => !r.trigger_config?.media_id).length}</span></span>
-            <span className="flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Specific: <span className="text-amber-400 font-medium">{rules.filter(r => !!r.trigger_config?.media_id).length}</span></span>
           </div>
           {rules.map(rule => (
             <RuleCard key={rule.id} rule={rule}
