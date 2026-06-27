@@ -389,6 +389,86 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   );
 }
 
+// ─── Webhook Status Banner ─────────────────────────────────────────────
+function WebhookStatusBanner() {
+  const [status, setStatus] = useState<"loading" | "ok" | "not_subscribed" | "error" | "no_page">("loading");
+  const [subscribing, setSubscribing] = useState(false);
+  const [detail, setDetail] = useState("");
+
+  useEffect(() => {
+    fetch("/api/webhooks/meta/subscribe")
+      .then(r => r.json())
+      .then(data => {
+        if (!data.results?.length) {
+          setStatus("no_page");
+          setDetail("No connected account with page found");
+          return;
+        }
+        const result = data.results[0];
+        if (result.error) {
+          setStatus("error");
+          setDetail(result.error);
+        } else if (result.subscriptions?.length > 0) {
+          setStatus("ok");
+          setDetail(`Page "${result.page_name}" subscribed`);
+        } else {
+          setStatus("not_subscribed");
+          setDetail(`Page "${result.page_name}" NOT subscribed — webhooks won't fire`);
+        }
+      })
+      .catch(() => { setStatus("error"); setDetail("Failed to check"); });
+  }, []);
+
+  const handleSubscribe = async () => {
+    setSubscribing(true);
+    try {
+      const res = await fetch("/api/webhooks/meta/subscribe", { method: "POST" });
+      const data = await res.json();
+      const result = data.results?.[0];
+      if (result?.success) {
+        setStatus("ok");
+        setDetail(`✅ Page subscribed successfully!`);
+      } else {
+        setStatus("error");
+        setDetail(result?.error || "Subscription failed");
+      }
+    } catch {
+      setStatus("error");
+      setDetail("Network error");
+    }
+    setSubscribing(false);
+  };
+
+  if (status === "loading") return null;
+  if (status === "ok") return (
+    <div className="p-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 flex items-center gap-2 text-xs">
+      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+      <span className="text-emerald-600 dark:text-emerald-400 font-medium">{detail}</span>
+      <span className="text-muted-foreground">— webhooks active</span>
+    </div>
+  );
+
+  return (
+    <div className="p-3 rounded-xl border border-red-400/20 bg-red-400/5 flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 text-xs">
+        <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+        <span className="text-red-500 font-medium">{detail}</span>
+      </div>
+      {status !== "no_page" && (
+        <button onClick={handleSubscribe} disabled={subscribing}
+          className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition disabled:opacity-50 flex-shrink-0">
+          {subscribing ? "Subscribing..." : "Fix: Subscribe Now"}
+        </button>
+      )}
+      {status === "no_page" && (
+        <a href="/connect" className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition flex-shrink-0">
+          Reconnect Instagram
+        </a>
+      )}
+    </div>
+  );
+}
+
 // ─── Rule Card ─────────────────────────────────────────────────────────
 function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -460,28 +540,90 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
 
       {expanded && (
         <div className="border-t border-border p-4 space-y-3 text-sm">
-          {isSpecific && rule.trigger_config.media_thumb && (
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
-              <img src={rule.trigger_config.media_thumb} alt="" className="w-10 h-10 rounded-lg object-cover" />
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Target Post</p>
-                <p className="text-xs truncate">{rule.trigger_config.media_caption || "No caption"}</p>
+          {/* Keywords & Trigger Config */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">🔑 Trigger Keywords</p>
+              {keywords.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {keywords.map((k: string, i: number) => (
+                    <span key={i} className="px-2 py-1 rounded-lg bg-amber-500/10 text-amber-500 text-xs font-medium border border-amber-500/20">
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">Any comment (no keyword filter)</p>
+              )}
+              {keywords.length > 1 && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Match: <span className="font-medium text-foreground">{rule.trigger_config?.match_type === "all" ? "ALL keywords required" : "ANY keyword matches"}</span>
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">📌 Scope</p>
+              {isSpecific ? (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/40">
+                  {rule.trigger_config.media_thumb ? (
+                    <img src={rule.trigger_config.media_thumb} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                      <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  )}
+                  <p className="text-xs truncate">{rule.trigger_config.media_caption || "Specific post"}</p>
+                </div>
+              ) : (
+                <p className="text-xs flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="font-medium">All Posts</span>
+                  <span className="text-muted-foreground">— triggers on any post</span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">⚡ Actions</p>
+            
+            {actions.reply && (
+              <div className="rounded-lg border border-blue-500/15 bg-blue-500/5 p-3">
+                <p className="text-[10px] font-bold text-blue-400 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> PUBLIC REPLY</p>
+                <p className="text-sm">{rule.action_config?.reply_text || "—"}</p>
               </div>
-            </div>
-          )}
-          {rule.action_config?.reply_text && (
-            <div>
-              <p className="text-xs font-bold text-blue-400 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> PUBLIC REPLY</p>
-              <p className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-3 text-sm">{rule.action_config.reply_text}</p>
-            </div>
-          )}
-          {rule.action_config?.message && (
-            <div>
-              <p className="text-xs font-bold text-violet-400 mb-1 flex items-center gap-1"><Send className="w-3 h-3" /> DM MESSAGE</p>
-              <p className="bg-violet-500/5 border border-violet-500/10 rounded-lg p-3 text-sm">{rule.action_config.message}</p>
-              {rule.action_config?.link && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">🔗 {rule.action_config.link}</p>}
-            </div>
-          )}
+            )}
+            
+            {actions.dm && (
+              <div className="rounded-lg border border-violet-500/15 bg-violet-500/5 p-3">
+                <p className="text-[10px] font-bold text-violet-400 mb-1 flex items-center gap-1"><Send className="w-3 h-3" /> DM MESSAGE</p>
+                <p className="text-sm">{rule.action_config?.message || "—"}</p>
+                {rule.action_config?.link && (
+                  <p className="text-xs text-amber-500 mt-1.5 flex items-center gap-1">
+                    <LinkIcon className="w-3 h-3" /> {rule.action_config.link}
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {actions.hide && (
+              <div className="rounded-lg border border-red-400/15 bg-red-400/5 p-3">
+                <p className="text-[10px] font-bold text-red-400 flex items-center gap-1"><EyeOff className="w-3 h-3" /> AUTO-HIDE enabled</p>
+              </div>
+            )}
+
+            {!actions.reply && !actions.dm && !actions.hide && (
+              <p className="text-xs text-muted-foreground italic">No actions configured</p>
+            )}
+          </div>
+
+          {/* Footer meta */}
+          <div className="flex items-center gap-4 text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+            <span>Type: <span className="font-medium text-foreground">{rule.type}</span></span>
+            <span>Created: <span className="font-medium text-foreground">{new Date(rule.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span></span>
+            <span>Triggers: <span className="font-medium text-foreground">{rule.trigger_count || 0}</span></span>
+          </div>
         </div>
       )}
     </div>
@@ -559,6 +701,9 @@ export default function CommentsAutomationPage() {
           </div>
         </div>
       </div>
+
+      {/* Webhook subscription check */}
+      <WebhookStatusBanner />
 
       {loading ? (
         <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
