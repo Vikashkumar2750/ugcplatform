@@ -297,49 +297,69 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   const commentId = payload?.id;
   const mediaId = payload?.media?.id;
   const commentorId = payload?.from?.id;
-  const parentId = payload?.parent_id;  // Set when this IS a reply to a comment
+  const parentId = payload?.parent_id;
 
-  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId} parent=${parentId}`);
+  console.log(`[Webhook] Comment: "${commentText.substring(0, 60)}" on media ${mediaId} by ${commentorId} parent=${parentId} pageId=${pageId}`);
 
   if (!commentId) {
     console.warn("[Webhook] Comment has no ID — skipping");
     return;
   }
 
-  // ── CRITICAL: Skip replies to comments (parent_id set = it's a reply, not a root comment) ──
-  // This prevents our auto-reply from triggering another auto-reply → infinite loop
+  // ── Skip replies to comments (prevents infinite loop) ──
   if (parentId) {
-    console.log(`[Webhook] Skipping reply-to-comment (parent_id=${parentId}) to prevent infinite loop`);
+    console.log(`[Webhook] Skipping reply-to-comment (parent_id=${parentId})`);
     return;
   }
 
-  // ── Skip if commentor is our own account (sanity check) ──────────────────
-  // Get our own account's IG user ID
-  const { data: ownAccount } = await supabase
+  // ── Find the connected account for this pageId ──────────────────────────
+  // This is the MASTER token lookup — used as fallback for any rule without account_id
+  const { data: pageAccount } = await supabase
     .from("connected_accounts")
-    .select("platform_user_id")
+    .select("id, user_id, access_token, platform_user_id")
     .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (ownAccount?.platform_user_id && commentorId === ownAccount.platform_user_id) {
-    console.log(`[Webhook] Skipping own account comment — not triggering auto-reply on our own reply`);
+  console.log(`[Webhook] Page account found: ${pageAccount ? 'YES (id=' + pageAccount.id + ')' : 'NO'}`);
+
+  // Skip if commentor is our own account
+  if (pageAccount?.platform_user_id && commentorId === pageAccount.platform_user_id) {
+    console.log(`[Webhook] Skipping own account comment`);
     return;
   }
 
-  // ── Atomic Dedup: Mark comment as "being processed" FIRST ──────────────────
-  // UNIQUE(comment_id, rule_id) — same comment never gets 2 replies from same rule.
-  // New comment from same user = new comment_id = allowed.
-
-  // Get all active comment rules (including unified comment_automation type)
-  const { data: rules } = await supabase
+  // ── Get ALL active comment rules ───────────────────────────────────────
+  // Query by BOTH account_id match AND rules with null account_id (for this user)
+  let rulesQuery = supabase
     .from("automation_rules")
-    .select("*, connected_accounts(access_token, platform_user_id)")
+    .select("*")
     .in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"])
     .eq("is_active", true);
 
-  for (const rule of (rules || [])) {
-    // Media filter
+  // If we found the page account, filter rules for this specific account or user
+  if (pageAccount) {
+    rulesQuery = rulesQuery.or(`account_id.eq.${pageAccount.id},account_id.is.null`);
+    // Also ensure we only get rules from this user (not other users' null account_id rules)
+    rulesQuery = rulesQuery.eq("user_id", pageAccount.user_id);
+  }
+
+  const { data: rules, error: rulesError } = await rulesQuery;
+
+  if (rulesError) {
+    console.error(`[Webhook] Failed to fetch rules: ${rulesError.message}`);
+    return;
+  }
+
+  console.log(`[Webhook] Found ${(rules || []).length} matching comment rules`);
+
+  if (!rules?.length) {
+    console.log("[Webhook] No active comment rules found");
+    return;
+  }
+
+  for (const rule of rules) {
+    // Media filter — skip if rule is for a specific post and this isn't it
     const ruleMediaId = rule.trigger_config?.media_id;
     if (ruleMediaId && ruleMediaId !== mediaId) continue;
 
@@ -349,107 +369,172 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     const matched = keywords.length === 0
       ? true
       : matchType === "all"
-        ? keywords.every(k => commentText.includes(k.toLowerCase()))
-        : keywords.some(k => commentText.includes(k.toLowerCase()));
+        ? keywords.every((k: string) => commentText.includes(k.toLowerCase()))
+        : keywords.some((k: string) => commentText.includes(k.toLowerCase()));
 
-    if (!matched) continue;
-
-    // ── ATOMIC DEDUP: try to insert a processed_comment record ────────────────
-    // UNIQUE constraint on (comment_id, rule_id) — duplicate insert will fail with 23505
-    const { error: dedupError } = await supabase
-      .from("processed_comments")
-      .insert({
-        comment_id: commentId,
-        rule_id: rule.id,
-        commentor_id: commentorId || null,
-        media_id: mediaId || null,
-        processed_at: new Date().toISOString(),
-      });
-
-    if (dedupError) {
-      if (dedupError.code === "23505") {
-        // Unique violation = already processed this comment with this rule
-        console.log(`[Webhook] Comment ${commentId} already processed for rule ${rule.name} — skipping`);
-        continue;
-      }
-      if (dedupError.code === "42P01") {
-        // Table doesn't exist yet — SKIP to prevent infinite processing
-        console.error(`[Webhook] processed_comments table missing! Run migration. Skipping rule ${rule.id} to prevent infinite loop.`);
-        continue;
-      }
-      // Any other error — also skip (fail safe)
-      console.warn(`[Webhook] Dedup insert error (${dedupError.code}): ${dedupError.message} — skipping to be safe`);
+    if (!matched) {
+      console.log(`[Webhook] Keywords didn't match for rule "${rule.name}"`);
       continue;
     }
 
-    // Get token — from joined connected_accounts
-    let token = rule.connected_accounts?.access_token;
-    let igId = rule.connected_accounts?.platform_user_id;
+    console.log(`[Webhook] ✅ Rule "${rule.name}" matched! Processing...`);
 
-    if (!token && rule.account_id) {
+    // ── Dedup: try processed_comments (graceful if table doesn't exist) ───
+    let skipDueToDuplicate = false;
+    try {
+      const { error: dedupError } = await supabase
+        .from("processed_comments")
+        .insert({
+          comment_id: commentId,
+          rule_id: rule.id,
+          commentor_id: commentorId || null,
+          media_id: mediaId || null,
+          processed_at: new Date().toISOString(),
+        });
+
+      if (dedupError) {
+        if (dedupError.code === "23505") {
+          console.log(`[Webhook] Comment ${commentId} already processed for rule "${rule.name}" — skipping`);
+          skipDueToDuplicate = true;
+        } else if (dedupError.code === "42P01") {
+          // Table doesn't exist — just log and continue (don't block automation!)
+          console.warn(`[Webhook] processed_comments table missing — continuing without dedup`);
+        } else {
+          console.warn(`[Webhook] Dedup insert error (${dedupError.code}): ${dedupError.message} — continuing anyway`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Webhook] Dedup check failed: ${e.message} — continuing anyway`);
+    }
+
+    if (skipDueToDuplicate) continue;
+
+    // ── Get access token — with FALLBACK to pageAccount ──────────────────
+    let token: string | null = null;
+
+    // Try 1: Get from rule's account_id
+    if (rule.account_id) {
       const { data: acc } = await supabase
         .from("connected_accounts")
         .select("access_token, platform_user_id")
         .eq("id", rule.account_id)
         .single();
-      token = acc?.access_token;
-      igId = acc?.platform_user_id;
+      token = acc?.access_token || null;
+    }
+
+    // Try 2: Fallback to pageAccount (found from webhook pageId)
+    if (!token && pageAccount?.access_token) {
+      token = pageAccount.access_token;
+      console.log(`[Webhook] Using pageAccount token as fallback for rule "${rule.name}"`);
     }
 
     if (!token) {
-      console.warn(`[Webhook] No token for rule ${rule.id}`);
+      console.error(`[Webhook] ❌ No token available for rule "${rule.name}" — cannot execute`);
       continue;
     }
 
-    // ── Execute action ────────────────────────────────────────────────────────
-
-    // Determine which actions to run
+    // ── Determine which actions to run ───────────────────────────────────
     const actionsEnabled = rule.action_config?.actions_enabled;
     const isUnified = rule.type === "comment_automation";
     const shouldReply = isUnified ? actionsEnabled?.reply : rule.type === "comment_reply";
     const shouldDM = isUnified ? actionsEnabled?.dm : rule.type === "comment_to_dm";
     const shouldHide = isUnified ? (actionsEnabled?.hide || rule.action_config?.hide) : rule.type === "hide_comment";
 
-    // AUTO-REPLY to comment (public reply)
+    console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide}`);
+
+    // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     if (shouldReply && rule.action_config?.reply_text) {
-      console.log(`[Webhook] Replying to comment ${commentId}`);
-      const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: rule.action_config.reply_text,
-          access_token: token,
-        }),
-      });
-      const replyData = await replyRes.json();
-      if (!replyRes.ok) console.error(`[Webhook] Reply failed: ${JSON.stringify(replyData)}`);
-      else console.log(`[Webhook] ✅ Comment reply sent`);
+      try {
+        console.log(`[Webhook] Sending public reply to comment ${commentId}`);
+        const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: rule.action_config.reply_text,
+            access_token: token,
+          }),
+        });
+        const replyData = await replyRes.json();
+        if (!replyRes.ok) {
+          console.error(`[Webhook] ❌ Reply failed: ${JSON.stringify(replyData)}`);
+        } else {
+          console.log(`[Webhook] ✅ Comment reply sent successfully`);
+        }
+      } catch (e: any) {
+        console.error(`[Webhook] ❌ Reply error: ${e.message}`);
+      }
     }
 
-    // SEND DM to commenter
+    // ── SEND DM to commenter ─────────────────────────────────────────────
     if (shouldDM && commentorId) {
+      const dmText = rule.action_config?.message || "Namaste! 🙏";
+      const dmLink = rule.action_config?.link || undefined;
+
       console.log(`[Webhook] Sending DM to commenter ${commentorId}`);
-      await enqueueViaBackend({
-        accountId: rule.account_id,
+
+      // Try backend worker first
+      const enqueueResult = await enqueueViaBackend({
+        accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentorId,
-        messagePayload: {
-          text: rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏",
-          link: rule.action_config?.link || undefined,
-        },
+        messagePayload: { text: dmText, link: dmLink },
         messageType: "dm",
         automationRuleId: rule.id,
       });
+
+      // If backend worker is unreachable, send directly via Meta API
+      if (enqueueResult.error && !enqueueResult.queued) {
+        console.warn(`[Webhook] Backend enqueue failed — sending DM directly via Meta API`);
+        try {
+          const dmBody: any = {
+            messaging_product: "instagram",
+            recipient: { id: commentorId },
+            message: dmLink
+              ? {
+                  attachment: {
+                    type: "template",
+                    payload: {
+                      template_type: "button",
+                      text: dmText,
+                      buttons: [{ type: "web_url", url: dmLink, title: "Check it out →" }],
+                    },
+                  },
+                }
+              : { text: dmText },
+          };
+
+          const dmRes = await fetch(
+            `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(dmBody),
+            }
+          );
+          const dmData = await dmRes.json();
+          if (!dmRes.ok) {
+            console.error(`[Webhook] ❌ Direct DM failed: ${JSON.stringify(dmData)}`);
+          } else {
+            console.log(`[Webhook] ✅ DM sent directly via Meta API`);
+          }
+        } catch (e: any) {
+          console.error(`[Webhook] ❌ Direct DM error: ${e.message}`);
+        }
+      }
     }
 
-    // HIDE comment
+    // ── HIDE comment ─────────────────────────────────────────────────────
     if (shouldHide) {
-      console.log(`[Webhook] Hiding comment ${commentId}`);
-      await fetch(`https://graph.facebook.com/v21.0/${commentId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_hidden: true, access_token: token }),
-      });
+      try {
+        console.log(`[Webhook] Hiding comment ${commentId}`);
+        await fetch(`https://graph.facebook.com/v21.0/${commentId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_hidden: true, access_token: token }),
+        });
+      } catch (e: any) {
+        console.error(`[Webhook] ❌ Hide comment error: ${e.message}`);
+      }
     }
 
     // Update trigger count
@@ -457,6 +542,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       trigger_count: (rule.trigger_count || 0) + 1,
       last_triggered: new Date().toISOString(),
     }).eq("id", rule.id);
+
+    console.log(`[Webhook] ✅ Rule "${rule.name}" executed. Trigger count: ${(rule.trigger_count || 0) + 1}`);
   }
 }
 
