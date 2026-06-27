@@ -21,7 +21,9 @@ export interface EnqueueInput {
   userId: string;
   recipientId: string;
   messagePayload: MessagePayload;
-  messageType: "dm" | "comment_reply" | "broadcast";
+  messageType: "dm" | "comment_reply" | "private_reply" | "broadcast";
+  // For private_reply, recipientId must be the COMMENT ID (not user ID)
+  // Meta will resolve the commenter and deliver a DM scoped to that comment.
   automationRuleId?: string;
   messageTag?: string;
   priority?: number;           // 1=highest, 10=lowest. Default: 5
@@ -318,8 +320,8 @@ interface MetaSendResult {
 async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
   const { token, igUserId, recipientId, payload, messageType, platform } = input;
 
+  // ── 1. Public comment reply ────────────────────────────────────────────────
   if (messageType === "comment_reply") {
-    // Comment replies use the comment ID as the target
     const res = await fetch(`https://graph.facebook.com/v21.0/${recipientId}/replies`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -333,7 +335,54 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     return { messageId: data.id };
   }
 
-  // DM / Broadcast — Instagram Messaging API
+  // ── 2. Private Reply (DM to commenter via comment_id) ─────────────────────
+  // This is the CORRECT way to DM a commenter. It works in testing mode without
+  // App Review as long as the account is an App Admin/Tester/Developer.
+  // Endpoint: POST /{page-id}/messages with recipient: { comment_id: <comment_id> }
+  // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies
+  if (messageType === "private_reply") {
+    const privateReplyBody: Record<string, unknown> = {
+      recipient: { comment_id: recipientId }, // recipientId IS the comment_id here
+      message: {} as Record<string, unknown>,
+    };
+
+    if (payload.link) {
+      (privateReplyBody.message as Record<string, unknown>).attachment = {
+        type: "template",
+        payload: {
+          template_type: "generic",
+          elements: [{
+            title: payload.text.substring(0, 80),
+            default_action: { type: "web_url", url: payload.link },
+            buttons: [{ type: "web_url", url: payload.link, title: "Open Link →" }],
+          }],
+        },
+      };
+    } else {
+      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
+    }
+
+    console.log(`[SendQueue] Sending Private Reply to comment ${recipientId} via ${platform} (igUserId=${igUserId})`);
+
+    // Private Reply uses the IG User ID (not /me/) as the endpoint sender
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${igUserId}/messages?access_token=${token}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(privateReplyBody),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      const errMsg = data.error?.message || `HTTP ${res.status}`;
+      console.error(`[SendQueue] ❌ Private Reply API error: ${errMsg}`, JSON.stringify(data));
+      return { error: `Meta Private Reply API: ${errMsg}` };
+    }
+    return { messageId: data.message_id };
+  }
+
+  // ── 3. Standard DM / Broadcast ────────────────────────────────────────────
   // NOTE: Instagram API does NOT use "messaging_product" (that's WhatsApp-only)
   const dmBody: Record<string, unknown> = {
     recipient: { id: recipientId },
@@ -367,10 +416,7 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     }));
   }
 
-  // Use the correct endpoint based on platform
-  // Instagram: graph.instagram.com or graph.facebook.com both work with page token
   const endpoint = `https://graph.facebook.com/v21.0/me/messages`;
-
   console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (igUserId=${igUserId})`);
 
   const res = await fetch(

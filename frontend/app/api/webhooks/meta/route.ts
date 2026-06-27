@@ -7,6 +7,19 @@ const META_APP_SECRET = process.env.META_APP_SECRET!;
 const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
+// ─────────────────────────────────────────────────────────────
+// Anti-ban: randomized human-like delays
+// Competitors use delays to mimic human behavior and avoid Meta's
+// bot-detection which triggers account bans.
+// ─────────────────────────────────────────────────────────────
+function randomDelayMs(minSec: number, maxSec: number): number {
+  return (Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec) * 1000;
+}
+
+function scheduledSendAt(delayMs: number): string {
+  return new Date(Date.now() + delayMs).toISOString();
+}
+
 function getServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -473,50 +486,76 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     if (shouldReply && rule.action_config?.reply_text) {
-      try {
-        console.log(`[Webhook] Sending public reply to comment ${commentId}`);
-        const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: rule.action_config.reply_text,
-            access_token: token,
-          }),
-        });
-        const replyData = await replyRes.json();
-        if (!replyRes.ok) {
-          console.error(`[Webhook] ❌ Reply failed: ${JSON.stringify(replyData)}`);
-        } else {
-          console.log(`[Webhook] ✅ Comment reply sent successfully`);
+      // Add a random 10-30 second delay to mimic human behavior
+      const replyDelayMs = randomDelayMs(10, 30);
+      console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
+
+      // Enqueue via backend with delay (uses scheduled_send_at)
+      const replyEnqueueResult = await enqueueViaBackend({
+        accountId: rule.account_id || pageAccount?.id,
+        userId: rule.user_id,
+        recipientId: commentId,          // comment_id for comment_reply type
+        messagePayload: { text: rule.action_config.reply_text },
+        messageType: "comment_reply",
+        automationRuleId: rule.id,
+        scheduledSendAt: scheduledSendAt(replyDelayMs),
+      });
+
+      // Fallback: if backend unreachable, send directly after delay
+      if (replyEnqueueResult.error && !replyEnqueueResult.queued) {
+        console.warn(`[Webhook] Backend unreachable — will send reply directly after delay`);
+        try {
+          await new Promise(r => setTimeout(r, Math.min(replyDelayMs, 5000))); // cap at 5s for serverless
+          const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: rule.action_config.reply_text, access_token: token }),
+          });
+          const replyData = await replyRes.json();
+          if (!replyRes.ok) {
+            console.error(`[Webhook] ❌ Reply failed: ${JSON.stringify(replyData)}`);
+          } else {
+            console.log(`[Webhook] ✅ Comment reply sent directly`);
+          }
+        } catch (e: any) {
+          console.error(`[Webhook] ❌ Reply error: ${e.message}`);
         }
-      } catch (e: any) {
-        console.error(`[Webhook] ❌ Reply error: ${e.message}`);
+      } else {
+        console.log(`[Webhook] ✅ Reply queued with ${replyDelayMs / 1000}s delay`);
       }
     }
 
-    // ── SEND DM to commenter ─────────────────────────────────────────────
-    if (shouldDM && commentorId) {
+    // ── SEND Private Reply DM to commenter ──────────────────────────────
+    // IMPORTANT: We use "private_reply" type with the comment_id as recipient.
+    // Meta's Private Reply API automatically resolves the commenter's user ID
+    // from the comment_id and sends them a DM. This works without App Review
+    // as long as the account is an App Admin/Tester/Developer.
+    // Only ONE private reply is allowed per comment (Meta enforced).
+    if (shouldDM && commentorId && commentId) {
       const dmText = rule.action_config?.message || "Namaste! 🙏";
       const dmLink = rule.action_config?.link || undefined;
 
-      console.log(`[Webhook] Sending DM to commenter ${commentorId}`);
+      // Add a random 30-60 second delay — DM comes AFTER the public reply
+      // This mimics: person sees comment → writes reply → then sends DM
+      const dmDelayMs = randomDelayMs(30, 60);
+      console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
-      // Try backend worker first
       const enqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
-        recipientId: commentorId,
+        recipientId: commentId,          // comment_id — NOT the user's IG ID
         messagePayload: { text: dmText, link: dmLink },
-        messageType: "dm",
+        messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
+        scheduledSendAt: scheduledSendAt(dmDelayMs),
       });
 
-      // If backend worker is unreachable, send directly via Meta API
+      // Fallback: if backend worker is down, send directly
       if (enqueueResult.error && !enqueueResult.queued) {
-        console.warn(`[Webhook] Backend enqueue failed — sending DM directly via Meta API`);
+        console.warn(`[Webhook] Backend enqueue failed — sending Private Reply directly via Meta API`);
         try {
-          const dmBody: any = {
-            recipient: { id: commentorId },
+          const privateReplyBody: any = {
+            recipient: { comment_id: commentId },
             message: dmLink
               ? {
                   attachment: {
@@ -534,23 +573,27 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
               : { text: dmText },
           };
 
+          // Use the IG account's user ID as the sender endpoint
+          const igSenderId = pageAccount?.platform_user_id || "me";
           const dmRes = await fetch(
-            `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`,
+            `https://graph.facebook.com/v21.0/${igSenderId}/messages?access_token=${token}`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(dmBody),
+              body: JSON.stringify(privateReplyBody),
             }
           );
           const dmData = await dmRes.json();
           if (!dmRes.ok) {
-            console.error(`[Webhook] ❌ Direct DM failed: ${JSON.stringify(dmData)}`);
+            console.error(`[Webhook] ❌ Direct Private Reply failed: ${JSON.stringify(dmData)}`);
           } else {
-            console.log(`[Webhook] ✅ DM sent directly via Meta API`);
+            console.log(`[Webhook] ✅ Private Reply sent directly`);
           }
         } catch (e: any) {
-          console.error(`[Webhook] ❌ Direct DM error: ${e.message}`);
+          console.error(`[Webhook] ❌ Direct Private Reply error: ${e.message}`);
         }
+      } else {
+        console.log(`[Webhook] ✅ Private Reply DM queued with ${dmDelayMs / 1000}s delay`);
       }
     }
 
@@ -590,6 +633,7 @@ async function enqueueViaBackend(opts: {
   messagePayload: { text: string; link?: string };
   messageType: string;
   automationRuleId?: string;
+  scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)
 }) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/messaging/enqueue`, {

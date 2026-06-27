@@ -156,6 +156,13 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     if (enableDM && !dmMessage.trim()) { setError("DM message is required"); return; }
     if (scope === "specific" && !selectedPost) { setError("Please select a post"); return; }
 
+    // Auto-add any pending keyword before saving
+    let finalKeywords = [...keywords];
+    const pendingKw = keywordInput.trim().toLowerCase();
+    if (pendingKw && !finalKeywords.includes(pendingKw)) {
+      finalKeywords.push(pendingKw);
+    }
+
     setSaving(true); setError("");
     try {
       const res = await fetch("/api/automation/rules", {
@@ -165,7 +172,7 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           name,
           type: "comment_automation",
           platform: "instagram",
-          keywords,
+          keywords: finalKeywords,
           matchType,
           replyText: enableReply ? replyText : "",
           dmMessage: enableDM ? dmMessage : "",
