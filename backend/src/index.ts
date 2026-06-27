@@ -712,12 +712,12 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
       const result = await enqueueMessage({
         accountId: account.id,
         userId: account.user_id,
-        recipientId: senderId,
+        recipientId: commentId,          // comment_id — NOT sender IG ID
         messagePayload: {
           text: messageText,
           link: rule.action_config?.link || undefined,
         },
-        messageType: "dm",
+        messageType: "private_reply",    // Uses recipient: { comment_id } — works without App Review
         automationRuleId: rule.id,
       });
 
