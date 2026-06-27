@@ -489,11 +489,21 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // ── Determine which actions to run ───────────────────────────────────
     const actionsEnabled = rule.action_config?.actions_enabled;
     const isUnified = rule.type === "comment_automation";
-    const shouldReply = isUnified ? actionsEnabled?.reply : rule.type === "comment_reply";
-    const shouldDM = isUnified ? actionsEnabled?.dm : rule.type === "comment_to_dm";
-    const shouldHide = isUnified ? (actionsEnabled?.hide || rule.action_config?.hide) : rule.type === "hide_comment";
 
-    console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide}`);
+    // For unified rules: prefer explicit actions_enabled flags.
+    // FALLBACK: if actions_enabled is null (old rule created before this field),
+    // infer intent from whether the action content is set.
+    const shouldReply = isUnified
+      ? (actionsEnabled ? actionsEnabled.reply : !!rule.action_config?.reply_text)
+      : rule.type === "comment_reply";
+    const shouldDM = isUnified
+      ? (actionsEnabled ? actionsEnabled.dm : !!rule.action_config?.message)
+      : rule.type === "comment_to_dm";
+    const shouldHide = isUnified
+      ? (actionsEnabled ? actionsEnabled.hide : !!rule.action_config?.hide)
+      : rule.type === "hide_comment";
+
+    console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     if (shouldReply && rule.action_config?.reply_text) {
