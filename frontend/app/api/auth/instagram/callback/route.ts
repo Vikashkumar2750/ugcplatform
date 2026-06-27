@@ -169,26 +169,34 @@ export async function GET(request: NextRequest) {
 
         // ── CRITICAL: Subscribe page to webhooks so Meta sends events ──
         // Without this, Meta never fires comment/DM webhooks!
-        try {
-          const subRes = await fetch(
-            `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                subscribed_fields: ["feed", "messages", "messaging_postbacks", "mention"].join(","),
-                access_token: pageToken,
-              }),
+        // Try full fields first, fallback to messages-only if permissions missing
+        const fieldSets = [
+          "feed,messages,messaging_postbacks,mention",
+          "messages,messaging_postbacks",
+        ];
+        for (const fields of fieldSets) {
+          try {
+            const subRes = await fetch(
+              `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  subscribed_fields: fields,
+                  access_token: pageToken,
+                }),
+              }
+            );
+            const subData = await subRes.json();
+            if (subData.success) {
+              console.log(`[IG] ✅ Page ${page.name} subscribed to webhooks (fields: ${fields})`);
+              break;
+            } else {
+              console.warn(`[IG] ⚠️ Subscription with "${fields}" failed: ${subData.error?.message}`);
             }
-          );
-          const subData = await subRes.json();
-          if (subData.success) {
-            console.log(`[IG] ✅ Page ${page.name} subscribed to webhooks`);
-          } else {
-            console.error(`[IG] ❌ Page webhook subscription failed:`, JSON.stringify(subData));
+          } catch (subErr: any) {
+            console.error(`[IG] ❌ Webhook subscription error:`, subErr.message);
           }
-        } catch (subErr: any) {
-          console.error(`[IG] ❌ Webhook subscription error:`, subErr.message);
         }
       }
     }

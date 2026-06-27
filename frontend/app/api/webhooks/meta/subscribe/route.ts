@@ -87,41 +87,60 @@ export async function POST(request: NextRequest) {
 
   const results = [];
 
-  for (const acc of accounts) {
-    try {
-      // Subscribe the page to webhook events
-      const subRes = await fetch(
-        `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            subscribed_fields: "feed,messages,messaging_postbacks,mention",
-            access_token: acc.access_token,
-          }),
-        }
-      );
-      const subData = await subRes.json();
+  // Field sets to try — most complete first, then fallback
+  const fieldSets = [
+    "feed,messages,messaging_postbacks,mention",    // Full (needs pages_manage_metadata)
+    "messages,messaging_postbacks",                  // Minimal (just DMs, no feed/mention)
+  ];
 
+  for (const acc of accounts) {
+    let subscribed = false;
+    let lastError = "";
+
+    for (const fields of fieldSets) {
+      try {
+        const subRes = await fetch(
+          `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subscribed_fields: fields,
+              access_token: acc.access_token,
+            }),
+          }
+        );
+        const subData = await subRes.json();
+
+        if (subData.success) {
+          console.log(`[Subscribe] ✅ Page ${acc.page_name} subscribed with fields: ${fields}`);
+          results.push({
+            username: acc.platform_username,
+            page_id: acc.page_id,
+            page_name: acc.page_name,
+            success: true,
+            fields_subscribed: fields,
+            note: fields.includes("feed") ? "Full subscription" : "Partial — reconnect IG with updated permissions for full support",
+          });
+          subscribed = true;
+          break;
+        } else {
+          lastError = subData.error?.message || "Unknown error";
+          console.warn(`[Subscribe] Fields "${fields}" failed for ${acc.page_name}: ${lastError}`);
+        }
+      } catch (e: any) {
+        lastError = e.message;
+      }
+    }
+
+    if (!subscribed) {
       results.push({
         username: acc.platform_username,
         page_id: acc.page_id,
         page_name: acc.page_name,
-        success: subData.success || false,
-        error: subData.error?.message || null,
-        raw: subData,
-      });
-
-      if (subData.success) {
-        console.log(`[Subscribe] ✅ Page ${acc.page_name} (${acc.page_id}) subscribed to webhooks`);
-      } else {
-        console.error(`[Subscribe] ❌ Page ${acc.page_name} failed:`, JSON.stringify(subData));
-      }
-    } catch (e: any) {
-      results.push({
-        username: acc.platform_username,
-        page_id: acc.page_id,
-        error: e.message,
+        success: false,
+        error: lastError,
+        fix: "Reconnect Instagram at /connect to get updated permissions (pages_manage_metadata)",
       });
     }
   }

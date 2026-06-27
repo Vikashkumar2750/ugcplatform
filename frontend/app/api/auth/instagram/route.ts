@@ -12,6 +12,8 @@ const INSTAGRAM_SCOPES = [
   "instagram_manage_comments",
   "pages_show_list",
   "pages_read_engagement",
+  "pages_manage_metadata",
+  "pages_messaging",
   "business_management",
 ].join(",");
 
