@@ -58,7 +58,19 @@ export async function POST(request: NextRequest) {
     const body = JSON.parse(rawBody);
     const supabase = getServiceClient();
 
-    console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 500));
+    console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 800));
+    console.log("[Webhook] Object:", body.object, "| Entries:", body.entry?.length);
+
+    // ── Log EVERY raw webhook to DB for debugging ──
+    try {
+      await supabase.from("webhook_raw_log").insert({
+        object_type: body.object || "unknown",
+        raw_body: body,
+        received_at: new Date().toISOString(),
+      });
+    } catch {
+      // Table might not exist yet — that's fine, don't crash
+    }
 
     for (const entry of (body.entry || [])) {
       // ── Deduplication: skip if we've already processed this entry ──
@@ -75,15 +87,32 @@ export async function POST(request: NextRequest) {
       }
 
       const pageId: string = entry.id;
+      console.log(`[Webhook] Processing entry id=${pageId} | changes=${entry.changes?.length || 0} | messaging=${entry.messaging?.length || 0}`);
 
       // ── Standard change events (comments, mentions, follow) ──
       for (const change of (entry.changes || [])) {
+        console.log(`[Webhook] Change: field="${change.field}" value_keys=${Object.keys(change.value || {}).join(",")}`);
+        
         await processChangeEvent(supabase, {
           object: body.object,
           field: change.field,
           value: change.value,
           pageId,
         });
+
+        // ── Handle "feed" field which may contain Instagram comments ──
+        // When subscribed to Page "feed", comments come as field="feed" with value.item="comment"
+        if (change.field === "feed" && change.value?.item === "comment" && change.value?.verb === "add") {
+          console.log(`[Webhook] Feed comment detected! Converting to comment event format`);
+          const feedComment = {
+            id: change.value.comment_id,
+            text: change.value.message,
+            from: change.value.from,
+            media: { id: change.value.post_id },
+            parent_id: change.value.parent_id || null,
+          };
+          await processCommentEvent(supabase, feedComment, pageId);
+        }
       }
 
       // ── Messaging events (DMs) ──────────────────────────────

@@ -3,8 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 
 /**
  * GET /api/webhooks/meta/debug
- * Shows recent webhook events from the database to diagnose
- * whether Meta is sending events at all.
+ * Shows recent webhook events + raw logs from the database.
+ * 
+ * POST /api/webhooks/meta/debug
+ * Simulates a test comment to verify rule matching + API token validity.
  */
 
 function getServiceClient() {
@@ -32,7 +34,18 @@ export async function GET(request: NextRequest) {
     eventsError = e.message;
   }
 
-  // 2. Check connected accounts with their tokens (masked)
+  // 1b. Check raw webhook logs
+  let rawLogs: any[] = [];
+  try {
+    const { data } = await supabase
+      .from("webhook_raw_log")
+      .select("id, object_type, raw_body, received_at")
+      .order("received_at", { ascending: false })
+      .limit(5);
+    rawLogs = data || [];
+  } catch {}
+
+  // 2. Check connected accounts
   let accounts: any[] = [];
   try {
     const { data } = await supabase
@@ -62,7 +75,6 @@ export async function GET(request: NextRequest) {
   let subscriptionResults: any[] = [];
   for (const acc of accounts.filter(a => a.page_id)) {
     try {
-      // We need the token for this - fetch it
       const { data: fullAcc } = await supabase
         .from("connected_accounts")
         .select("access_token")
@@ -84,7 +96,7 @@ export async function GET(request: NextRequest) {
     } catch {}
   }
 
-  // 5. Environment check (don't expose secrets, just check they exist)
+  // 5. Environment check
   const envCheck = {
     META_APP_ID: !!process.env.META_APP_ID,
     META_APP_SECRET: !!process.env.META_APP_SECRET ? `SET (${process.env.META_APP_SECRET?.substring(0, 4)}...${process.env.META_APP_SECRET?.slice(-4)})` : "MISSING ❌",
@@ -93,6 +105,12 @@ export async function GET(request: NextRequest) {
     RENDER_WORKER_URL: process.env.RENDER_WORKER_URL || "NOT SET",
     NODE_ENV: process.env.NODE_ENV || "unknown",
   };
+
+  // Count event types
+  const eventTypes: Record<string, number> = {};
+  for (const e of recentEvents) {
+    eventTypes[e.event_type] = (eventTypes[e.event_type] || 0) + 1;
+  }
 
   return NextResponse.json({
     timestamp: new Date().toISOString(),
@@ -113,12 +131,108 @@ export async function GET(request: NextRequest) {
         trigger_count: r.trigger_count,
         last_triggered: r.last_triggered,
       })),
-      "5_recent_webhook_events": recentEvents.length > 0 ? recentEvents : (eventsError ? `Error: ${eventsError}` : "NO EVENTS RECEIVED ❌ — Meta may not be sending webhooks"),
+      "5_event_type_breakdown": eventTypes,
+      "6_recent_webhook_events": recentEvents.length > 0 ? recentEvents : (eventsError ? `Error: ${eventsError}` : "NO EVENTS RECEIVED ❌"),
+      "7_raw_webhook_logs": rawLogs.length > 0 ? rawLogs : "No raw logs yet",
     },
-    conclusion: recentEvents.length === 0 && !eventsError
-      ? "❌ ZERO webhook events in database. Meta is NOT sending events to your endpoint. Check: 1) Webhook URL in Meta Dev Console, 2) Verify token matches, 3) App is Live, 4) Instagram webhook fields (comments, messages) are subscribed in the console"
-      : recentEvents.length > 0
-        ? `✅ ${recentEvents.length} recent events found — webhook IS receiving events`
-        : `⚠️ Could not check events: ${eventsError}`,
+    conclusion: `${recentEvents.length} events | Types: ${JSON.stringify(eventTypes)}`,
+    action_needed: !eventTypes["comments"] && !eventTypes["feed"]
+      ? "❌ NO comment events received! POST /api/webhooks/meta/debug to test rule matching"
+      : null,
+  });
+}
+
+// POST — Simulate a test comment to verify rules + token
+export async function POST(request: NextRequest) {
+  const supabase = getServiceClient();
+
+  const { data: acc } = await supabase
+    .from("connected_accounts")
+    .select("id, user_id, access_token, platform_user_id, page_id")
+    .eq("is_active", true)
+    .eq("platform", "instagram")
+    .single();
+
+  if (!acc) {
+    return NextResponse.json({ error: "No connected Instagram account found" }, { status: 404 });
+  }
+
+  // Test rule matching
+  const { data: rules } = await supabase
+    .from("automation_rules")
+    .select("*")
+    .in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"])
+    .eq("is_active", true)
+    .eq("user_id", acc.user_id);
+
+  const matchResults = [];
+  for (const rule of (rules || [])) {
+    const keywords: string[] = rule.trigger_config?.keywords || [];
+    const matchType: string = rule.trigger_config?.match_type || "any";
+    const commentText = "test";
+    const matched = keywords.length === 0
+      ? true
+      : matchType === "all"
+        ? keywords.every((k: string) => commentText.includes(k.toLowerCase()))
+        : keywords.some((k: string) => commentText.includes(k.toLowerCase()));
+
+    const actionsEnabled = rule.action_config?.actions_enabled;
+    const isUnified = rule.type === "comment_automation";
+    
+    matchResults.push({
+      rule_name: rule.name,
+      rule_type: rule.type,
+      keywords,
+      would_match: matched,
+      reply_would_fire: isUnified ? !!actionsEnabled?.reply : rule.type === "comment_reply",
+      dm_would_fire: isUnified ? !!actionsEnabled?.dm : rule.type === "comment_to_dm",
+      has_reply_text: !!rule.action_config?.reply_text,
+      has_dm_message: !!rule.action_config?.message,
+      reply_text: rule.action_config?.reply_text?.substring(0, 50) || null,
+      dm_message: rule.action_config?.message?.substring(0, 50) || null,
+    });
+  }
+
+  // Test Graph API access
+  let apiTest: any = null;
+  try {
+    const mediaRes = await fetch(
+      `https://graph.facebook.com/v21.0/${acc.platform_user_id}/media?fields=id,caption,comments_count&limit=3&access_token=${acc.access_token}`
+    );
+    const mediaData = await mediaRes.json();
+    apiTest = {
+      can_read_media: !mediaData.error,
+      media_count: mediaData.data?.length || 0,
+      first_media: mediaData.data?.[0] || null,
+      error: mediaData.error?.message || null,
+    };
+
+    // Also test if we can read comments on the first post
+    if (mediaData.data?.[0]?.id) {
+      const commentsRes = await fetch(
+        `https://graph.facebook.com/v21.0/${mediaData.data[0].id}/comments?fields=id,text,from,timestamp&limit=3&access_token=${acc.access_token}`
+      );
+      const commentsData = await commentsRes.json();
+      apiTest.can_read_comments = !commentsData.error;
+      apiTest.recent_comments = commentsData.data?.slice(0, 3) || [];
+      apiTest.comments_error = commentsData.error?.message || null;
+    }
+  } catch (e: any) {
+    apiTest = { error: e.message };
+  }
+
+  return NextResponse.json({
+    message: "Test simulation results",
+    connected_account: {
+      id: acc.id,
+      platform_user_id: acc.platform_user_id,
+      page_id: acc.page_id,
+      token_valid: !!acc.access_token,
+    },
+    rule_matching: matchResults,
+    api_test: apiTest,
+    conclusion: matchResults.some(r => r.would_match)
+      ? "✅ Rules WOULD match a 'test' comment. Issue is Meta not sending comment webhooks to our endpoint."
+      : "❌ No rules match. Check rule keywords.",
   });
 }
