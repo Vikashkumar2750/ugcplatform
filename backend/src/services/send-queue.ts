@@ -316,7 +316,7 @@ interface MetaSendResult {
 }
 
 async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
-  const { token, recipientId, payload, messageType, platform } = input;
+  const { token, igUserId, recipientId, payload, messageType, platform } = input;
 
   if (messageType === "comment_reply") {
     // Comment replies use the comment ID as the target
@@ -334,21 +334,24 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
   }
 
   // DM / Broadcast — Instagram Messaging API
+  // NOTE: Instagram API does NOT use "messaging_product" (that's WhatsApp-only)
   const dmBody: Record<string, unknown> = {
-    messaging_product: platform === "facebook" ? "facebook" : "instagram",
     recipient: { id: recipientId },
     message: {} as Record<string, unknown>,
   };
 
   // Build message body
   if (payload.link) {
-    // Template with button
+    // Template with button (for Instagram, use generic template)
     (dmBody.message as Record<string, unknown>).attachment = {
       type: "template",
       payload: {
-        template_type: "button",
-        text: payload.text,
-        buttons: [{ type: "web_url", url: payload.link, title: "Check it out →" }],
+        template_type: "generic",
+        elements: [{
+          title: payload.text.substring(0, 80),
+          default_action: { type: "web_url", url: payload.link },
+          buttons: [{ type: "web_url", url: payload.link, title: "Open Link →" }],
+        }],
       },
     };
   } else {
@@ -364,8 +367,14 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     }));
   }
 
+  // Use the correct endpoint based on platform
+  // Instagram: graph.instagram.com or graph.facebook.com both work with page token
+  const endpoint = `https://graph.facebook.com/v21.0/me/messages`;
+
+  console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (igUserId=${igUserId})`);
+
   const res = await fetch(
-    `https://graph.facebook.com/v21.0/me/messages?access_token=${token}`,
+    `${endpoint}?access_token=${token}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -377,6 +386,7 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
 
   if (!res.ok || data.error) {
     const errMsg = data.error?.message || `HTTP ${res.status}`;
+    console.error(`[SendQueue] ❌ Meta DM API error: ${errMsg}`, JSON.stringify(data));
     return { error: `Meta DM API: ${errMsg}` };
   }
 

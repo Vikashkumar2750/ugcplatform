@@ -487,16 +487,18 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         console.warn(`[Webhook] Backend enqueue failed — sending DM directly via Meta API`);
         try {
           const dmBody: any = {
-            messaging_product: "instagram",
             recipient: { id: commentorId },
             message: dmLink
               ? {
                   attachment: {
                     type: "template",
                     payload: {
-                      template_type: "button",
-                      text: dmText,
-                      buttons: [{ type: "web_url", url: dmLink, title: "Check it out →" }],
+                      template_type: "generic",
+                      elements: [{
+                        title: dmText.substring(0, 80),
+                        default_action: { type: "web_url", url: dmLink },
+                        buttons: [{ type: "web_url", url: dmLink, title: "Open Link →" }],
+                      }],
                     },
                   },
                 }

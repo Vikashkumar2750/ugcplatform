@@ -166,6 +166,30 @@ export async function GET(request: NextRequest) {
 
         accountSaved = true;
         console.log("[IG] Strategy 2 ✓ Saved @" + igData.username);
+
+        // ── CRITICAL: Subscribe page to webhooks so Meta sends events ──
+        // Without this, Meta never fires comment/DM webhooks!
+        try {
+          const subRes = await fetch(
+            `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                subscribed_fields: ["feed", "messages", "messaging_postbacks", "mention"].join(","),
+                access_token: pageToken,
+              }),
+            }
+          );
+          const subData = await subRes.json();
+          if (subData.success) {
+            console.log(`[IG] ✅ Page ${page.name} subscribed to webhooks`);
+          } else {
+            console.error(`[IG] ❌ Page webhook subscription failed:`, JSON.stringify(subData));
+          }
+        } catch (subErr: any) {
+          console.error(`[IG] ❌ Webhook subscription error:`, subErr.message);
+        }
       }
     }
 
