@@ -331,11 +331,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   // UNIQUE(comment_id, rule_id) — same comment never gets 2 replies from same rule.
   // New comment from same user = new comment_id = allowed.
 
-  // Get all active comment rules
+  // Get all active comment rules (including unified comment_automation type)
   const { data: rules } = await supabase
     .from("automation_rules")
     .select("*, connected_accounts(access_token, platform_user_id)")
-    .in("type", ["comment_reply", "comment_to_dm", "hide_comment"])
+    .in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"])
     .eq("is_active", true);
 
   for (const rule of (rules || [])) {
@@ -402,7 +402,16 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     }
 
     // ── Execute action ────────────────────────────────────────────────────────
-    if (rule.type === "comment_reply" && rule.action_config?.reply_text) {
+
+    // Determine which actions to run
+    const actionsEnabled = rule.action_config?.actions_enabled;
+    const isUnified = rule.type === "comment_automation";
+    const shouldReply = isUnified ? actionsEnabled?.reply : rule.type === "comment_reply";
+    const shouldDM = isUnified ? actionsEnabled?.dm : rule.type === "comment_to_dm";
+    const shouldHide = isUnified ? (actionsEnabled?.hide || rule.action_config?.hide) : rule.type === "hide_comment";
+
+    // AUTO-REPLY to comment (public reply)
+    if (shouldReply && rule.action_config?.reply_text) {
       console.log(`[Webhook] Replying to comment ${commentId}`);
       const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
         method: "POST",
@@ -414,9 +423,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       });
       const replyData = await replyRes.json();
       if (!replyRes.ok) console.error(`[Webhook] Reply failed: ${JSON.stringify(replyData)}`);
+      else console.log(`[Webhook] ✅ Comment reply sent`);
     }
 
-    if (rule.type === "comment_to_dm" && commentorId) {
+    // SEND DM to commenter
+    if (shouldDM && commentorId) {
       console.log(`[Webhook] Sending DM to commenter ${commentorId}`);
       await enqueueViaBackend({
         accountId: rule.account_id,
@@ -431,7 +442,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       });
     }
 
-    if (rule.type === "hide_comment") {
+    // HIDE comment
+    if (shouldHide) {
       console.log(`[Webhook] Hiding comment ${commentId}`);
       await fetch(`https://graph.facebook.com/v21.0/${commentId}`, {
         method: "POST",
