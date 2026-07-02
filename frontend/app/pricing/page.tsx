@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CheckCircle2, Zap, Star, Shield, Clock, ArrowRight,
-  IndianRupee, QrCode, Smartphone, Copy, CheckCheck, Loader2, X
+  IndianRupee, Loader2, X, CreditCard
 } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 
@@ -12,9 +12,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+const RAZORPAY_KEY = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
+
 const PLANS = [
   {
     id: "lifetime",
+    razorpayPlan: "lifetime",
     label: "Lifetime Access",
     price: 9,
     period: " one-time",
@@ -35,6 +38,7 @@ const PLANS = [
   },
   {
     id: "pro_monthly",
+    razorpayPlan: "monthly",
     label: "Pro Monthly",
     price: 59,
     period: "/month",
@@ -55,6 +59,7 @@ const PLANS = [
   },
   {
     id: "pro_6month",
+    razorpayPlan: "lifetime", // one-time payment of ₹299
     label: "Pro 6-Month",
     price: 299,
     period: " for 6 months",
@@ -75,6 +80,7 @@ const PLANS = [
   },
   {
     id: "pro_yearly",
+    razorpayPlan: "yearly",
     label: "Pro Yearly",
     price: 599,
     period: "/year",
@@ -96,79 +102,140 @@ const PLANS = [
   },
 ];
 
-// Payment steps
-type Step = "plan" | "qr" | "utr" | "done";
-
-interface UPIData {
-  txnId: string;
-  upiId: string;
-  gpayLink: string;
-  phonepeLink: string;
-  upiLink: string;
-  amountInr: number;
-  merchantName: string;
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
 }
 
 export default function PricingPage() {
-  const [step, setStep]             = useState<Step>("plan");
-  const [loading, setLoading]       = useState(false);
-  const [upiData, setUpiData]       = useState<UPIData | null>(null);
-  const [utr, setUtr]               = useState("");
-  const [copied, setCopied]         = useState(false);
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [error, setError]           = useState("");
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [scriptLoaded, setScriptLoaded] = useState(false);
 
-  const initPayment = async () => {
-    setLoading(true);
+  // Load Razorpay script
+  useEffect(() => {
+    if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+      setScriptLoaded(true);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.async = true;
+    s.onload = () => setScriptLoaded(true);
+    document.head.appendChild(s);
+  }, []);
+
+  const handleBuy = async (plan: typeof PLANS[number]) => {
     setError("");
+    setLoadingPlan(plan.id);
+
     try {
+      // 1. Check if user is logged in
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        window.location.href = "/login?next=/pricing";
+        // Save selected plan, redirect to login, then come back
+        window.location.href = `/login?next=/pricing&plan=${plan.id}`;
         return;
       }
 
-      const res = await fetch("/api/payments/upi-init", {
+      // 2. Create order/subscription on backend
+      const res = await fetch("/api/payments/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, userEmail: user.email }),
+        body: JSON.stringify({
+          planType: plan.id === "pro_6month" ? "lifetime" : plan.razorpayPlan,
+          userEmail: user.email,
+          userName: user.user_metadata?.full_name || user.email,
+          // For 6-month plan, override the amount
+          ...(plan.id === "pro_6month" ? { amountOverride: 29900 } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Payment init failed");
 
-      setUpiData(data);
-      setStep("qr");
+      // 3. Open Razorpay checkout
+      if (!scriptLoaded || !window.Razorpay) {
+        throw new Error("Payment gateway loading... try again in a moment.");
+      }
+
+      const options: any = {
+        key: RAZORPAY_KEY,
+        name: "Content Engineer",
+        description: `${plan.label} — ₹${plan.price}${plan.period}`,
+        image: "/icon.png",
+        prefill: {
+          email: user.email,
+          name: user.user_metadata?.full_name || "",
+        },
+        theme: { color: "#f59e0b" },
+        handler: async (response: any) => {
+          // 4. Verify payment on backend
+          try {
+            const verifyRes = await fetch("/api/payments/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id || null,
+                razorpay_subscription_id: response.razorpay_subscription_id || null,
+                razorpay_signature: response.razorpay_signature,
+                planType: plan.id === "pro_6month" ? "pro_6month" : plan.razorpayPlan,
+                userId: user.id,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || verifyData.error) {
+              setError(verifyData.error || "Verification failed");
+            } else {
+              setSuccess(true);
+            }
+          } catch (e: any) {
+            setError(e.message || "Verification failed");
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setLoadingPlan(null);
+          },
+        },
+      };
+
+      if (data.type === "order") {
+        options.order_id = data.orderId;
+        options.amount = data.amount;
+        options.currency = data.currency;
+      } else {
+        options.subscription_id = data.subscriptionId;
+      }
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
     } catch (err: any) {
       setError(err.message);
     }
-    setLoading(false);
+    setLoadingPlan(null);
   };
 
-  const copyUPI = () => {
-    navigator.clipboard.writeText(upiData?.upiId || "");
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const submitUTR = async () => {
-    if (!utr.trim() || !upiData) return;
-    setSubmitLoading(true);
-    setError("");
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const res = await fetch("/api/payments/upi-verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txnId: upiData.txnId, utr: utr.trim(), userId: user?.id }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Verification failed");
-      setStep("done");
-    } catch (err: any) {
-      setError(err.message);
-    }
-    setSubmitLoading(false);
-  };
+  if (success) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="p-8 rounded-2xl border border-green-400/30 bg-green-400/5">
+            <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h2 className="font-heading font-bold text-2xl mb-2">Payment Successful! 🎉</h2>
+            <p className="text-muted-foreground text-sm">
+              Your plan is now active. Start connecting accounts and creating content!
+            </p>
+          </div>
+          <a href="/dashboard" className="btn-amber block w-full py-3 rounded-xl font-bold text-sm text-center">
+            Go to Dashboard →
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,190 +250,86 @@ export default function PricingPage() {
             Start with <span className="text-gradient">₹9</span> — Scale with <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">Pro</span>
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            UPI se pay karo — Google Pay, PhonePe, BHIM, Paytm sab supported hain.
+            Secure Razorpay checkout — UPI, cards, net banking, wallets supported.
           </p>
         </div>
 
-        {/* ── STEP 1: Plan Cards ── */}
-        {step === "plan" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
-            {PLANS.map(plan => (
-              <div key={plan.id} className={`relative rounded-2xl border ${plan.color} bg-card p-6 flex flex-col`}>
-                {plan.badge && (
-                  <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
-                    plan.id === "pro_yearly" ? "bg-emerald-500 text-white"
-                    : plan.category === "pro" ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white"
-                    : "bg-amber-400 text-black"
-                  }`}>
-                    {plan.badge}
-                  </div>
-                )}
-                <div className="mb-4 text-center">
-                  <h2 className="font-heading font-bold text-lg">{plan.label}</h2>
-                  <div className="flex items-end gap-1 mt-2 justify-center">
-                    <span className="font-heading text-4xl font-black">₹{plan.price}</span>
-                    <span className="text-muted-foreground text-xs mb-1">{plan.period}</span>
-                  </div>
-                  <p className="text-muted-foreground text-xs mt-1">{plan.desc}</p>
-                </div>
-
-                <ul className="space-y-2 flex-1 mb-6">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-xs">
-                      <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
-                        plan.category === "pro" ? "text-violet-500" : "text-amber-500"
-                      }`} />
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {error && (
-                  <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center gap-2">
-                    <X className="w-3.5 h-3.5 flex-shrink-0" />{error}
-                  </div>
-                )}
-
-                <button
-                  id={`pay-${plan.id}-btn`}
-                  onClick={initPayment}
-                  disabled={loading}
-                  className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><IndianRupee className="w-4 h-4" /> Pay ₹{plan.price}</>}
-                </button>
-                <p className="text-center text-[10px] text-muted-foreground mt-2">UPI · GPay · PhonePe</p>
-              </div>
-            ))}
+        {/* Error banner */}
+        {error && (
+          <div className="max-w-lg mx-auto mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+            <X className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+            <button onClick={() => setError("")} className="ml-auto"><X className="w-4 h-4" /></button>
           </div>
         )}
 
-        {/* ── STEP 2: QR + UPI Links ── */}
-        {step === "qr" && upiData && (
-          <div className="max-w-md mx-auto space-y-5">
-            <div className="p-6 rounded-2xl border border-border bg-card text-center space-y-4">
-              <h2 className="font-heading font-bold text-xl">₹{upiData.amountInr} Pay Karo</h2>
-              <p className="text-sm text-muted-foreground">Kisi bhi UPI app se pay karo</p>
-
-              {/* UPI ID Copy */}
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-muted/50 border border-border">
-                <span className="flex-1 text-sm font-mono font-medium">{upiData.upiId}</span>
-                <button onClick={copyUPI} className="p-1.5 rounded-lg hover:bg-muted transition">
-                  {copied ? <CheckCheck className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
-                </button>
-              </div>
-
-              {/* UPI App Buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <a href={upiData.gpayLink}
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
-                  <Smartphone className="w-4 h-4 text-green-500" /> Google Pay
-                </a>
-                <a href={upiData.phonepeLink}
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
-                  <Smartphone className="w-4 h-4 text-purple-500" /> PhonePe
-                </a>
-                <a href={upiData.upiLink} className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
-                  <QrCode className="w-4 h-4 text-amber-500" /> Any UPI App
-                </a>
-              </div>
-
-              <div className="p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-700 dark:text-amber-300 text-left">
-                <p className="font-medium mb-1">Payment ke baad:</p>
-                <p>UTR / Transaction ID note karo — next step mein enter karna hoga</p>
-              </div>
-
-              <button
-                id="paid-done-btn"
-                onClick={() => setStep("utr")}
-                className="btn-amber w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
-                Payment ho gayi — UTR Enter Karo <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 3: UTR Entry ── */}
-        {step === "utr" && upiData && (
-          <div className="max-w-md mx-auto">
-            <div className="p-6 rounded-2xl border border-border bg-card space-y-5">
-              <div>
-                <h2 className="font-heading font-bold text-xl">UTR Number Enter Karo</h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  UPI app mein transaction history → UTR / Reference number milega
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label htmlFor="utr-input" className="text-xs font-medium text-muted-foreground block">
-                  UTR / UPI Reference Number
-                </label>
-                <input
-                  id="utr-input"
-                  type="text"
-                  value={utr}
-                  onChange={e => setUtr(e.target.value)}
-                  placeholder="e.g. 408621345678"
-                  className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400/30 transition"
-                />
-                <p className="text-xs text-muted-foreground">12-22 digit number hota hai</p>
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">
-                  <X className="w-4 h-4 flex-shrink-0" />{error}
+        {/* Plan Cards — 2 per row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl mx-auto">
+          {PLANS.map(plan => (
+            <div key={plan.id} className={`relative rounded-2xl border ${plan.color} bg-card p-6 flex flex-col`}>
+              {plan.badge && (
+                <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                  plan.id === "pro_yearly" ? "bg-emerald-500 text-white"
+                  : plan.category === "pro" ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white"
+                  : "bg-amber-400 text-black"
+                }`}>
+                  {plan.badge}
                 </div>
               )}
+              <div className="mb-4 text-center">
+                <h2 className="font-heading font-bold text-lg">{plan.label}</h2>
+                <div className="flex items-end gap-1 mt-2 justify-center">
+                  <span className="font-heading text-4xl font-black">₹{plan.price}</span>
+                  <span className="text-muted-foreground text-xs mb-1">{plan.period}</span>
+                </div>
+                <p className="text-muted-foreground text-xs mt-1">{plan.desc}</p>
+              </div>
+
+              <ul className="space-y-2 flex-1 mb-6">
+                {plan.features.map(f => (
+                  <li key={f} className="flex items-start gap-2 text-xs">
+                    <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
+                      plan.category === "pro" ? "text-violet-500" : "text-amber-500"
+                    }`} />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
 
               <button
-                id="submit-utr-btn"
-                onClick={submitUTR}
-                disabled={submitLoading || !utr.trim()}
-                className="btn-amber w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                {submitLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Submit UTR <ArrowRight className="w-4 h-4" /></>}
+                id={`pay-${plan.id}-btn`}
+                onClick={() => handleBuy(plan)}
+                disabled={loadingPlan !== null}
+                className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
+                {loadingPlan === plan.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4" /> Pay ₹{plan.price}
+                  </>
+                )}
               </button>
-
-              <button onClick={() => setStep("qr")} className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition py-2">
-                ← Wapas QR par jao
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 4: Success ── */}
-        {step === "done" && (
-          <div className="max-w-md mx-auto text-center space-y-6">
-            <div className="p-8 rounded-2xl border border-green-400/30 bg-green-400/5">
-              <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-              <h2 className="font-heading font-bold text-2xl mb-2">Payment Submitted! 🎉</h2>
-              <p className="text-muted-foreground text-sm">
-                Tumhara UTR verify ho raha hai. <strong>24 ghante</strong> mein access mil jayega.
-              </p>
-              <p className="text-xs text-muted-foreground mt-3">
-                Problem? support@techaasvik.in par email karo
+              <p className="text-center text-[10px] text-muted-foreground mt-2">
+                UPI · Cards · Net Banking · Wallets
               </p>
             </div>
-            <a href="/dashboard" className="btn-amber block w-full py-3 rounded-xl font-bold text-sm text-center">
-              Dashboard Par Jao →
-            </a>
-          </div>
-        )}
+          ))}
+        </div>
 
         {/* Trust badges */}
-        {step === "plan" && (
-          <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground mt-12">
-            {[
-              { icon: Shield, label: "UPI secured by NPCI" },
-              { icon: Clock, label: "Access in 24 hours" },
-              { icon: Star, label: "247+ creators use this" },
-              { icon: IndianRupee, label: "No hidden charges" },
-            ].map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <Icon className="w-4 h-4 text-amber-500" />
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground mt-12">
+          {[
+            { icon: Shield, label: "Razorpay secured" },
+            { icon: Clock, label: "Instant access" },
+            { icon: Star, label: "247+ creators use this" },
+            { icon: IndianRupee, label: "No hidden charges" },
+          ].map(({ icon: Icon, label }) => (
+            <div key={label} className="flex items-center gap-1.5">
+              <Icon className="w-4 h-4 text-amber-500" />
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

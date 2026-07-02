@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!;
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET!;
@@ -18,7 +18,7 @@ const LIFETIME_PRICE_PAISE = Number(process.env.LIFETIME_PRICE_PAISE || "900"); 
 
 export async function POST(req: NextRequest) {
   try {
-    const { planType, userEmail, userName } = await req.json();
+    const { planType, userEmail, userName, amountOverride } = await req.json();
 
     if (!planType || !["monthly", "yearly", "lifetime"].includes(planType)) {
       return NextResponse.json({ error: "Invalid plan type" }, { status: 400 });
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          amount: LIFETIME_PRICE_PAISE,
+          amount: amountOverride || LIFETIME_PRICE_PAISE,
           currency: "INR",
           receipt: `lifetime_${Date.now()}`,
           notes: { plan: "lifetime", email: userEmail, name: userName },

@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       let periodEnd: Date | null = null;
       if (planType === "monthly") { periodEnd = new Date(now); periodEnd.setMonth(periodEnd.getMonth() + 1); }
       if (planType === "yearly") { periodEnd = new Date(now); periodEnd.setFullYear(periodEnd.getFullYear() + 1); }
+      if (planType === "pro_6month") { periodEnd = new Date(now); periodEnd.setMonth(periodEnd.getMonth() + 6); }
 
       await supabase.from("user_subscriptions").upsert({
         user_id: userId,
