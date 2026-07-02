@@ -27,14 +27,18 @@ export async function GET(req: NextRequest) {
       (subs || []).map(s => [s.user_id, s])
     );
 
+    // Connected accounts (multi-account aware)
     const { data: connections } = await supabase
-      .from("platform_connections")
-      .select("user_id, platform");
+      .from("connected_accounts")
+      .select("user_id, platform")
+      .eq("is_active", true);
 
     const connMap: Record<string, string[]> = {};
+    const connCount: Record<string, number> = {};
     (connections || []).forEach(c => {
       if (!connMap[c.user_id]) connMap[c.user_id] = [];
-      connMap[c.user_id].push(c.platform);
+      if (!connMap[c.user_id].includes(c.platform)) connMap[c.user_id].push(c.platform);
+      connCount[c.user_id] = (connCount[c.user_id] || 0) + 1;
     });
 
     const { data: analyses } = await supabase
@@ -43,6 +47,22 @@ export async function GET(req: NextRequest) {
 
     const analysisCount: Record<string, number> = {};
     (analyses || []).forEach(a => { analysisCount[a.user_id] = (analysisCount[a.user_id] || 0) + 1; });
+
+    // Get subscription tier from profiles table
+    const profileIds = (profiles || []).map(p => p.id);
+    let tierMap: Record<string, { subscription_tier: string; max_accounts_per_platform: number }> = {};
+    if (profileIds.length > 0) {
+      const { data: tierData } = await supabase
+        .from("profiles")
+        .select("id, subscription_tier, max_accounts_per_platform")
+        .in("id", profileIds);
+      for (const t of (tierData || [])) {
+        tierMap[t.id] = {
+          subscription_tier: t.subscription_tier || "free",
+          max_accounts_per_platform: t.max_accounts_per_platform || 1,
+        };
+      }
+    }
 
     const users = (profiles || []).map(p => ({
       id: p.id,
@@ -56,9 +76,12 @@ export async function GET(req: NextRequest) {
       subscriptionStatus: subMap[p.id]?.status || "—",
       periodEnd: subMap[p.id]?.current_period_end || null,
       connectedAccounts: connMap[p.id] || [],
+      accountsCount: connCount[p.id] || 0,
       analysesCount: analysisCount[p.id] || 0,
       apiKeysSet: p.api_keys_set || false,
       createdAt: p.created_at,
+      subscriptionTier: tierMap[p.id]?.subscription_tier || "free",
+      maxAccountsPerPlatform: tierMap[p.id]?.max_accounts_per_platform || 1,
     }));
 
     return NextResponse.json({ demo: false, users });

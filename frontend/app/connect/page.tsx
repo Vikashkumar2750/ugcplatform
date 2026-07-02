@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2, AlertCircle, ExternalLink, RefreshCw,
-  Unlink, Shield, Camera, PlayCircle, Share2, Zap,
+  Unlink, Shield, Camera, PlayCircle, Share2, Zap, Plus,
   Users, BarChart3, MessageSquare, Calendar, Loader2, X
 } from "lucide-react";
 
@@ -115,43 +115,50 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 }
 
 function PlatformCard({
-  platformKey, config, connected, onDisconnect,
+  platformKey, config, connectedAccounts, onDisconnect, onShowUpgrade,
 }: {
   platformKey: keyof typeof PLATFORM_CONFIG;
   config: typeof PLATFORM_CONFIG["instagram"];
-  connected?: ConnectedAccount;
+  connectedAccounts: ConnectedAccount[];
   onDisconnect: () => void;
+  onShowUpgrade: () => void;
 }) {
   const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const Icon = config.icon;
+  const hasAny = connectedAccounts.length > 0;
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    // Check limit before redirecting
+    try {
+      const res = await fetch(`/api/connect/check-limit?platform=${platformKey}`);
+      const limit = await res.json();
+      if (!limit.allowed) {
+        onShowUpgrade();
+        return;
+      }
+    } catch { /* allow on error */ }
     setConnecting(true);
     window.location.href = config.oauthUrl;
   };
 
-  const handleDisconnect = async () => {
-    if (!confirm(`Disconnect ${config.name}? Automation rules for this account will be paused.`)) return;
-    setDisconnecting(true);
+  const handleDisconnect = async (accountId: string, username: string) => {
+    if (!confirm(`Disconnect @${username}? Automation rules for this account will be paused.`)) return;
+    setDisconnecting(accountId);
     try {
       await fetch(`/api/connect/disconnect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform: platformKey }),
+        body: JSON.stringify({ platform: platformKey, accountId }),
       });
       onDisconnect();
     } finally {
-      setDisconnecting(false);
+      setDisconnecting(null);
     }
   };
 
-  const connectedAt = connected ? new Date(connected.connected_at).toLocaleDateString("en-IN", {
-    day: "numeric", month: "short", year: "numeric"
-  }) : "";
-
   return (
-    <div className={`rounded-2xl border ${connected ? config.borderColor : "border-border"} ${connected ? config.bgColor : "bg-card"} overflow-hidden transition-all`}>
+    <div className={`rounded-2xl border ${hasAny ? config.borderColor : "border-border"} ${hasAny ? config.bgColor : "bg-card"} overflow-hidden transition-all`}>
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -164,9 +171,9 @@ function PlatformCard({
             </div>
           </div>
           <div className="flex-shrink-0">
-            {connected ? (
+            {hasAny ? (
               <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Connected
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> {connectedAccounts.length} connected
               </span>
             ) : (
               <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">Not connected</span>
@@ -174,76 +181,66 @@ function PlatformCard({
           </div>
         </div>
 
-        {connected && (
-          <div className="mb-4 p-3 rounded-xl bg-background/60 border border-border flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
-              {connected.avatar_url ? (
-                <img src={connected.avatar_url} alt={connected.platform_username} className="w-full h-full object-cover" />
-              ) : (
-                (connected.platform_username || "?")[0]?.toUpperCase()
-              )}
+        {/* Connected accounts list */}
+        {connectedAccounts.map(acc => {
+          const connectedAt = new Date(acc.connected_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+          return (
+            <div key={acc.id} className="mb-3 p-3 rounded-xl bg-background/60 border border-border flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
+                {acc.avatar_url ? (
+                  <img src={acc.avatar_url} alt={acc.platform_username} className="w-full h-full object-cover" />
+                ) : (
+                  (acc.platform_username || "?")[0]?.toUpperCase()
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">@{acc.platform_username || acc.platform_name}</p>
+                <p className="text-xs text-muted-foreground">{acc.account_type} · {connectedAt}</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button onClick={() => { setConnecting(true); window.location.href = config.oauthUrl; }}
+                  className="p-1.5 rounded-lg hover:bg-muted/60 transition text-muted-foreground hover:text-foreground" title="Reconnect">
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => handleDisconnect(acc.id, acc.platform_username)}
+                  disabled={disconnecting === acc.id}
+                  className="p-1.5 rounded-lg hover:bg-red-500/10 transition text-muted-foreground hover:text-red-500" title="Disconnect">
+                  {disconnecting === acc.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlink className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold">@{connected.platform_username || connected.platform_name}</p>
-              <p className="text-xs text-muted-foreground">{connected.platform_name} · {connected.account_type}</p>
-            </div>
-            <div className="ml-auto text-xs text-muted-foreground whitespace-nowrap">Since {connectedAt}</div>
-          </div>
-        )}
+          );
+        })}
 
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Permissions</p>
-          {config.permissions.map(perm => {
-            // isGranted = connected + (scope in DB OR grantedWhenConnected flag)
-            const isGranted = !!connected && (
-              connected.permissions?.includes(perm.key)
-              || ("grantedWhenConnected" in perm && perm.grantedWhenConnected)
-            );
-            return (
+        {!hasAny && (
+          <div className="space-y-2 mb-4">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Permissions</p>
+            {config.permissions.map(perm => (
               <div key={perm.key} className="flex items-center gap-2 text-xs">
-                {isGranted ? (
-                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
-                ) : perm.required ? (
+                {perm.required ? (
                   <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                 ) : (
                   <div className="w-3.5 h-3.5 rounded-full border border-border flex-shrink-0" />
                 )}
-                <span className={isGranted ? "" : "text-muted-foreground"}>
-                  {perm.label}
-                </span>
-                {perm.required && !connected && (
-                  <span className="ml-auto text-[10px] text-muted-foreground">required</span>
-                )}
+                <span className="text-muted-foreground">{perm.label}</span>
+                {perm.required && <span className="ml-auto text-[10px] text-muted-foreground">required</span>}
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="border-t border-border px-5 py-3 flex items-center justify-between">
-        {connected ? (
-          <>
-            <button onClick={handleDisconnect} disabled={disconnecting}
-              className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 transition disabled:opacity-50">
-              <Unlink className="w-3.5 h-3.5" />
-              {disconnecting ? "Disconnecting..." : "Disconnect"}
-            </button>
-            <button onClick={handleConnect} disabled={connecting}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition">
-              <RefreshCw className="w-3.5 h-3.5" />
-              Reconnect
-            </button>
-          </>
-        ) : (
-          <button id={`connect-${platformKey}-btn`} onClick={handleConnect} disabled={connecting}
-            className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
-            {connecting ? (
-              <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</>
-            ) : (
-              <><Zap className="w-4 h-4" /> Connect {config.name}</>
-            )}
-          </button>
-        )}
+      <div className="border-t border-border px-5 py-3">
+        <button id={`connect-${platformKey}-btn`} onClick={handleConnect} disabled={connecting}
+          className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+          {connecting ? (
+            <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</>
+          ) : hasAny ? (
+            <><Plus className="w-4 h-4" /> Connect Another {config.name}</>
+          ) : (
+            <><Zap className="w-4 h-4" /> Connect {config.name}</>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -290,9 +287,14 @@ function ConnectContent() {
     }
   }, [searchParams]);
 
-  const connectedMap: Record<string, ConnectedAccount> = {};
-  accounts.forEach(a => { connectedMap[a.platform] = a; });
+  // Group accounts by platform (support multiple per platform)
+  const accountsByPlatform: Record<string, ConnectedAccount[]> = {};
+  accounts.forEach(a => {
+    if (!accountsByPlatform[a.platform]) accountsByPlatform[a.platform] = [];
+    accountsByPlatform[a.platform].push(a);
+  });
   const connectedCount = accounts.length;
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">
@@ -346,12 +348,49 @@ function ConnectContent() {
               key={key}
               platformKey={key}
               config={config}
-              connected={connectedMap[key]}
+              connectedAccounts={accountsByPlatform[key] || []}
               onDisconnect={fetchAccounts}
+              onShowUpgrade={() => setShowUpgrade(true)}
             />
           )
         )}
       </div>
+
+      {/* Upgrade Modal */}
+      {showUpgrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowUpgrade(false)} />
+          <div className="relative bg-card rounded-2xl border border-border w-full max-w-md p-6 shadow-2xl space-y-4">
+            <button onClick={() => setShowUpgrade(false)} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="text-center">
+              <div className="w-14 h-14 rounded-2xl btn-amber mx-auto mb-3 flex items-center justify-center">
+                <Zap className="w-7 h-7 text-black" />
+              </div>
+              <h3 className="font-heading text-xl font-bold">Upgrade to Pro</h3>
+              <p className="text-sm text-muted-foreground mt-1">Connect up to 5 accounts per platform</p>
+            </div>
+            <div className="space-y-2">
+              {[
+                { plan: "Monthly", price: "₹59/mo", save: "" },
+                { plan: "6-Month", price: "₹299", save: "Save 15%" },
+                { plan: "Yearly", price: "₹599/yr", save: "Save 50%" },
+              ].map(p => (
+                <button key={p.plan} onClick={() => window.location.href = "/pricing"}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-border hover:border-amber-400/50 hover:bg-amber-400/5 transition">
+                  <div>
+                    <p className="text-sm font-semibold">{p.plan}</p>
+                    {p.save && <p className="text-xs text-green-500">{p.save}</p>}
+                  </div>
+                  <span className="text-sm font-bold text-amber-500">{p.price}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-center text-muted-foreground">5× Instagram, 5× Facebook, 5× YouTube, 5× LinkedIn</p>
+          </div>
+        </div>
+      )}
 
       {/* Apify status */}
       <div className="p-5 rounded-2xl border border-border bg-card">

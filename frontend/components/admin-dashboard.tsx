@@ -5,9 +5,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, CreditCard,
-  Receipt, LifeBuoy, BookOpen, LogOut,
+  Receipt, LifeBuoy, LogOut,
   ChevronLeft, ChevronRight, ShieldCheck,
-  TrendingUp, Settings,
+  TrendingUp, Settings, Bot,
 } from "lucide-react";
 
 const ADMIN_NAV = [
@@ -24,6 +24,7 @@ const ADMIN_NAV = [
       { icon: Users, label: "Users", href: "/admin/users" },
       { icon: CreditCard, label: "Subscriptions", href: "/admin/subscriptions" },
       { icon: Receipt, label: "Transactions", href: "/admin/transactions" },
+      { icon: Bot, label: "Automation", href: "/admin/automation" },
     ],
   },
   {
@@ -35,7 +36,6 @@ const ADMIN_NAV = [
   {
     label: "Config",
     items: [
-      { icon: BookOpen, label: "Setup Guide", href: "/admin/setup" },
       { icon: Settings, label: "Platform Settings", href: "/admin/settings" },
     ],
   },

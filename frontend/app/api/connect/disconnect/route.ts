@@ -17,15 +17,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Soft-delete: mark as inactive rather than delete
-    const query = supabase
+    let query = supabase
       .from("connected_accounts")
       .update({ is_active: false })
       .eq("user_id", user.id);
 
     if (accountId) {
-      query.eq("id", accountId);
+      query = query.eq("id", accountId);
     } else if (platform) {
-      query.eq("platform", platform);
+      query = query.eq("platform", platform);
     } else {
       return NextResponse.json({ error: "Provide platform or accountId" }, { status: 400 });
     }

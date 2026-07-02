@@ -19,6 +19,9 @@ function parseMetaError(errorMsg: string): { message: string; retryAfterHours?: 
   if (errorMsg.includes("media_url") || errorMsg.includes("image_url") || errorMsg.includes("video_url")) {
     return { message: "Media URL is not publicly accessible. Make sure your uploaded file is public." };
   }
+  if (errorMsg.includes("processing") || errorMsg.includes("timed out")) {
+    return { message: "Video processing timed out. Try a shorter/smaller video, or try again.", retryAfterHours: 0 };
+  }
   return { message: errorMsg };
 }
 
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    let { post_id, platform, content_type, caption, media_url, carousel_urls } = body;
+    let { post_id, platform, content_type, caption, media_url, carousel_urls, account_id } = body;
 
     // ── If post_id given, load from DB ────────────────────────────
     let dbPost: any = null;
@@ -51,24 +54,58 @@ export async function POST(request: NextRequest) {
       content_type = data.content_type;
       caption      = data.caption;
       media_url    = data.media_url;
+      // Use account_id from DB if available (multi-account support)
+      account_id   = account_id || data.account_id;
 
       // Mark as publishing
       await supabase.from("scheduled_posts").update({ status: "publishing" }).eq("id", post_id);
     }
 
-    // ── Get connected account ─────────────────────────────────────
-    const { data: account } = await supabase
+    // ── Validate required fields ──────────────────────────────────
+    if (!platform || !caption) {
+      return NextResponse.json({ error: "Platform and caption are required" }, { status: 400 });
+    }
+
+    // ── Get connected account (multi-account aware) ──────────────
+    let accountQuery = supabase
       .from("connected_accounts")
       .select("*")
       .eq("user_id", user.id)
-      .eq("platform", platform)
-      .eq("is_active", true)
-      .single();
+      .eq("is_active", true);
+
+    if (account_id) {
+      // Specific account requested
+      accountQuery = accountQuery.eq("id", account_id);
+    } else {
+      // Backward compatible: first active account for platform
+      accountQuery = accountQuery.eq("platform", platform);
+    }
+
+    const { data: account } = await accountQuery.limit(1).single();
 
     if (!account) {
       if (post_id) await supabase.from("scheduled_posts").update({ status: "failed", error_message: `${platform} not connected` }).eq("id", post_id);
-      return NextResponse.json({ error: `${platform} account not connected` }, { status: 400 });
+      return NextResponse.json({ error: `${platform} account not connected. Go to Settings → Connected Accounts.` }, { status: 400 });
     }
+
+    // ── Check token expiry before publishing ──────────────────────
+    if (account.token_expires_at) {
+      const expiresAt = new Date(account.token_expires_at).getTime();
+      const now = Date.now();
+      const daysUntilExpiry = (expiresAt - now) / (1000 * 60 * 60 * 24);
+
+      if (expiresAt < now) {
+        const errMsg = "Access token expired. Please reconnect your account from Settings → Connected Accounts.";
+        if (post_id) await supabase.from("scheduled_posts").update({ status: "failed", error_message: errMsg }).eq("id", post_id);
+        return NextResponse.json({ error: errMsg }, { status: 401 });
+      }
+
+      if (daysUntilExpiry < 7) {
+        console.warn(`[Publish] Token for ${platform}/@${account.platform_username} expires in ${Math.floor(daysUntilExpiry)} days`);
+      }
+    }
+
+    console.log(`[Publish] Publishing to ${platform}/@${account.platform_username} | Type: ${content_type} | Post ID: ${post_id || "direct"}`);
 
     // ── Publish ───────────────────────────────────────────────────
     let result: { success: boolean; postId?: string; error?: string };
@@ -83,9 +120,13 @@ export async function POST(request: NextRequest) {
         carouselUrls: carousel_urls || undefined,
       });
     } else if (platform === "facebook") {
+      // For Facebook, use page token if available (page_id stored during OAuth)
+      const fbToken = account.access_token;
+      const fbPageId = account.page_id || account.platform_user_id;
+
       result = await publishToFacebook({
-        pageId:      account.platform_user_id,
-        token:       account.access_token,
+        pageId:      fbPageId,
+        token:       fbToken,
         contentType: content_type as any,
         caption,
         mediaUrl:    media_url || undefined,
@@ -104,6 +145,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!result.success) {
+      console.error(`[Publish] Failed: ${result.error}`);
       const parsed = parseMetaError(result.error || "Publish failed");
       const statusCode = parsed.retryAfterHours ? 429 : 500;
       return NextResponse.json(
@@ -112,6 +154,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`[Publish] ✓ Success | Platform: ${platform} | Meta Post ID: ${result.postId}`);
     return NextResponse.json({ success: true, postId: result.postId });
 
   } catch (err: any) {

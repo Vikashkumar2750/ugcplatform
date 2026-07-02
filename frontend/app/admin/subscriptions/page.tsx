@@ -1,7 +1,78 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CreditCard, IndianRupee, ToggleLeft, ToggleRight, Save, Plus, Trash2, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { CreditCard, IndianRupee, ToggleLeft, ToggleRight, Save, Plus, Trash2, AlertCircle, Loader2, CheckCircle2, Users } from "lucide-react";
+
+function GrantMultiAccountSection() {
+  const [email, setEmail] = useState("");
+  const [maxAccounts, setMaxAccounts] = useState("5");
+  const [granting, setGranting] = useState(false);
+  const [result, setResult] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  const grantAccess = async () => {
+    if (!email.trim()) return;
+    setGranting(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/grant-multi-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), maxAccountsPerPlatform: parseInt(maxAccounts) || 5 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setResult({ success: true, message: data.message || `Granted ${maxAccounts} accounts/platform to ${email}` });
+      setEmail("");
+    } catch (err: any) {
+      setResult({ success: false, message: err.message });
+    }
+    setGranting(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5 space-y-4">
+      <h2 className="font-semibold text-zinc-100 flex items-center gap-2">
+        <Users className="w-4 h-4 text-violet-400" /> Grant Multi-Account Access
+      </h2>
+      <p className="text-xs text-zinc-500">
+        Manually upgrade a user to Pro tier. They can connect up to N accounts per platform.
+      </p>
+      <div className="flex gap-2">
+        <input
+          placeholder="User email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+        />
+        <input
+          placeholder="Max accounts"
+          type="number"
+          min="1"
+          max="10"
+          value={maxAccounts}
+          onChange={e => setMaxAccounts(e.target.value)}
+          className="w-24 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-100 text-sm text-center focus:outline-none focus:ring-2 focus:ring-violet-500/30"
+        />
+        <button
+          onClick={grantAccess}
+          disabled={granting || !email.trim()}
+          className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-sm flex items-center gap-1 hover:from-violet-500 hover:to-indigo-500 transition disabled:opacity-50"
+        >
+          {granting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+          Grant Pro
+        </button>
+      </div>
+      {result && (
+        <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg border ${
+          result.success ? "border-green-500/30 bg-green-500/10 text-green-400" : "border-red-500/30 bg-red-500/10 text-red-400"
+        }`}>
+          {result.success ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const BILLING_MODELS = [
   { id: "lifetime", label: "Lifetime (One-time)", desc: "User pays once, gets access forever." },
@@ -260,6 +331,9 @@ export default function AdminSubscriptionsPage() {
           </button>
         </div>
       </div>
+
+      {/* Grant Multi-Account Access */}
+      <GrantMultiAccountSection />
 
       {/* Save */}
       <button

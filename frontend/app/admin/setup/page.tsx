@@ -1,5 +1,4 @@
-﻿import { BookOpen, ExternalLink } from "lucide-react";
-import Link from "next/link";
+import { BookOpen } from "lucide-react";
 
 export default function AdminSetupPage() {
   return (
@@ -74,8 +73,8 @@ export default function AdminSetupPage() {
         {
           step: 6, title: "Admin Account", color: "border-red-500/30",
           items: [
-            "Set ADMIN_EMAIL=admin@techaasvik.in in .env",
-            "Set ADMIN_PASSWORD=asmin@123 in .env (change in production!)",
+            "Set ADMIN_EMAIL in .env (your admin email)",
+            "Set ADMIN_PASSWORD in .env (change default in production!)",
             "Set SESSION_SECRET to a long random string in .env",
             "Test login at /login with admin credentials",
           ],
@@ -99,10 +98,8 @@ export default function AdminSetupPage() {
         </div>
       ))}
 
-      <div className="flex gap-3">
-        <Link href="/docs/meta-setup" className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition">
-          <ExternalLink className="w-4 h-4" /> Full Meta Guide
-        </Link>
+      <div className="mt-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+        <p className="text-xs text-amber-400 font-medium">⚠️ Security Reminder: Change default admin credentials before going live in production.</p>
       </div>
     </div>
   );

@@ -450,8 +450,104 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── MULTI-ACCOUNT / PRICING ──────────────── */}
+      <section className="py-20 px-4 bg-muted/30" id="pricing">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-500 dark:text-violet-400 text-xs font-bold uppercase tracking-wider mb-4">
+              <Users className="w-3.5 h-3.5" /> Multi-Account
+            </div>
+            <h2 className="font-heading text-3xl sm:text-4xl font-bold mt-2">
+              Manage <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">all your brands</span> from one dashboard
+            </h2>
+            <p className="text-muted-foreground mt-3 max-w-xl mx-auto">
+              Connect up to 5 Instagram, 5 Facebook, 5 YouTube, and 5 LinkedIn accounts. Publish and automate across all at once.
+            </p>
+          </div>
+
+          {/* Comparison Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+            {/* Free Tier */}
+            <div className="p-6 rounded-2xl border border-border bg-card space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading font-bold text-lg">Free</h3>
+                <span className="text-2xl font-black text-gradient">₹9</span>
+              </div>
+              <p className="text-sm text-muted-foreground">One-time payment, lifetime access</p>
+              <div className="space-y-2.5">
+                {[
+                  { text: "1× Instagram account", active: true },
+                  { text: "1× Facebook page", active: true },
+                  { text: "1× YouTube channel", active: true },
+                  { text: "1× LinkedIn profile", active: true },
+                  { text: "AI content analysis", active: true },
+                  { text: "DM & comment automation", active: true },
+                  { text: "Multi-account publish", active: false },
+                  { text: "Priority support", active: false },
+                ].map((f, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-sm ${f.active ? "" : "text-muted-foreground line-through opacity-50"}`}>
+                    <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${f.active ? "text-amber-500" : "text-muted-foreground/30"}`} />
+                    {f.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pro Tier */}
+            <div className="p-6 rounded-2xl border-2 border-violet-500/40 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-violet-500/10 to-indigo-500/10 rounded-full -translate-y-16 translate-x-16" />
+              <div className="flex items-center justify-between relative z-10">
+                <div>
+                  <h3 className="font-heading font-bold text-lg">Pro</h3>
+                  <span className="text-xs text-violet-500 font-bold">Most Popular</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">₹59</span>
+                  <span className="text-xs text-muted-foreground">/month</span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground relative z-10">Or ₹299/6-months · ₹599/year</p>
+              <div className="space-y-2.5 relative z-10">
+                {[
+                  "5× Instagram accounts",
+                  "5× Facebook pages",
+                  "5× YouTube channels",
+                  "5× LinkedIn profiles",
+                  "AI content analysis",
+                  "DM & comment automation",
+                  "Publish to all at once",
+                  "Priority support",
+                ].map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-violet-500" />
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <a href="/pricing" className="block w-full py-3 rounded-xl text-center font-bold text-sm bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700 transition relative z-10">
+                Upgrade to Pro →
+              </a>
+            </div>
+          </div>
+
+          {/* Platform icons strip */}
+          <div className="flex items-center justify-center gap-8 opacity-60">
+            {[
+              { icon: Camera, label: "Instagram" },
+              { icon: Share2, label: "Facebook" },
+              { icon: PlayCircle, label: "YouTube" },
+            ].map((p, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                <p.icon className="w-5 h-5" />
+                <span>Up to 5</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── TESTIMONIALS ─────────────────────────── */}
-      <section className="py-20 px-4 bg-muted/30">
+      <section className="py-20 px-4">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="font-heading text-3xl font-bold">{t("testimonials.title")}</h2>

@@ -22,14 +22,76 @@ const PLANS = [
     badge: "Limited ⚡",
     color: "border-amber-400 ring-2 ring-amber-400/20",
     btnClass: "btn-amber",
+    category: "basic" as const,
     features: [
       "Unlimited AI content analyses",
       "Competitor research & tracking",
       "Trend discovery (India 2025)",
       "30-day content pipeline",
-      "Instagram + Facebook + YouTube",
-      "All future features included",
+      "1 account per platform",
+      "All future basic features",
       "No recurring charges ever",
+    ],
+  },
+  {
+    id: "pro_monthly",
+    label: "Pro Monthly",
+    price: 59,
+    period: "/month",
+    desc: "Connect up to 5 accounts per platform. Cancel anytime.",
+    badge: "PRO",
+    color: "border-violet-500 ring-2 ring-violet-500/20",
+    btnClass: "bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700",
+    category: "pro" as const,
+    features: [
+      "Everything in Lifetime, plus:",
+      "5× Instagram accounts",
+      "5× Facebook pages",
+      "5× YouTube channels",
+      "5× LinkedIn profiles",
+      "Publish & automate all at once",
+      "Priority support",
+    ],
+  },
+  {
+    id: "pro_6month",
+    label: "Pro 6-Month",
+    price: 299,
+    period: " for 6 months",
+    desc: "Save 15% — best for growing agencies.",
+    badge: "SAVE 15%",
+    color: "border-violet-500 ring-2 ring-violet-500/20",
+    btnClass: "bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:from-violet-700 hover:to-indigo-700",
+    category: "pro" as const,
+    features: [
+      "Everything in Lifetime, plus:",
+      "5× Instagram accounts",
+      "5× Facebook pages",
+      "5× YouTube channels",
+      "5× LinkedIn profiles",
+      "Publish & automate all at once",
+      "Priority support",
+    ],
+  },
+  {
+    id: "pro_yearly",
+    label: "Pro Yearly",
+    price: 599,
+    period: "/year",
+    desc: "Save 50% — best value for serious creators.",
+    badge: "BEST VALUE 🏆",
+    color: "border-emerald-500 ring-2 ring-emerald-500/20",
+    btnClass: "bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700",
+    category: "pro" as const,
+    features: [
+      "Everything in Lifetime, plus:",
+      "5× Instagram accounts",
+      "5× Facebook pages",
+      "5× YouTube channels",
+      "5× LinkedIn profiles",
+      "Publish & automate all at once",
+      "Priority support",
+      "Early access to new features",
     ],
   },
 ];
@@ -115,58 +177,64 @@ export default function PricingPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-600 dark:text-amber-400 text-xs font-bold uppercase tracking-wider mb-4">
-            <Zap className="w-3 h-3" /> Launch Offer — ₹9 Only
+            <Zap className="w-3 h-3" /> Choose Your Plan
           </div>
           <h1 className="font-heading text-4xl font-black mb-3">
-            Sirf <span className="text-gradient">₹9</span> mein lifetime access
+            Start with <span className="text-gradient">₹9</span> — Scale with <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">Pro</span>
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
             UPI se pay karo — Google Pay, PhonePe, BHIM, Paytm sab supported hain.
           </p>
         </div>
 
-        {/* ── STEP 1: Plan Card ── */}
+        {/* ── STEP 1: Plan Cards ── */}
         {step === "plan" && (
-          <div className="max-w-md mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
             {PLANS.map(plan => (
-              <div key={plan.id} className={`relative rounded-2xl border ${plan.color} bg-card p-8 flex flex-col`}>
+              <div key={plan.id} className={`relative rounded-2xl border ${plan.color} bg-card p-6 flex flex-col`}>
                 {plan.badge && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-amber-400 text-black text-xs font-bold whitespace-nowrap">
+                  <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${
+                    plan.id === "pro_yearly" ? "bg-emerald-500 text-white"
+                    : plan.category === "pro" ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white"
+                    : "bg-amber-400 text-black"
+                  }`}>
                     {plan.badge}
                   </div>
                 )}
-                <div className="mb-6 text-center">
-                  <h2 className="font-heading font-bold text-xl">{plan.label}</h2>
-                  <div className="flex items-end gap-1 mt-3 justify-center">
-                    <span className="font-heading text-6xl font-black">₹{plan.price}</span>
-                    <span className="text-muted-foreground text-sm mb-2">{plan.period}</span>
+                <div className="mb-4 text-center">
+                  <h2 className="font-heading font-bold text-lg">{plan.label}</h2>
+                  <div className="flex items-end gap-1 mt-2 justify-center">
+                    <span className="font-heading text-4xl font-black">₹{plan.price}</span>
+                    <span className="text-muted-foreground text-xs mb-1">{plan.period}</span>
                   </div>
-                  <p className="text-muted-foreground text-sm mt-2">{plan.desc}</p>
+                  <p className="text-muted-foreground text-xs mt-1">{plan.desc}</p>
                 </div>
 
-                <ul className="space-y-2.5 flex-1 mb-8">
+                <ul className="space-y-2 flex-1 mb-6">
                   {plan.features.map(f => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm">
-                      <CheckCircle2 className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <li key={f} className="flex items-start gap-2 text-xs">
+                      <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
+                        plan.category === "pro" ? "text-violet-500" : "text-amber-500"
+                      }`} />
                       <span>{f}</span>
                     </li>
                   ))}
                 </ul>
 
                 {error && (
-                  <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">
-                    <X className="w-4 h-4 flex-shrink-0" />{error}
+                  <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center gap-2">
+                    <X className="w-3.5 h-3.5 flex-shrink-0" />{error}
                   </div>
                 )}
 
                 <button
-                  id="pay-upi-btn"
+                  id={`pay-${plan.id}-btn`}
                   onClick={initPayment}
                   disabled={loading}
-                  className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><IndianRupee className="w-5 h-5" /> Pay ₹{plan.price} via UPI</>}
+                  className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><IndianRupee className="w-4 h-4" /> Pay ₹{plan.price}</>}
                 </button>
-                <p className="text-center text-xs text-muted-foreground mt-3">Google Pay · PhonePe · BHIM · Paytm</p>
+                <p className="text-center text-[10px] text-muted-foreground mt-2">UPI · GPay · PhonePe</p>
               </div>
             ))}
           </div>

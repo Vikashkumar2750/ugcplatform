@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Calendar, ChevronLeft, ChevronRight, Plus, Clock, Camera,
-  Share2, Trash2, X, RefreshCw, Loader2, Upload, CheckCircle2,
-  AlertCircle, Zap, Send, Music, Bot, History,
-  Search, Copy
+  Calendar, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
+  Plus, Clock, Camera, Share2, Trash2, X, RefreshCw, Loader2,
+  Upload, CheckCircle2, AlertCircle, Zap, Send, Music, Bot,
+  History, Search, Copy, PlayCircle, Users
 } from "lucide-react";
 
 type PostStatus = "draft" | "scheduled" | "publishing" | "published" | "failed";
@@ -154,15 +154,19 @@ const TRENDING_AUDIOS = [
   "Podcast Style — Narration",
 ];
 
-function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules }: {
+function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules, connectedAccounts }: {
   onClose: () => void;
   onSave: (p: any) => Promise<void>;
   onPublishNow: (p: any) => Promise<void>;
   defaultDate?: Date;
   automationRules: Array<{ id: string; name: string; type: string }>;
+  connectedAccounts: Array<{ id: string; platform: string; platform_username: string; avatar_url?: string }>;
 }) {
-  // Multi-platform selection
-  const [platforms, setPlatforms] = useState<Set<"instagram" | "facebook">>(new Set(["instagram"]));
+  // Selected account IDs (multi-account)
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(() => {
+    // Auto-select all connected accounts
+    return new Set(connectedAccounts.map(a => a.id));
+  });
   const [contentType, setContentType]     = useState<ContentTypeKey>("reel");
   const [caption, setCaption]             = useState("");
   const [firstComment, setFirstComment]   = useState("");
@@ -181,39 +185,75 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
   const [pubError, setPubError]   = useState("");
   const [step, setStep]           = useState(1); // 1: content, 2: schedule+options
 
-  const togglePlatform = (p: "instagram" | "facebook") => {
-    setPlatforms(prev => {
+  // Per-platform caption overrides
+  const [showPlatformCaptions, setShowPlatformCaptions] = useState(false);
+  const [platformCaptions, setPlatformCaptions] = useState<Record<string, string>>({});
+
+  // Group accounts by platform
+  const accountsByPlatform: Record<string, typeof connectedAccounts> = {};
+  connectedAccounts.forEach(a => {
+    if (!accountsByPlatform[a.platform]) accountsByPlatform[a.platform] = [];
+    accountsByPlatform[a.platform].push(a);
+  });
+
+  // Selected platforms (derived from selected accounts)
+  const selectedPlatforms = new Set(
+    connectedAccounts.filter(a => selectedAccountIds.has(a.id)).map(a => a.platform)
+  );
+  const hasIG = selectedPlatforms.has("instagram");
+  const hasFB = selectedPlatforms.has("facebook");
+  const isMultiPlatform = selectedPlatforms.size > 1;
+
+  // Toggle account selection
+  const toggleAccount = (id: string) => {
+    setSelectedAccountIds(prev => {
       const next = new Set(prev);
-      if (next.has(p)) { if (next.size > 1) next.delete(p); } // Keep at least one
-      else next.add(p);
+      if (next.has(id)) { if (next.size > 1) next.delete(id); }
+      else next.add(id);
       return next;
     });
   };
 
-  const hasIG = platforms.has("instagram");
-  const hasFB = platforms.has("facebook");
-  const isMultiPlatform = platforms.size > 1;
+  // Toggle all accounts for a platform
+  const togglePlatform = (platform: string) => {
+    const platformAccs = accountsByPlatform[platform] || [];
+    const allSelected = platformAccs.every(a => selectedAccountIds.has(a.id));
+    setSelectedAccountIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        // Deselect all from this platform (but keep at least 1 account total)
+        platformAccs.forEach(a => next.delete(a.id));
+        if (next.size === 0 && platformAccs.length > 0) next.add(platformAccs[0].id);
+      } else {
+        platformAccs.forEach(a => next.add(a.id));
+      }
+      return next;
+    });
+  };
 
   // Content types available across selected platforms
   const availableTypes = hasIG ? IG_TYPES : FB_TYPES;
   const isReel = contentType === "reel";
 
-  const makePayload = (platform: string) => ({
-    platform,
+  // Get selected accounts
+  const selectedAccounts = connectedAccounts.filter(a => selectedAccountIds.has(a.id));
+
+  const makePayload = (account: typeof connectedAccounts[0]) => ({
+    platform: account.platform,
     content_type: contentType,
-    caption,
-    first_comment: (platform === "instagram" && firstComment) ? firstComment : undefined,
+    caption: platformCaptions[account.platform] || caption,
+    first_comment: (account.platform === "instagram" && firstComment) ? firstComment : undefined,
     media_url: mediaUrl || undefined,
     audio_name: isReel ? audioName || undefined : undefined,
     dm_automation_id: dmAutomationId || undefined,
+    account_id: account.id,
   });
 
   const handleSchedule = async () => {
     if (!caption.trim() || !scheduledDate) return;
     setSaving(true);
-    // Save for each selected platform
-    for (const p of platforms) {
-      await onSave({ ...makePayload(p), scheduled_at: new Date(scheduledDate).toISOString(), status: "scheduled" });
+    for (const acc of selectedAccounts) {
+      await onSave({ ...makePayload(acc), scheduled_at: new Date(scheduledDate).toISOString(), status: "scheduled" });
     }
     setSaving(false);
     onClose();
@@ -222,8 +262,8 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
   const handleDraft = async () => {
     if (!caption.trim()) return;
     setSaving(true);
-    for (const p of platforms) {
-      await onSave({ ...makePayload(p), scheduled_at: new Date(Date.now() + 3600000).toISOString(), status: "draft" });
+    for (const acc of selectedAccounts) {
+      await onSave({ ...makePayload(acc), scheduled_at: new Date(Date.now() + 3600000).toISOString(), status: "draft" });
     }
     setSaving(false);
     onClose();
@@ -233,14 +273,24 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
     if (!caption.trim()) return;
     setPublishing(true); setPubError("");
     try {
-      for (const p of platforms) {
-        await onPublishNow(makePayload(p));
+      for (const acc of selectedAccounts) {
+        await onPublishNow(makePayload(acc));
       }
       onClose();
     } catch (err: any) {
       setPubError(err.message || "Publish failed — check Meta permissions");
     }
     setPublishing(false);
+  };
+
+  const PLATFORM_ICONS: Record<string, any> = {
+    instagram: Camera, facebook: Share2, youtube: PlayCircle, linkedin: Users,
+  };
+  const PLATFORM_COLORS: Record<string, string> = {
+    instagram: "border-pink-400 bg-pink-500/10 text-pink-500",
+    facebook: "border-blue-400 bg-blue-500/10 text-blue-500",
+    youtube: "border-red-400 bg-red-500/10 text-red-500",
+    linkedin: "border-sky-400 bg-sky-500/10 text-sky-500",
   };
 
   return (
@@ -264,31 +314,81 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
         <div className="p-6 space-y-5">
           {step === 1 && (
             <>
-              {/* Multi-Platform Selection */}
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Publish to <span className="text-xs text-muted-foreground ml-1">(select one or both)</span></p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(["instagram", "facebook"] as const).map(p => {
-                    const Icon = p === "instagram" ? Camera : Share2;
-                    const active = platforms.has(p);
-                    return (
-                      <button key={p} onClick={() => togglePlatform(p)}
-                        className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium capitalize transition-all
-                          ${active
-                            ? p === "instagram"
-                              ? "border-pink-400 bg-pink-500/10 text-pink-500"
-                              : "border-blue-400 bg-blue-500/10 text-blue-500"
-                            : "border-border text-muted-foreground hover:border-foreground/20"}`}>
-                        <Icon className="w-4 h-4" />
-                        {p}
-                        {active && <CheckCircle2 className="w-3.5 h-3.5" />}
-                      </button>
-                    );
-                  })}
+              {/* Multi-Account Selection */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Publish to <span className="text-xs text-muted-foreground ml-1">({selectedAccounts.length} account{selectedAccounts.length !== 1 ? "s" : ""} selected)</span></p>
+                  <button
+                    onClick={() => {
+                      const allSelected = connectedAccounts.every(a => selectedAccountIds.has(a.id));
+                      setSelectedAccountIds(allSelected ? new Set([connectedAccounts[0]?.id].filter(Boolean)) : new Set(connectedAccounts.map(a => a.id)));
+                    }}
+                    className="text-xs text-amber-500 font-medium hover:text-amber-400"
+                  >
+                    {connectedAccounts.every(a => selectedAccountIds.has(a.id)) ? "Deselect All" : "Select All"}
+                  </button>
                 </div>
-                {isMultiPlatform && (
+
+                {Object.entries(accountsByPlatform).map(([platform, accounts]) => {
+                  const Icon = PLATFORM_ICONS[platform] || Zap;
+                  const allPlatformSelected = accounts.every(a => selectedAccountIds.has(a.id));
+                  const anySelected = accounts.some(a => selectedAccountIds.has(a.id));
+
+                  return (
+                    <div key={platform} className="space-y-1.5">
+                      {/* Platform header with toggle all */}
+                      <button
+                        onClick={() => togglePlatform(platform)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium capitalize transition-all ${
+                          anySelected ? PLATFORM_COLORS[platform] || "border-amber-400 bg-amber-400/10 text-amber-500" : "border-border text-muted-foreground hover:border-foreground/20"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        {platform}
+                        <span className="text-xs opacity-60 ml-1">({accounts.length})</span>
+                        <div className="ml-auto">
+                          {allPlatformSelected
+                            ? <CheckCircle2 className="w-4 h-4" />
+                            : anySelected
+                            ? <div className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center"><div className="w-1.5 h-1.5 rounded-full bg-current" /></div>
+                            : <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
+                          }
+                        </div>
+                      </button>
+
+                      {/* Individual accounts (show if >1 account) */}
+                      {accounts.length > 1 && (
+                        <div className="pl-3 space-y-1">
+                          {accounts.map(acc => {
+                            const selected = selectedAccountIds.has(acc.id);
+                            return (
+                              <button key={acc.id} onClick={() => toggleAccount(acc.id)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                                  selected ? "bg-muted/50 text-foreground" : "text-muted-foreground hover:bg-muted/30"
+                                }`}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-muted overflow-hidden flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                                  {acc.avatar_url
+                                    ? <img src={acc.avatar_url} alt="" className="w-full h-full object-cover" />
+                                    : (acc.platform_username || "?")[0]?.toUpperCase()
+                                  }
+                                </div>
+                                <span className="font-medium truncate">@{acc.platform_username}</span>
+                                <div className="ml-auto">
+                                  {selected ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500" /> : <div className="w-3.5 h-3.5 rounded-full border border-muted-foreground/30" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {selectedAccounts.length > 1 && (
                   <p className="text-xs text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Post will be published to both platforms simultaneously
+                    <CheckCircle2 className="w-3 h-3" /> Post will be published to {selectedAccounts.length} accounts simultaneously
                   </p>
                 )}
               </div>
@@ -362,6 +462,43 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
                   className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none focus:border-amber-500/50 transition"
                 />
               </div>
+
+              {/* Per-platform caption overrides */}
+              {selectedPlatforms.size > 1 && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowPlatformCaptions(!showPlatformCaptions)}
+                    className="flex items-center gap-2 text-xs text-violet-500 font-medium hover:text-violet-400 transition"
+                  >
+                    {showPlatformCaptions ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    Customize caption per platform
+                  </button>
+
+                  {showPlatformCaptions && (
+                    <div className="space-y-3 pl-1">
+                      {Array.from(selectedPlatforms).map(platform => {
+                        const Icon = PLATFORM_ICONS[platform] || Zap;
+                        return (
+                          <div key={platform} className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground capitalize">
+                              <Icon className="w-3 h-3" /> {platform} caption
+                              <span className="text-[10px] opacity-50">(leave empty = use main caption)</span>
+                            </div>
+                            <textarea
+                              value={platformCaptions[platform] || ""}
+                              onChange={e => setPlatformCaptions(prev => ({ ...prev, [platform]: e.target.value }))}
+                              rows={2}
+                              maxLength={2200}
+                              placeholder={caption || `Caption for ${platform}...`}
+                              className="w-full px-3 py-2 rounded-lg border border-border text-xs bg-background focus:outline-none resize-none focus:border-violet-400/50 transition"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* First comment (Instagram only) */}
               {hasIG && (
@@ -444,8 +581,8 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
               <div className="p-4 rounded-xl bg-muted/30 border border-border space-y-2">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Summary</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {Array.from(platforms).map(p => (
-                    <span key={p} className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${PLATFORM_COLORS[p]}`}>
+                  {Array.from(selectedPlatforms).map((p: string) => (
+                    <span key={p} className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${PLATFORM_COLORS[p] || ''}`}>
                       {p}
                     </span>
                   ))}
@@ -471,8 +608,8 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
                   className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2 transition-all
                     bg-gradient-to-r from-amber-400 to-orange-400 text-black hover:from-amber-500 hover:to-orange-500 active:scale-[0.98]">
                   {publishing
-                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing to {Array.from(platforms).join(" & ")}...</>
-                    : <><Zap className="w-4 h-4" /> Publish Now {isMultiPlatform ? "(Both Platforms)" : ""}</>}
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing to {selectedAccounts.length} account{selectedAccounts.length !== 1 ? 's' : ''}...</>
+                    : <><Zap className="w-4 h-4" /> Publish Now {selectedAccounts.length > 1 ? `(${selectedAccounts.length} Accounts)` : ""}</>}
                 </button>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => setStep(1)}
@@ -664,16 +801,19 @@ export default function SchedulerPage() {
   const [deletingId, setDeletingId]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"calendar" | "history">("calendar");
   const [automationRules, setAutomationRules] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [connectedAccounts, setConnectedAccounts] = useState<Array<{ id: string; platform: string; platform_username: string; avatar_url?: string }>>([]);;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [postsRes, rulesRes] = await Promise.all([
+      const [postsRes, rulesRes, accountsRes] = await Promise.all([
         fetch("/api/automation/schedule"),
         fetch("/api/automation/rules"),
+        fetch("/api/connect/accounts"),
       ]);
       if (postsRes.ok) { const j = await postsRes.json(); setPosts(j.posts || []); }
       if (rulesRes.ok) { const j = await rulesRes.json(); setAutomationRules((j.rules || []).map((r: any) => ({ id: r.id, name: r.name, type: r.type }))); }
+      if (accountsRes.ok) { const j = await accountsRes.json(); setConnectedAccounts((j.accounts || []).map((a: any) => ({ id: a.id, platform: a.platform, platform_username: a.platform_username, avatar_url: a.avatar_url }))); }
     } catch {}
     setLoading(false);
   }, []);
@@ -760,6 +900,64 @@ export default function SchedulerPage() {
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-2 rounded-xl border border-border hover:bg-muted/60 transition" title="Refresh">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            onClick={async () => {
+              // Find the latest analysis from localStorage
+              const keys = Object.keys(localStorage).filter(k => k.startsWith("analysis_"));
+              if (keys.length === 0) {
+                alert("No pipeline content found. Run Analysis first from the Analyze page.");
+                return;
+              }
+              const latestKey = keys.sort().pop()!;
+              try {
+                const analysis = JSON.parse(localStorage.getItem(latestKey) || "{}");
+                const pipeline = analysis.pipeline;
+                if (!pipeline?.contentCalendar?.length) {
+                  alert("No content calendar found in your latest analysis. Run the Pipeline phase first.");
+                  return;
+                }
+                const confirm = window.confirm(
+                  `Import ${pipeline.contentCalendar.reduce((s: number, w: any) => s + (w.posts?.length || 0), 0)} posts from your AI-generated pipeline? They will be added as drafts.`
+                );
+                if (!confirm) return;
+
+                let imported = 0;
+                const startDate = new Date();
+                startDate.setHours(19, 0, 0, 0); // 7 PM default
+
+                for (const week of pipeline.contentCalendar) {
+                  for (const post of (week.posts || [])) {
+                    const scheduledAt = new Date(startDate);
+                    scheduledAt.setDate(scheduledAt.getDate() + imported);
+
+                    await fetch("/api/automation/schedule", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        platform: "instagram",
+                        content_type: post.format?.toLowerCase().includes("reel") ? "reel" 
+                          : post.format?.toLowerCase().includes("carousel") ? "carousel" 
+                          : "photo",
+                        caption: post.caption || `${post.hook}\n\n${post.topic}`,
+                        scheduled_at: scheduledAt.toISOString(),
+                        status: "draft",
+                        audio_name: post.music_suggestion || undefined,
+                      }),
+                    });
+                    imported++;
+                  }
+                }
+                alert(`✅ ${imported} posts imported as drafts! Review and schedule them.`);
+                await load();
+              } catch (err) {
+                alert("Failed to import pipeline. Try running Analysis again.");
+              }
+            }}
+            className="px-3 py-2.5 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-400 text-sm font-medium hover:bg-violet-500/20 transition flex items-center gap-2"
+            title="Import posts from your AI-generated content pipeline"
+          >
+            <Bot className="w-4 h-4" /> Import Pipeline
           </button>
           <button
             onClick={() => { setSelectedDate(undefined); setShowModal(true); }}
@@ -988,6 +1186,7 @@ export default function SchedulerPage() {
           onPublishNow={publishNow}
           defaultDate={selectedDate}
           automationRules={automationRules}
+          connectedAccounts={connectedAccounts}
         />
       )}
     </div>

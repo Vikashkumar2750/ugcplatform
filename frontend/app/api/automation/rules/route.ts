@@ -54,20 +54,25 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide } = body;
+  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide, account_id } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
   const supabase = getServiceClient();
 
-  // Get user's connected account id (correct table: connected_accounts)
-  const { data: account } = await supabase
-    .from("connected_accounts")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("platform", platform)
-    .eq("is_active", true)
-    .single();
+  // Get user's connected account id (multi-account aware)
+  let resolvedAccountId = account_id || null;
+  if (!resolvedAccountId) {
+    const { data: account } = await supabase
+      .from("connected_accounts")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("platform", platform)
+      .eq("is_active", true)
+      .limit(1)
+      .single();
+    resolvedAccountId = account?.id || null;
+  }
 
   const trigger_config: any = {
     keywords: keywords || [],
@@ -90,7 +95,7 @@ export async function POST(req: NextRequest) {
     .from("automation_rules")
     .insert({
       user_id: userId,
-      account_id: account?.id || null,
+      account_id: resolvedAccountId,
       platform,          // ← was missing, caused NOT NULL violation
       name,
       type,

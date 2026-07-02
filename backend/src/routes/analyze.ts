@@ -776,6 +776,28 @@ router.post("/pipeline", async (req: Request, res: Response) => {
     
     const isHindi = language === "hi";
     const lang = isHindi ? "Hinglish" : "English";
+
+    // Get current date context for relevancy
+    const now = new Date();
+    const currentMonth = now.toLocaleString("en-IN", { month: "long", year: "numeric" });
+    const currentDay = now.toLocaleString("en-IN", { weekday: "long" });
+
+    // Indian calendar awareness
+    const INDIAN_EVENTS: Record<number, string[]> = {
+      1: ["New Year", "Makar Sankranti", "Republic Day", "Budget season"],
+      2: ["Valentine's Week", "Board exam season"],
+      3: ["Holi", "Women's Day", "Board exams", "IPL starts"],
+      4: ["Ram Navami", "IPL season", "New financial year"],
+      5: ["Akshaya Tritiya", "Mother's Day", "Summer vacation"],
+      6: ["Father's Day", "Monsoon begins", "International Yoga Day"],
+      7: ["Guru Purnima", "Monsoon season", "Independence Day prep"],
+      8: ["Independence Day", "Raksha Bandhan", "Janmashtami"],
+      9: ["Ganesh Chaturthi", "Teacher's Day", "Navratri starts"],
+      10: ["Navratri", "Dussehra", "Karwa Chauth", "Diwali prep"],
+      11: ["Diwali", "Bhai Dooj", "Children's Day", "Black Friday"],
+      12: ["Christmas", "New Year prep", "Year-end reviews"],
+    };
+    const upcomingEvents = INDIAN_EVENTS[now.getMonth() + 1] || [];
     
     const systemPrompt = isHindi
       ? `Tu world-class Indian social media content strategist aur copywriter hai jo natural, high-converting Hinglish content likhta hai.
@@ -797,12 +819,21 @@ RULES:
 3. STRICTLY FORBIDDEN: Do not use ANY placeholders like [Your Name], [Your Product], [Niche], [insert link here]. Generate realistic generic names or concrete details instead so that the script can be read word-for-word immediately.
 
 Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
-
+    
+    // Upgraded: 7 posts/week covering all 7 days
     const WEEK_DEFS = [
-      { week: 1, theme: "Awareness - Introduce your expertise and hook new audience", formats: ["Reel","Carousel","Post"] },
-      { week: 2, theme: "Education - Teach your best tips and build trust",           formats: ["Reel","Carousel","Reel"] },
-      { week: 3, theme: "Engagement - Community stories and behind-the-scenes",      formats: ["Reel","Post","Carousel"] },
-      { week: 4, theme: "Authority - Results transformation and strong CTA",         formats: ["Reel","Carousel","Reel"] },
+      { week: 1, theme: "Awareness - Introduce your expertise, hook new audience, build curiosity",
+        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+        formats: ["Reel","Carousel","Reel","Post","Reel","Story+Post","Reel"] },
+      { week: 2, theme: "Education - Teach your best tips, deliver massive value, build trust",
+        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+        formats: ["Reel","Carousel","Reel","Carousel","Reel","Post","Reel"] },
+      { week: 3, theme: "Engagement - Community stories, behind-the-scenes, relatability",
+        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+        formats: ["Reel","Post","Carousel","Reel","Reel","Carousel","Story+Reel"] },
+      { week: 4, theme: "Authority & Conversion - Results, transformation, strong CTA, social proof",
+        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+        formats: ["Reel","Carousel","Reel","Post","Reel","Carousel","Reel"] },
     ];
 
     let competitorPostsContext = "";
@@ -817,68 +848,137 @@ Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
       }
     }
 
-    const buildPostPrompt = (wd: { week: number; theme: string; formats: string[] }, postIdx: number, compContext: string) => {
-      const days = ["Monday","Wednesday","Friday"];
-      const day = days[postIdx];
+    // Import placeholder stripper
+    const { countPlaceholders, stripPlaceholders } = await import("../services/llm");
+
+    const buildPostPrompt = (wd: typeof WEEK_DEFS[0], postIdx: number, compContext: string) => {
+      const day = wd.days[postIdx];
       const format = wd.formats[postIdx];
-      return `Generate exactly 1 highly realistic, publication-ready post for ${platform} in the niche "${effectiveNiche}".
+      const postNumber = (wd.week - 1) * 7 + postIdx + 1;
+      
+      // Calculate suggested posting time based on day
+      const timeSuggestions: Record<string, string> = {
+        "Monday": "8:30 AM IST", "Tuesday": "12:30 PM IST", "Wednesday": "7:00 PM IST",
+        "Thursday": "9:00 AM IST", "Friday": "6:30 PM IST", "Saturday": "10:00 AM IST",
+        "Sunday": "11:00 AM IST",
+      };
+
+      return `Generate exactly 1 highly realistic, publication-ready post (#${postNumber}/28) for ${platform} in the niche "${effectiveNiche}".
       
 CREATOR PROFILE: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
 POST DETAILS: ${day} | Format: ${format} | Language: ${lang}
+SUGGESTED TIME: ${timeSuggestions[day] || "7:00 PM IST"}
+DATE CONTEXT: ${currentMonth} | Events: ${upcomingEvents.join(", ") || "None special"}
 ${competitorInsights}
 ${compContext}
 
-Your output must be a single JSON object matching this schema. Replace all placeholder explanations with real, high-quality, concrete copy:
+CRITICAL RULES:
+1. NO PLACEHOLDERS — every word must be real, usable content. No [brackets] allowed.
+2. Caption must be 100+ words with a strong hook opening, specific value points, and a clear CTA.
+3. Script must be word-for-word what the creator says to camera — natural spoken ${lang}.
+4. Hook must stop the scroll in under 2 seconds — use curiosity, controversy, or relatable pain.
+5. Each tip/point in the script must be SPECIFIC — not generic advice.
+
+FEW-SHOT EXAMPLE of a GOOD hook (${lang}):
+${isHindi 
+  ? '"Mujhe 3 saal lage ye samajhne mein ki Instagram pe followers se zyada important hai engagement rate"'
+  : '"I spent 3 years figuring out why my 50K followers were getting less reach than accounts with 5K"'}
+
+FEW-SHOT EXAMPLE of a BAD hook (REJECTED):
+"[Your Name] shares [Number] tips about [Topic]" ← THIS WILL BE REJECTED
+
+Your output must be a single JSON object:
 {
   "day": "${day}",
   "format": "${format}",
-  "topic": "Specific compelling topic for this post (e.g. '3 tools for scaling leads')",
-  "hook": "Scroll-stopping opening hook line in ${lang} (max 15 words, must grab attention)",
-  "caption": "Full publication-ready ${lang} caption: a hook line + relatable story/context + 3 highly specific value points + clear CTA with emojis (100+ words, no placeholders)",
+  "content_pillar": "Education / Entertainment / Inspiration / Authority / Community",
+  "topic": "Specific compelling topic (e.g. '3 free tools that replaced my Rs 5000/month subscription')",
+  "hook": "Scroll-stopping opening line in ${lang} (max 15 words, must grab attention immediately)",
+  "caption": "Full publication-ready ${lang} caption: hook + relatable story/context + 3 highly specific value points + clear CTA with emojis (150+ words minimum, zero placeholders)",
   "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10"],
-  "pin_comment": "An engaging, scroll-starting comment in ${lang} to pin under the post",
+  "pin_comment": "An engaging first comment in ${lang} to pin (ask a question or add extra value)",
+  "posting_time": "${timeSuggestions[day] || "7:00 PM IST"}",
+  "estimated_reach": "Realistic reach estimate based on follower count and content type",
+  "thumbnail_description": "Detailed description of the ideal cover/thumbnail: text overlay, colors, expression, background",
+  "b_roll_suggestions": ["Specific B-roll shot 1 needed", "B-roll shot 2", "B-roll shot 3"],
+  "music_suggestion": "Specific trending audio name or type of background music for this post",
   "script": {
-    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds (must be exactly what the creator says out loud to camera)",
-    "scene2_problem": "Exact spoken words in ${lang} explaining the problem/pain point [0:03-0:15]",
-    "scene3_solution": "Exact spoken words in ${lang} explaining the solution or 3 specific tips [0:15-0:45]",
-    "scene4_cta": "Exact spoken words in ${lang} for the call-to-action [0:45-0:60]",
-    "voiceover_notes": "Instructions for tone, speed, energy, and emotions during delivery",
-    "text_overlays": ["Text overlay for hook","Text overlay for tip 1","CTA overlay"]
+    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — what creator says to camera, word for word",
+    "scene2_problem": "Exact spoken words in ${lang} explaining the problem/pain point [0:03-0:15] — relatable, emotional",
+    "scene3_solution": "Exact spoken words in ${lang} delivering 3 specific actionable tips [0:15-0:45] — concrete, not generic",
+    "scene4_cta": "Exact spoken words in ${lang} for the CTA [0:45-0:60] — compelling reason to follow/save/share",
+    "voiceover_notes": "Detailed instructions: tone (excited/serious/casual), speed (fast/medium), energy level, emotional shifts, pauses",
+    "text_overlays": ["Bold text for hook scene", "Tip 1 text overlay", "Tip 2 text overlay", "CTA text overlay"],
+    "visual_directions": ["Scene 1: Close-up face, surprised expression", "Scene 2: Screen recording showing the problem", "Scene 3: Split screen with examples", "Scene 4: Point at camera + text overlay"]
   }
 }
 
-CRITICAL: Every word in "caption", "hook", "pin_comment", and "script" fields MUST be in natural, conversational ${lang}. Absolutely zero placeholders or brackets. Make the copy highly engaging and native.`;
+CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
     };
 
-    console.log(`[pipeline] Generating 4 weeks × 3 posts = 12 calls for: ${effectiveNiche}`);
+    console.log(`[pipeline] Generating 4 weeks × 7 posts = 28 calls for: ${effectiveNiche}`);
     const contentCalendar: any[] = [];
     let provider = "gemini"; let model = "";
 
     for (let w = 0; w < WEEK_DEFS.length; w++) {
       const wd = WEEK_DEFS[w];
-      const postPromises = [0,1,2].map(pi =>
-        callLLM({ userId, endpoint: `pipeline_w${wd.week}_p${pi+1}`, prompt: buildPostPrompt(wd, pi, competitorPostsContext), systemPrompt })
-          .then(r => ({ ok: true as const, text: r.text, provider: r.provider, model: r.model }))
-          .catch(e => ({ ok: false as const, error: e.message }))
-      );
-      const postResults = await Promise.all(postPromises);
-      // Poll for completion (max 25s = 5 × 5s — fits within Render's 30s response timeout)
+      
+      // Process 7 posts per week in batches of 3-4 to stay within rate limits
       const posts: any[] = [];
-      for (let pi = 0; pi < postResults.length; pi++) {
-        const pr = postResults[pi];
-        if (!pr.ok) { console.warn(`[pipeline] w${w+1} p${pi+1} LLM failed: ${(pr as any).error}`); continue; }
-        const parsed = extractJSON(pr.text) as any;
-        if (parsed && parsed.topic && parsed.hook) {
-          posts.push(parsed);
-          provider = pr.provider; model = pr.model;
-        } else {
-          console.warn(`[pipeline] w${w+1} p${pi+1}: JSON parse failed`);
+      const batchSize = 4;
+      
+      for (let batchStart = 0; batchStart < 7; batchStart += batchSize) {
+        const batchEnd = Math.min(batchStart + batchSize, 7);
+        const batchIndices = Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i);
+        
+        const postPromises = batchIndices.map(pi =>
+          callLLM({ userId, endpoint: `pipeline_w${wd.week}_p${pi+1}`, prompt: buildPostPrompt(wd, pi, competitorPostsContext), systemPrompt })
+            .then(r => ({ ok: true as const, text: r.text, provider: r.provider, model: r.model }))
+            .catch(e => ({ ok: false as const, error: e.message }))
+        );
+        const postResults = await Promise.all(postPromises);
+        
+        for (let bi = 0; bi < postResults.length; bi++) {
+          const pi = batchStart + bi;
+          const pr = postResults[bi];
+          if (!pr.ok) { console.warn(`[pipeline] w${w+1} p${pi+1} LLM failed: ${(pr as any).error}`); continue; }
+          
+          let parsed = extractJSON(pr.text) as any;
+          if (parsed && parsed.topic && parsed.hook) {
+            // Post-process: strip any remaining placeholders
+            const jsonStr = JSON.stringify(parsed);
+            const placeholderCount = countPlaceholders(jsonStr);
+            if (placeholderCount > 0) {
+              console.warn(`[pipeline] w${w+1} p${pi+1}: Found ${placeholderCount} placeholders, stripping...`);
+              const cleaned = stripPlaceholders(jsonStr);
+              try {
+                parsed = JSON.parse(cleaned);
+              } catch {
+                // If JSON breaks after stripping, keep original
+                console.warn(`[pipeline] w${w+1} p${pi+1}: Placeholder strip broke JSON, keeping original`);
+              }
+            }
+            
+            // Ensure required fields exist
+            parsed.posting_time = parsed.posting_time || "7:00 PM IST";
+            parsed.content_pillar = parsed.content_pillar || "Education";
+            parsed.thumbnail_description = parsed.thumbnail_description || "Bold text overlay on gradient background";
+            parsed.b_roll_suggestions = parsed.b_roll_suggestions || [];
+            parsed.music_suggestion = parsed.music_suggestion || "Trending upbeat audio";
+            parsed.estimated_reach = parsed.estimated_reach || "Based on similar content";
+            
+            posts.push(parsed);
+            provider = pr.provider; model = pr.model;
+          } else {
+            console.warn(`[pipeline] w${w+1} p${pi+1}: JSON parse failed`);
+          }
         }
       }
+      
       if (posts.length > 0) {
         contentCalendar.push({ week: w+1, theme: wd.theme, posts });
-        console.log(`[pipeline] Week ${w+1}: ${posts.length}/3 posts OK`);
+        console.log(`[pipeline] Week ${w+1}: ${posts.length}/7 posts OK`);
       } else {
         console.warn(`[pipeline] Week ${w+1}: all posts failed`);
         contentCalendar.push({ week: w+1, theme: wd.theme, posts: [] });
@@ -887,22 +987,24 @@ CRITICAL: Every word in "caption", "hook", "pin_comment", and "script" fields MU
 
     contentCalendar.sort((a: any, b: any) => (a.week || 0) - (b.week || 0));
     // Cap targetER: micro-accounts can produce inflated ER (e.g. 300 followers, 500 avg likes = 233%).
-    // A realistic growth target should be capped at 30% and floored at 3%.
     const rawTargetER = ownData ? (ownData.engagementRate ?? 0) * 1.3 : 3.5;
     const targetER = Math.min(30, Math.max(3, rawTargetER)).toFixed(1);
     const metaPrompt = `Return ONLY valid JSON for ${effectiveNiche} ${platform} content strategy (replace placeholders with real values):
-{"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":40,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":30,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 12 posts in 2 days for ${effectiveNiche} creator - equipment, outfit changes, shooting order","postingSchedule":{"frequency":"3 posts/week","bestDays":["Monday","Wednesday","Friday"],"bestTimes":["7:00 PM - 9:00 PM IST"],"reason":"Why this time works for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"3/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}"}}`;
-    let metaData: any = { contentPillars: [], postingSchedule: { bestDays: ["Monday","Wednesday","Friday"], bestTimes: ["7:00 PM IST"] }, kpis: { targetER: targetER + "%", postingFrequency: "3/week", growthTarget: "500+ followers/month" } };
+{"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":30,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":25,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":15,"examples":["idea1"]},{"pillar":"ACTUAL pillar 5 - Community/BTS","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 28 posts in 3 days for ${effectiveNiche} creator - equipment, outfit changes, shooting order, location changes","postingSchedule":{"frequency":"7 posts/week (daily posting)","bestDays":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"bestTimes":{"Monday":"8:30 AM IST","Tuesday":"12:30 PM IST","Wednesday":"7:00 PM IST","Thursday":"9:00 AM IST","Friday":"6:30 PM IST","Saturday":"10:00 AM IST","Sunday":"11:00 AM IST"},"reason":"Why these specific times work for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"7/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}","savesTarget":"Target save rate per post","shareTarget":"Target shares per week"}}`;
+    let metaData: any = { contentPillars: [], postingSchedule: { bestDays: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], bestTimes: {"Monday":"8:30 AM IST"} }, kpis: { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } };
     try {
       const metaRes = await callLLM({ userId, endpoint: "pipeline_meta", prompt: metaPrompt, systemPrompt });
       const pm = extractJSON(metaRes.text) as any;
       if (pm) metaData = pm;
     } catch { console.warn("[pipeline] Meta call failed"); }
+    
     const weeksWithContent = contentCalendar.filter((w: any) => w.posts?.length > 0).length;
-    console.log(`[pipeline] Done: ${weeksWithContent}/4 weeks have content`);
+    const totalPosts = contentCalendar.reduce((s: number, w: any) => s + (w.posts?.length || 0), 0);
+    console.log(`[pipeline] Done: ${weeksWithContent}/4 weeks, ${totalPosts} total posts generated`);
+    
     return res.json({
       success: true,
-      pipeline: { contentCalendar, contentPillars: metaData.contentPillars || [], batchingStrategy: metaData.batchingStrategy || "", postingSchedule: metaData.postingSchedule || { bestDays: ["Monday","Wednesday","Friday"], bestTimes: ["7 PM IST"] }, kpis: metaData.kpis || { targetER: targetER + "%", postingFrequency: "3/week", growthTarget: "500+ followers/month" } },
+      pipeline: { contentCalendar, contentPillars: metaData.contentPillars || [], batchingStrategy: metaData.batchingStrategy || "", postingSchedule: metaData.postingSchedule || { bestDays: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], bestTimes: {"Monday": "8:30 AM IST"} }, kpis: metaData.kpis || { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } },
       hasRealContent: weeksWithContent > 0,
       weeksGenerated: weeksWithContent,
       _meta: { provider, model }

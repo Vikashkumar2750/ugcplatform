@@ -21,6 +21,76 @@ export interface LLMResponse {
   tokensOutput: number;
 }
 
+// ─── Placeholder Detection & Stripping ────────────────────────────────────────
+
+/** Patterns that indicate LLM returned placeholder/template content instead of real output */
+const PLACEHOLDER_PATTERNS = [
+  /\[Your\s+\w+\]/gi,          // [Your Name], [Your Product]
+  /\[Insert\s+\w+.*?\]/gi,     // [Insert link here], [Insert Name]
+  /\[Niche\]/gi,
+  /\[Topic\]/gi,
+  /\[Brand\]/gi,
+  /\[Product\s*Name\]/gi,
+  /\[Link\]/gi,
+  /\[CTA\]/gi,
+  /\[Name\]/gi,
+  /\[City\]/gi,
+  /\[Number\]/gi,
+  /\[X+\]/g,                    // [XXX], [XXXX]
+  /\[fill\s+in.*?\]/gi,
+  /\[add\s+.*?\]/gi,
+  /\[mention\s+.*?\]/gi,
+  /\[specify\s+.*?\]/gi,
+  /\[enter\s+.*?\]/gi,
+];
+
+/**
+ * Check if LLM text contains placeholder brackets.
+ * Returns the count of placeholders found.
+ */
+export function countPlaceholders(text: string): number {
+  let count = 0;
+  for (const pattern of PLACEHOLDER_PATTERNS) {
+    const matches = text.match(pattern);
+    if (matches) count += matches.length;
+  }
+  return count;
+}
+
+/**
+ * Remove common placeholder brackets from LLM output.
+ * Replaces [Your Name] → "aapka naam", [Link] → "link in bio" etc.
+ */
+export function stripPlaceholders(text: string): string {
+  const replacements: [RegExp, string][] = [
+    [/\[Your\s+Name\]/gi, "aapka naam"],
+    [/\[Your\s+Brand\]/gi, "aapka brand"],
+    [/\[Your\s+Product\]/gi, "aapka product"],
+    [/\[Insert\s+link.*?\]/gi, "link in bio"],
+    [/\[Niche\]/gi, "content creation"],
+    [/\[Topic\]/gi, "trending topic"],
+    [/\[Brand\]/gi, "brand"],
+    [/\[Product\s*Name\]/gi, "product"],
+    [/\[Link\]/gi, "link in bio"],
+    [/\[CTA\]/gi, "comment karo"],
+    [/\[Name\]/gi, "doston"],
+    [/\[City\]/gi, "city"],
+    [/\[Number\]/gi, "bohot saare"],
+    [/\[X+\]/g, "100+"],
+    [/\[fill\s+in.*?\]/gi, ""],
+    [/\[add\s+.*?\]/gi, ""],
+    [/\[mention\s+.*?\]/gi, ""],
+    [/\[specify\s+.*?\]/gi, ""],
+    [/\[enter\s+.*?\]/gi, ""],
+  ];
+
+  let result = text;
+  for (const [pattern, replacement] of replacements) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
@@ -65,12 +135,19 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
   if (req.preferProvider === "openai" && userKeys.openai) {
     attempts.push(() => callOpenAI(userKeys.openai, prompt, systemPrompt, "user_own"));
   }
+  if (req.preferProvider === "openrouter" && userKeys.openrouter) {
+    attempts.push(() => callOpenRouter(userKeys.openrouter, prompt, systemPrompt, "user_own"));
+  }
   if (req.preferProvider === "bedrock" && userKeys.bedrock) {
     attempts.push(() => callBedrock(undefined, undefined, userKeys.bedrock, prompt, systemPrompt, "user_own"));
   }
   // User Gemini always available as user-key option
   if (userKeys.gemini) {
     attempts.push(() => callGemini(userKeys.gemini, prompt, systemPrompt, "user_own"));
+  }
+  // OpenRouter — unified access to many models
+  if (userKeys.openrouter && req.preferProvider !== "openrouter") {
+    attempts.push(() => callOpenRouter(userKeys.openrouter, prompt, systemPrompt, "user_own"));
   }
   // User's other keys as further fallback
   if (userKeys.anthropic && req.preferProvider !== "anthropic") {
@@ -548,6 +625,54 @@ async function callBedrock(
 }
 
 
+// ─── OpenRouter (unified access to GPT-4o, Claude, Llama, etc.) ───────────────
+
+async function callOpenRouter(
+  apiKey: string,
+  prompt: string,
+  systemPrompt: string | undefined,
+  _source: string
+): Promise<LLMResponse> {
+  const model = "google/gemini-2.0-flash-exp:free"; // Free tier first, falls back to paid
+  const messages: any[] = [];
+  if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
+  messages.push({ role: "user", content: prompt });
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://contentengineer.techaasvik.in",
+      "X-Title": "Content Engineer",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      max_tokens: 8192,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(`OpenRouter error: ${err.error?.message || res.status}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || "";
+  const usage = data.usage || {};
+  const actualModel = data.model || model;
+
+  return {
+    text,
+    provider: "openrouter",
+    model: actualModel,
+    tokensInput: usage.prompt_tokens || 0,
+    tokensOutput: usage.completion_tokens || 0,
+  };
+}
+
+
 // ─── Cost estimation ──────────────────────────────────────────────────────────
 
 function estimateCost(
@@ -560,6 +685,7 @@ function estimateCost(
     gemini: { input: 0.075, output: 0.3 },          // gemini-2.0-flash-lite
     anthropic: { input: 0.25, output: 1.25 },        // claude-3-haiku
     openai: { input: 0.15, output: 0.6 },             // gpt-4o-mini
+    openrouter: { input: 0.0, output: 0.0 },          // free tier
     bedrock: { input: 0.25, output: 1.25 },           // claude-3-haiku via bedrock
   };
 

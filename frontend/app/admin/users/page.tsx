@@ -15,6 +15,7 @@ interface User {
   platform: string; niche: string; plan: Plan; status: Status;
   connectedAccounts: string[]; analysesCount: number; apiKeysSet: boolean;
   subscriptionStatus: string; periodEnd: string | null; createdAt: string;
+  subscriptionTier: string; maxAccountsPerPlatform: number; accountsCount: number;
 }
 
 const PLAN_COLORS: Record<string, string> = {
@@ -202,6 +203,14 @@ function ActionMenu({ user, onAction, busy }: {
               </button>
             ))}
             <div className="border-t border-zinc-800" />
+            <div className="px-3 py-1.5 text-[10px] text-zinc-600 font-medium uppercase tracking-wider border-b border-zinc-800">Multi-Account</div>
+            <button
+              onClick={async () => { setOpen(false); await onAction("grant_pro", "5"); }}
+              disabled={user.subscriptionTier === "admin_granted" || user.subscriptionTier === "pro"}
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium w-full text-left hover:bg-zinc-800 transition text-violet-400 ${(user.subscriptionTier === "admin_granted" || user.subscriptionTier === "pro") ? "opacity-40 pointer-events-none" : ""}`}>
+              {user.subscriptionTier === "admin_granted" ? "✓ Pro Granted" : "🚀 Grant Pro (5 accounts)"}
+            </button>
+            <div className="border-t border-zinc-800" />
             <button
               onClick={async () => { setOpen(false); await onAction(banAction.action, banAction.value); }}
               className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium w-full text-left hover:bg-zinc-800 transition ${banAction.color}`}>
@@ -286,16 +295,29 @@ export default function AdminUsersPage() {
       if (u.id !== userId) return u;
       if (action === "set_plan") return { ...u, plan: value as Plan };
       if (action === "set_status") return { ...u, status: value as Status };
+      if (action === "grant_pro") return { ...u, subscriptionTier: "admin_granted", maxAccountsPerPlatform: parseInt(value) || 5 };
       return u;
     }));
     try {
-      const res = await fetch("/api/admin/users", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, action, value }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Action failed");
+      if (action === "grant_pro") {
+        // Use the grant-multi-account endpoint
+        const user = users.find(u => u.id === userId);
+        const res = await fetch("/api/admin/grant-multi-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: user?.email, maxAccountsPerPlatform: parseInt(value) || 5 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Grant failed");
+      } else {
+        const res = await fetch("/api/admin/users", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, action, value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Action failed");
+      }
       // Silently refresh to confirm server state
       await fetchUsers(true);
     } catch (e: any) {
@@ -441,7 +463,7 @@ export default function AdminUsersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-800 bg-zinc-900/60">
-                    {["User", "Platform / Niche", "Plan", "Connections", "Analyses", "API Keys", "Joined", "Actions"].map(h => (
+                    {["User", "Platform / Niche", "Plan", "Tier", "Connections", "Analyses", "Joined", "Actions"].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-medium text-zinc-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -467,21 +489,32 @@ export default function AdminUsersPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize w-fit ${
+                            u.subscriptionTier === "admin_granted" ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                            : u.subscriptionTier === "pro" ? "bg-violet-500/15 text-violet-400 border border-violet-500/20"
+                            : "bg-zinc-700/50 text-zinc-500"
+                          }`}>
+                            {u.subscriptionTier || "free"} · {u.maxAccountsPerPlatform || 1}/platform
+                          </span>
+                          {u.accountsCount > 1 && (
+                            <span className="text-[10px] text-zinc-500">{u.accountsCount} accounts</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
                         {u.connectedAccounts.length === 0
                           ? <span className="text-xs text-zinc-600">None</span>
                           : <div className="flex gap-1 flex-wrap">
                             {u.connectedAccounts.map(acc => (
-                              <span key={acc} className={`text-xs font-bold ${acc === "instagram" ? "text-pink-400" : acc === "youtube" ? "text-red-400" : "text-blue-400"}`}>
-                                {acc === "instagram" ? "IG" : acc === "youtube" ? "YT" : "FB"}
+                              <span key={acc} className={`text-xs font-bold ${acc === "instagram" ? "text-pink-400" : acc === "youtube" ? "text-red-400" : acc === "linkedin" ? "text-sky-400" : "text-blue-400"}`}>
+                                {acc === "instagram" ? "IG" : acc === "youtube" ? "YT" : acc === "linkedin" ? "LI" : "FB"}
                               </span>
                             ))}
                           </div>
                         }
                       </td>
                       <td className="px-4 py-3 text-center font-bold text-zinc-200">{u.analysesCount}</td>
-                      <td className="px-4 py-3">
-                        {u.apiKeysSet ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <XCircle className="w-4 h-4 text-zinc-600" />}
-                      </td>
                       <td className="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">
                         {u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" }) : "—"}
                       </td>
