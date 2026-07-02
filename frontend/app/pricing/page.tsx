@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   CheckCircle2, Zap, Star, Shield, Clock, ArrowRight,
-  IndianRupee, Loader2, X, CreditCard
+  IndianRupee, Loader2, X, CreditCard, Smartphone, Copy, CheckCheck, QrCode
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -54,7 +54,7 @@ const PLANS = [
   },
   {
     id: "pro_6month",
-    razorpayPlan: "lifetime", // one-time payment of ₹299
+    razorpayPlan: "lifetime",
     label: "Pro 6-Month",
     price: 299,
     period: " for 6 months",
@@ -98,16 +98,32 @@ const PLANS = [
 ];
 
 declare global {
-  interface Window {
-    Razorpay: any;
-  }
+  interface Window { Razorpay: any; }
+}
+
+type PayStep = "plan" | "upi_pay" | "upi_utr" | "success";
+
+interface UPIData {
+  txnId: string;
+  upiId: string;
+  gpayLink: string;
+  phonepeLink: string;
+  upiLink: string;
+  amountInr: number;
+  merchantName: string;
 }
 
 export default function PricingPage() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [step, setStep] = useState<PayStep>("plan");
   const [scriptLoaded, setScriptLoaded] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<typeof PLANS[number] | null>(null);
+  // UPI state
+  const [upiData, setUpiData] = useState<UPIData | null>(null);
+  const [utr, setUtr] = useState("");
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Load Razorpay script
   useEffect(() => {
@@ -122,21 +138,23 @@ export default function PricingPage() {
     document.head.appendChild(s);
   }, []);
 
-  const handleBuy = async (plan: typeof PLANS[number]) => {
+  const getUser = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  };
+
+  // ── Razorpay Checkout ──
+  const handleRazorpay = async (plan: typeof PLANS[number]) => {
     setError("");
     setLoadingPlan(plan.id);
-
     try {
-      // 1. Check if user is logged in
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getUser();
       if (!user) {
-        // Save selected plan, redirect to login, then come back
         window.location.href = `/login?next=/pricing&plan=${plan.id}`;
         return;
       }
 
-      // 2. Create order/subscription on backend
       const res = await fetch("/api/payments/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -144,16 +162,14 @@ export default function PricingPage() {
           planType: plan.id === "pro_6month" ? "lifetime" : plan.razorpayPlan,
           userEmail: user.email,
           userName: user.user_metadata?.full_name || user.email,
-          // For 6-month plan, override the amount
           ...(plan.id === "pro_6month" ? { amountOverride: 29900 } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Payment init failed");
 
-      // 3. Open Razorpay checkout
       if (!scriptLoaded || !window.Razorpay) {
-        throw new Error("Payment gateway loading... try again in a moment.");
+        throw new Error("Payment gateway loading... please try again.");
       }
 
       const options: any = {
@@ -161,13 +177,9 @@ export default function PricingPage() {
         name: "Content Engineer",
         description: `${plan.label} — ₹${plan.price}${plan.period}`,
         image: "/icon.png",
-        prefill: {
-          email: user.email,
-          name: user.user_metadata?.full_name || "",
-        },
+        prefill: { email: user.email, name: user.user_metadata?.full_name || "" },
         theme: { color: "#f59e0b" },
         handler: async (response: any) => {
-          // 4. Verify payment on backend
           try {
             const verifyRes = await fetch("/api/payments/verify", {
               method: "POST",
@@ -182,20 +194,11 @@ export default function PricingPage() {
               }),
             });
             const verifyData = await verifyRes.json();
-            if (!verifyRes.ok || verifyData.error) {
-              setError(verifyData.error || "Verification failed");
-            } else {
-              setSuccess(true);
-            }
-          } catch (e: any) {
-            setError(e.message || "Verification failed");
-          }
+            if (!verifyRes.ok || verifyData.error) setError(verifyData.error || "Verification failed");
+            else setStep("success");
+          } catch (e: any) { setError(e.message); }
         },
-        modal: {
-          ondismiss: () => {
-            setLoadingPlan(null);
-          },
-        },
+        modal: { ondismiss: () => setLoadingPlan(null) },
       };
 
       if (data.type === "order") {
@@ -208,13 +211,62 @@ export default function PricingPage() {
 
       const rzp = new window.Razorpay(options);
       rzp.open();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
     setLoadingPlan(null);
   };
 
-  if (success) {
+  // ── UPI Direct ──
+  const handleUPI = async (plan: typeof PLANS[number]) => {
+    setError("");
+    setLoadingPlan(plan.id);
+    try {
+      const user = await getUser();
+      if (!user) {
+        window.location.href = `/login?next=/pricing&plan=${plan.id}`;
+        return;
+      }
+
+      const res = await fetch("/api/payments/upi-init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, userEmail: user.email }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "UPI init failed");
+
+      setUpiData(data);
+      setSelectedPlan(plan);
+      setStep("upi_pay");
+    } catch (err: any) { setError(err.message); }
+    setLoadingPlan(null);
+  };
+
+  const copyUPI = () => {
+    navigator.clipboard.writeText(upiData?.upiId || "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const submitUTR = async () => {
+    if (!utr.trim() || !upiData) return;
+    setSubmitLoading(true);
+    setError("");
+    try {
+      const user = await getUser();
+      const res = await fetch("/api/payments/upi-verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txnId: upiData.txnId, utr: utr.trim(), userId: user?.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Verification failed");
+      setStep("success");
+    } catch (err: any) { setError(err.message); }
+    setSubmitLoading(false);
+  };
+
+  // ── SUCCESS SCREEN ──
+  if (step === "success") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="max-w-md w-full text-center space-y-6">
@@ -233,6 +285,101 @@ export default function PricingPage() {
     );
   }
 
+  // ── UPI PAY SCREEN ──
+  if (step === "upi_pay" && upiData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md w-full space-y-5">
+          <div className="p-6 rounded-2xl border border-border bg-card text-center space-y-4">
+            <h2 className="font-heading font-bold text-xl">₹{upiData.amountInr} Pay Karo</h2>
+            <p className="text-sm text-muted-foreground">Kisi bhi UPI app se pay karo — {selectedPlan?.label}</p>
+
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-muted/50 border border-border">
+              <span className="flex-1 text-sm font-mono font-medium">{upiData.upiId}</span>
+              <button onClick={copyUPI} className="p-1.5 rounded-lg hover:bg-muted transition">
+                {copied ? <CheckCheck className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-muted-foreground" />}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <a href={upiData.gpayLink} className="flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
+                <Smartphone className="w-4 h-4 text-green-500" /> Google Pay
+              </a>
+              <a href={upiData.phonepeLink} className="flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
+                <Smartphone className="w-4 h-4 text-purple-500" /> PhonePe
+              </a>
+              <a href={upiData.upiLink} className="col-span-2 flex items-center justify-center gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/50 transition text-sm font-medium">
+                <QrCode className="w-4 h-4 text-amber-500" /> Any UPI App
+              </a>
+            </div>
+
+            <div className="p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-700 dark:text-amber-300 text-left">
+              <p className="font-medium mb-1">Payment ke baad:</p>
+              <p>UTR / Transaction ID note karo — next step mein enter karna hoga</p>
+            </div>
+
+            <button onClick={() => setStep("upi_utr")}
+              className="btn-amber w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+              Payment ho gayi — UTR Enter Karo <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+          <button onClick={() => { setStep("plan"); setUpiData(null); }} className="w-full text-center text-xs text-muted-foreground hover:text-foreground">
+            ← Back to Plans
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── UTR ENTRY SCREEN ──
+  if (step === "upi_utr" && upiData) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="p-6 rounded-2xl border border-border bg-card space-y-5">
+            <div>
+              <h2 className="font-heading font-bold text-xl">UTR Number Enter Karo</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                UPI app mein transaction history → UTR / Reference number milega
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="utr-input" className="text-xs font-medium text-muted-foreground block">
+                UTR / UPI Reference Number
+              </label>
+              <input
+                id="utr-input"
+                type="text"
+                value={utr}
+                onChange={e => setUtr(e.target.value)}
+                placeholder="e.g. 408621345678"
+                className="w-full px-4 py-3 rounded-xl border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-400/30 transition"
+              />
+              <p className="text-xs text-muted-foreground">12-22 digit number hota hai</p>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">
+                <X className="w-4 h-4 flex-shrink-0" />{error}
+              </div>
+            )}
+
+            <button onClick={submitUTR} disabled={submitLoading || !utr.trim()}
+              className="btn-amber w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+              {submitLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Submit UTR <ArrowRight className="w-4 h-4" /></>}
+            </button>
+
+            <button onClick={() => setStep("upi_pay")} className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition py-2">
+              ← Wapas QR par jao
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── PLAN SELECTION SCREEN ──
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-4 py-16">
@@ -246,7 +393,7 @@ export default function PricingPage() {
             Start with <span className="text-gradient">₹9</span> — Scale with <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">Pro</span>
           </h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            Secure Razorpay checkout — UPI, cards, net banking, wallets supported.
+            Pay via Razorpay (cards, net banking, wallets) or UPI direct (GPay, PhonePe, BHIM).
           </p>
         </div>
 
@@ -281,7 +428,7 @@ export default function PricingPage() {
                 <p className="text-muted-foreground text-xs mt-1">{plan.desc}</p>
               </div>
 
-              <ul className="space-y-2 flex-1 mb-6">
+              <ul className="space-y-2 flex-1 mb-5">
                 {plan.features.map(f => (
                   <li key={f} className="flex items-start gap-2 text-xs">
                     <CheckCircle2 className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
@@ -292,21 +439,29 @@ export default function PricingPage() {
                 ))}
               </ul>
 
-              <button
-                id={`pay-${plan.id}-btn`}
-                onClick={() => handleBuy(plan)}
-                disabled={loadingPlan !== null}
-                className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
-                {loadingPlan === plan.id ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <CreditCard className="w-4 h-4" /> Pay ₹{plan.price}
-                  </>
-                )}
-              </button>
+              {/* Two payment buttons */}
+              <div className="space-y-2">
+                <button
+                  id={`pay-razorpay-${plan.id}`}
+                  onClick={() => handleRazorpay(plan)}
+                  disabled={loadingPlan !== null}
+                  className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition ${plan.btnClass} disabled:opacity-60`}>
+                  {loadingPlan === plan.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <><CreditCard className="w-4 h-4" /> Pay ₹{plan.price}</>
+                  )}
+                </button>
+                <button
+                  id={`pay-upi-${plan.id}`}
+                  onClick={() => handleUPI(plan)}
+                  disabled={loadingPlan !== null}
+                  className="w-full py-2.5 rounded-xl border border-border text-sm font-medium flex items-center justify-center gap-2 hover:bg-muted/50 transition text-muted-foreground hover:text-foreground disabled:opacity-60">
+                  <IndianRupee className="w-3.5 h-3.5" /> Pay via UPI Direct
+                </button>
+              </div>
               <p className="text-center text-[10px] text-muted-foreground mt-2">
-                UPI · Cards · Net Banking · Wallets
+                Cards · Net Banking · UPI · GPay · PhonePe
               </p>
             </div>
           ))}
