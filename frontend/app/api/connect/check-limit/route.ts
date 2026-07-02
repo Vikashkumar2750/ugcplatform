@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     let maxAllowed = profile?.max_accounts_per_platform || 1;
     const tier = profile?.subscription_tier || "free";
 
-    // Check if subscription expired
+    // Check if subscription expired (only for "pro" tier, NOT admin_granted)
     if (tier === "pro" && profile?.subscription_expires_at) {
       const expiresAt = new Date(profile.subscription_expires_at).getTime();
       if (expiresAt < Date.now()) {
@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
         maxAllowed = 1;
       }
     }
+    // admin_granted = no expiry, always use max_accounts_per_platform
+    // free = always 1
+    // lifetime with no tier upgrade = 1
 
     const allowed = currentCount < maxAllowed;
 

@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
+function isAdminSessionValid(cookieValue: string | undefined): boolean {
+  if (!cookieValue) return false;
+  try {
+    const dotIdx = cookieValue.lastIndexOf(".");
+    if (dotIdx === -1) return false;
+    const payloadB64 = cookieValue.substring(0, dotIdx);
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf-8"));
+    const adminEmail = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    const emailMatch = payload.email?.toLowerCase().trim() === adminEmail;
+    const roleMatch = payload.role === "admin";
+    const isExpired = Date.now() - payload.ts > 7 * 24 * 60 * 60 * 1000;
+    return emailMatch && roleMatch && !isExpired;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * POST /api/admin/grant-multi-account
@@ -9,9 +24,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin@123";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check admin auth via cookie or header
     const adminPw = request.cookies.get("admin_session")?.value;
-    if (adminPw !== ADMIN_PASSWORD) {
+    if (!isAdminSessionValid(adminPw)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -28,19 +42,17 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Find user by email
-    const { data: users, error: userError } = await supabase
-      .from("profiles")
-      .select("id, email, subscription_tier, max_accounts_per_platform")
-      .eq("email", email)
-      .limit(1);
+    // Find user by email via auth API (profiles may not have email column)
+    const { data: authUsers } = await supabase.auth.admin.listUsers();
+    const authUser = authUsers?.users?.find(
+      u => u.email?.toLowerCase().trim() === email.toLowerCase().trim()
+    );
 
-    if (userError) throw userError;
-    if (!users || users.length === 0) {
+    if (!authUser) {
       return NextResponse.json({ error: `No user found with email: ${email}` }, { status: 404 });
     }
 
-    const user = users[0];
+    const userId = authUser.id;
 
     // Update profile
     const { error: updateError } = await supabase
@@ -51,7 +63,7 @@ export async function POST(request: NextRequest) {
         subscription_expires_at: null, // No expiry for admin-granted
         updated_at: new Date().toISOString(),
       })
-      .eq("id", user.id);
+      .eq("id", userId);
 
     if (updateError) throw updateError;
 
@@ -59,9 +71,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `✅ Granted Pro access to ${email}: ${maxAccounts} accounts per platform (no expiry)`,
       user: {
-        id: user.id,
-        email: user.email,
-        previousTier: user.subscription_tier,
+        id: userId,
+        email,
         newTier: "admin_granted",
         maxAccountsPerPlatform: maxAccounts,
       },

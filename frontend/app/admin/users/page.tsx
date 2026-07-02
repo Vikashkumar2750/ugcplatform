@@ -463,7 +463,7 @@ export default function AdminUsersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-800 bg-zinc-900/60">
-                    {["User", "Platform / Niche", "Plan", "Tier", "Connections", "Analyses", "Joined", "Actions"].map(h => (
+                    {["User", "Plan / Tier", "Connections", "Analyses", "Joined", "Actions"].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-medium text-zinc-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -477,29 +477,21 @@ export default function AdminUsersPage() {
                         {u.whatsapp && u.whatsapp !== "—" && <p className="text-xs text-zinc-700">{u.whatsapp}</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-zinc-300 capitalize">{u.platform}</p>
-                        <p className="text-xs text-zinc-600">{u.niche || "—"}</p>
-                      </td>
-                      <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit ${u.status === "banned" ? STATUS_BADGE.banned : PLAN_COLORS[u.plan]}`}>
-                            {u.status === "banned" ? "Banned" : u.plan}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize w-fit ${u.status === "banned" ? STATUS_BADGE.banned : PLAN_COLORS[u.plan]}`}>
+                              {u.status === "banned" ? "Banned" : u.plan}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${
+                              u.subscriptionTier === "admin_granted" ? "bg-amber-500/15 text-amber-400"
+                              : u.subscriptionTier === "pro" ? "bg-violet-500/15 text-violet-400"
+                              : "bg-zinc-700/50 text-zinc-500"
+                            }`}>
+                              {u.subscriptionTier || "free"} · {u.maxAccountsPerPlatform || 1}acc
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-zinc-600 capitalize">{u.platform} {u.niche ? `· ${u.niche}` : ""}</p>
                           {saving === u.id && <span className="text-[10px] text-amber-400 flex items-center gap-1"><Loader2 className="w-2.5 h-2.5 animate-spin" /> Saving...</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize w-fit ${
-                            u.subscriptionTier === "admin_granted" ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
-                            : u.subscriptionTier === "pro" ? "bg-violet-500/15 text-violet-400 border border-violet-500/20"
-                            : "bg-zinc-700/50 text-zinc-500"
-                          }`}>
-                            {u.subscriptionTier || "free"} · {u.maxAccountsPerPlatform || 1}/platform
-                          </span>
-                          {u.accountsCount > 1 && (
-                            <span className="text-[10px] text-zinc-500">{u.accountsCount} accounts</span>
-                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3">

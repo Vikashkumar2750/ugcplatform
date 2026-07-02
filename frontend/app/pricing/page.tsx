@@ -5,12 +5,7 @@ import {
   CheckCircle2, Zap, Star, Shield, Clock, ArrowRight,
   IndianRupee, Loader2, X, CreditCard
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { createClient } from "@/lib/supabase/client";
 
 const RAZORPAY_KEY = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
 
@@ -133,6 +128,7 @@ export default function PricingPage() {
 
     try {
       // 1. Check if user is logged in
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         // Save selected plan, redirect to login, then come back
