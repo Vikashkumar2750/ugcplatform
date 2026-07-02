@@ -166,6 +166,10 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     if (process.env.GEMINI_API_KEY) {
       attempts.push(() => callGemini(process.env.GEMINI_API_KEY!, prompt, systemPrompt, "platform"));
     }
+    // OpenRouter — unified access to many models (great fallback)
+    if (process.env.OPENROUTER_API_KEY) {
+      attempts.push(() => callOpenRouter(process.env.OPENROUTER_API_KEY!, prompt, systemPrompt, "platform"));
+    }
     // Anthropic Claude as secondary platform key
     if (process.env.ANTHROPIC_API_KEY) {
       attempts.push(() => callAnthropic(process.env.ANTHROPIC_API_KEY!, prompt, systemPrompt, "platform"));
