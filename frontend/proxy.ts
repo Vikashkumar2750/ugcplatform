@@ -53,11 +53,28 @@ function isAdminSessionValid(cookieValue: string | undefined): boolean {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // 0. Block source maps in production
+  if (pathname.endsWith(".map") && process.env.NODE_ENV === "production") {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  // 0b. Protect cron endpoints — require Bearer token
+  if (pathname.startsWith("/api/cron/")) {
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   // 1. Always allow public routes — no auth needed
   const isPublic = PUBLIC_ROUTES.some(
     (r) => pathname === r || pathname.startsWith(r + "/")
   );
-  if (isPublic) return NextResponse.next({ request });
+  if (isPublic) {
+    const response = NextResponse.next({ request });
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    return response;
+  }
 
   // 2. Check admin session cookie
   const adminCookie = request.cookies.get("admin_session")?.value;
