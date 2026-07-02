@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, MessageSquare,
   Link as LinkIcon, ChevronDown, ChevronUp, AlertCircle,
-  Clock, Loader2, RefreshCw, Globe, Image as ImageIcon, X
+  Clock, Loader2, RefreshCw, Globe, Image as ImageIcon, X, Users
 } from "lucide-react";
+
+interface ConnectedAccount {
+  id: string;
+  platform: string;
+  platform_username: string;
+  platform_display_name: string;
+}
 
 const TRIGGER_TYPES = [
   { value: "dm_keyword", label: "Keyword in DM", desc: "Trigger when DM contains specific words" },
@@ -98,7 +106,9 @@ function PostPickerModal({ onSelect, onClose }: {
 }
 
 // ─── New Rule Modal ────────────────────────────────────────────────────
-function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function NewRuleModal({ onClose, onSaved, platform, accounts }: {
+  onClose: () => void; onSaved: () => void; platform: string; accounts: ConnectedAccount[];
+}) {
   const [name, setName] = useState("");
   const [type, setType] = useState("dm_keyword");
   const [keywordInput, setKeywordInput] = useState("");
@@ -106,6 +116,7 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const [message, setMessage] = useState("");
   const [link, setLink] = useState("");
   const [delay, setDelay] = useState(0);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("ALL");
 
   // Scope (only shown for comment_to_dm)
   const [scope, setScope] = useState<"global" | "specific">("global");
@@ -131,18 +142,26 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
     setSaving(true); setError("");
     try {
-      const res = await fetch("/api/automation/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name, type, platform: "instagram", keywords, dmMessage: message, dmLink: link, delay,
-          mediaId: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.id : null,
-          mediaThumb: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.thumbnail : null,
-          mediaCaption: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.caption : null,
-        }),
+      // If ALL selected, create rules for each account
+      const accountIds = selectedAccountId === "ALL"
+        ? accounts.map(a => a.id)
+        : [selectedAccountId];
+
+      for (const accId of accountIds) {
+        const res = await fetch("/api/automation/rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name, type, platform, keywords, dmMessage: message, dmLink: link, delay,
+            account_id: accId || null,
+            mediaId: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.id : null,
+            mediaThumb: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.thumbnail : null,
+            mediaCaption: (type === "comment_to_dm" && scope === "specific") ? selectedPost?.caption : null,
+          }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Save failed");
+      }
       onSaved(); onClose();
     } catch (e: any) {
       setError(e.message);
@@ -171,6 +190,20 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             {error && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+              </div>
+            )}
+
+            {/* Account selector */}
+            {accounts.length > 1 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to account</label>
+                <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30">
+                  <option value="ALL">🌐 ALL {platform} accounts ({accounts.length})</option>
+                  {accounts.map(a => (
+                    <option key={a.id} value={a.id}>@{a.platform_username || a.platform_display_name}</option>
+                  ))}
+                </select>
               </div>
             )}
 
@@ -385,19 +418,28 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: DmRule; onToggle: () => 
 
 // ─── Main Page ─────────────────────────────────────────────────────────
 export default function DmAutomationPage() {
+  const searchParams = useSearchParams();
+  const platform = searchParams.get("platform") || "instagram";
+  const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
   const [rules, setRules] = useState<DmRule[]>([]);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/automation/rules?type=dm");
-      const data = await res.json();
-      setRules(data.rules || []);
+      const [rulesRes, accountsRes] = await Promise.all([
+        fetch(`/api/automation/rules?type=dm&platform=${platform}`),
+        fetch("/api/connect/accounts"),
+      ]);
+      const rulesData = await rulesRes.json();
+      const accountsData = await accountsRes.json();
+      setRules(rulesData.rules || []);
+      setAccounts((accountsData.accounts || []).filter((a: any) => a.platform === platform));
     } catch { }
     setLoading(false);
-  }, []);
+  }, [platform]);
 
   useEffect(() => { fetchRules(); }, [fetchRules]);
 
@@ -420,10 +462,11 @@ export default function DmAutomationPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-amber-500" /> DM Automation
+            <MessageSquare className="w-6 h-6 text-amber-500" /> {platformLabel} DM Automation
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Auto-reply to DMs based on keywords, new followers, or story replies
+            Auto-reply to {platformLabel} DMs based on keywords, new followers, or story replies
+            {accounts.length > 0 && <span className="ml-1 text-amber-500 font-medium">({accounts.length} account{accounts.length > 1 ? "s" : ""})</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -467,7 +510,7 @@ export default function DmAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} platform={platform} accounts={accounts} />}
     </div>
   );
 }

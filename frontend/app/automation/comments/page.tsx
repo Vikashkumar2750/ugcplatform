@@ -1,12 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Plus, Trash2, ToggleLeft, ToggleRight, MessageCircle,
   ChevronDown, ChevronUp, EyeOff, Loader2, RefreshCw,
   Globe, Image as ImageIcon, CheckCircle2, AlertCircle, X,
-  MessageSquare, Send, Link as LinkIcon, Eye
+  MessageSquare, Send, Link as LinkIcon, Eye, Users
 } from "lucide-react";
+
+interface ConnectedAccount {
+  id: string;
+  platform: string;
+  platform_username: string;
+  platform_display_name: string;
+}
 
 interface MediaPost {
   id: string; type: string; url: string;
@@ -116,8 +124,11 @@ function ActionToggle({ icon: Icon, label, desc, active, onChange, color }: {
 }
 
 // ─── New Rule Modal (UNIFIED: DM + Reply + Hide in ONE rule) ───────────
-function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function NewRuleModal({ onClose, onSaved, platform, accounts }: {
+  onClose: () => void; onSaved: () => void; platform: string; accounts: ConnectedAccount[];
+}) {
   const [name, setName] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("ALL");
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [matchType, setMatchType] = useState<"any" | "all">("any");
@@ -165,27 +176,35 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
     setSaving(true); setError("");
     try {
-      const res = await fetch("/api/automation/rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          type: "comment_automation",
-          platform: "instagram",
-          keywords: finalKeywords,
-          matchType,
-          replyText: enableReply ? replyText : "",
-          dmMessage: enableDM ? dmMessage : "",
-          dmLink: enableDM ? dmLink : "",
-          hide: enableHide,
-          actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
-          mediaId: scope === "specific" ? selectedPost?.id : null,
-          mediaThumb: scope === "specific" ? selectedPost?.thumbnail : null,
-          mediaCaption: scope === "specific" ? selectedPost?.caption : null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Save failed");
+      // If ALL selected, create rules for each account
+      const accountIds = selectedAccountId === "ALL" && accounts.length > 0
+        ? accounts.map(a => a.id)
+        : [selectedAccountId === "ALL" ? null : selectedAccountId];
+
+      for (const accId of accountIds) {
+        const res = await fetch("/api/automation/rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            type: "comment_automation",
+            platform,
+            account_id: accId || null,
+            keywords: finalKeywords,
+            matchType,
+            replyText: enableReply ? replyText : "",
+            dmMessage: enableDM ? dmMessage : "",
+            dmLink: enableDM ? dmLink : "",
+            hide: enableHide,
+            actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
+            mediaId: scope === "specific" ? selectedPost?.id : null,
+            mediaThumb: scope === "specific" ? selectedPost?.thumbnail : null,
+            mediaCaption: scope === "specific" ? selectedPost?.caption : null,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Save failed");
+      }
       onSaved();
       onClose();
     } catch (e: any) {
@@ -229,6 +248,20 @@ function NewRuleModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
             {step === 1 && (
               <>
+                {/* Account selector */}
+                {accounts.length > 1 && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to account</label>
+                    <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30">
+                      <option value="ALL">🌐 ALL {platform} accounts ({accounts.length})</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>@{a.platform_username || a.platform_display_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Rule name */}
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Rule name</label>
@@ -639,19 +672,28 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
 
 // ─── Main Page ─────────────────────────────────────────────────────────
 export default function CommentsAutomationPage() {
+  const searchParams = useSearchParams();
+  const platform = searchParams.get("platform") || "instagram";
+  const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
   const [rules, setRules] = useState<CommentRule[]>([]);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/automation/rules?type=comments");
-      const data = await res.json();
-      setRules(data.rules || []);
+      const [rulesRes, accountsRes] = await Promise.all([
+        fetch(`/api/automation/rules?type=comments&platform=${platform}`),
+        fetch("/api/connect/accounts"),
+      ]);
+      const rulesData = await rulesRes.json();
+      const accountsData = await accountsRes.json();
+      setRules(rulesData.rules || []);
+      setAccounts((accountsData.accounts || []).filter((a: any) => a.platform === platform));
     } catch { }
     setLoading(false);
-  }, []);
+  }, [platform]);
 
   useEffect(() => { fetchRules(); }, [fetchRules]);
 
@@ -674,10 +716,11 @@ export default function CommentsAutomationPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
-            <MessageCircle className="w-6 h-6 text-amber-500" /> Comment Automation
+            <MessageCircle className="w-6 h-6 text-amber-500" /> {platformLabel} Comment Automation
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             One rule, multiple actions — auto-reply, DM, and hide in a single automation
+            {accounts.length > 0 && <span className="ml-1 text-amber-500 font-medium">({accounts.length} account{accounts.length > 1 ? "s" : ""})</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -739,7 +782,7 @@ export default function CommentsAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} platform={platform} accounts={accounts} />}
     </div>
   );
 }

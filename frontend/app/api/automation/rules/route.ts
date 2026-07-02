@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type"); // 'comment_reply' | 'comment_to_dm' | 'dm_keyword' etc.
+  const type = searchParams.get("type");
+  const platform = searchParams.get("platform");
 
   const supabase = getServiceClient();
   let query = supabase
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest) {
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
+
+  if (platform) {
+    query = query.eq("platform", platform);
+  }
 
   if (type) {
     if (type === "comments") {
