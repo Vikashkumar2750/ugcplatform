@@ -274,7 +274,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     const { data: followerRules } = await supabase
       .from("automation_rules")
       .select("*")
-      .eq("account_id", account.id)
+      .or(`account_id.eq.${account.id},account_id.is.null`)
+      .eq("user_id", account.user_id)
       .eq("type", "dm_new_follower")
       .eq("is_active", true)
       .limit(1);
@@ -305,7 +306,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   const { data: keywordRules } = await supabase
     .from("automation_rules")
     .select("*")
-    .eq("account_id", account.id)
+    .or(`account_id.eq.${account.id},account_id.is.null`)
+    .eq("user_id", account.user_id)
     .eq("type", "dm_keyword")
     .eq("is_active", true);
 
@@ -390,10 +392,9 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     .in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"])
     .eq("is_active", true);
 
-  // If we found the page account, filter rules for this specific account or user
+  // If we found the page account, filter rules for this user
+  // Use OR to match: current account_id, null account_id, OR stale account_id (after reconnect)
   if (pageAccount) {
-    rulesQuery = rulesQuery.or(`account_id.eq.${pageAccount.id},account_id.is.null`);
-    // Also ensure we only get rules from this user (not other users' null account_id rules)
     rulesQuery = rulesQuery.eq("user_id", pageAccount.user_id);
   }
 
