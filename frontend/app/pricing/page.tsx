@@ -159,10 +159,9 @@ export default function PricingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          planType: plan.id === "pro_6month" ? "lifetime" : plan.razorpayPlan,
+          planType: plan.id === "pro_monthly" ? "monthly" : plan.id === "pro_yearly" ? "yearly" : plan.id,
           userEmail: user.email,
           userName: user.user_metadata?.full_name || user.email,
-          ...(plan.id === "pro_6month" ? { amountOverride: 29900 } : {}),
         }),
       });
       const data = await res.json();
@@ -189,7 +188,7 @@ export default function PricingPage() {
                 razorpay_order_id: response.razorpay_order_id || null,
                 razorpay_subscription_id: response.razorpay_subscription_id || null,
                 razorpay_signature: response.razorpay_signature,
-                planType: plan.id === "pro_6month" ? "pro_6month" : plan.razorpayPlan,
+                planType: plan.id === "pro_monthly" ? "monthly" : plan.id === "pro_yearly" ? "yearly" : plan.id,
                 userId: user.id,
               }),
             });
