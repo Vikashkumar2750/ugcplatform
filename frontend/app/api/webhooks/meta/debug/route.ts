@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       .from("webhook_raw_log")
       .select("id, object_type, raw_body, received_at")
       .order("received_at", { ascending: false })
-      .limit(5);
+      .limit(15);
     rawLogs = data || [];
   } catch {}
 

@@ -69,31 +69,45 @@ export async function GET(request: NextRequest) {
 // POST — Receive Meta webhook events
 // ─────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
+  const supabase = getServiceClient();
+
   try {
     const rawBody = await request.text();
     const signature = request.headers.get("x-hub-signature-256") || "";
 
+    // ── Log EVERY raw webhook to DB FIRST (even before signature check) ──
+    // This is critical for debugging — we need to know if Meta is sending events at all
+    let parsedBody: any = null;
+    try {
+      parsedBody = JSON.parse(rawBody);
+      await supabase.from("webhook_raw_log").insert({
+        object_type: parsedBody?.object || "unknown",
+        raw_body: parsedBody,
+        received_at: new Date().toISOString(),
+      });
+    } catch {
+      // JSON parse or DB insert failed — continue anyway
+    }
+
     if (!verifySignature(rawBody, signature)) {
       console.warn("[Webhook] Signature mismatch — rejecting");
+      console.warn("[Webhook] Received signature:", signature?.substring(0, 20) + "...");
+      // Log the rejection to DB so we can see it in debug endpoint
+      try {
+        await supabase.from("webhook_raw_log").insert({
+          object_type: "SIGNATURE_REJECTED",
+          raw_body: { error: "signature_mismatch", signature_prefix: signature?.substring(0, 30), body_length: rawBody.length },
+          received_at: new Date().toISOString(),
+        });
+      } catch {}
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
-    const body = JSON.parse(rawBody);
-    const supabase = getServiceClient();
+    const body = parsedBody || JSON.parse(rawBody);
 
     console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 800));
     console.log("[Webhook] Object:", body.object, "| Entries:", body.entry?.length);
 
-    // ── Log EVERY raw webhook to DB for debugging ──
-    try {
-      await supabase.from("webhook_raw_log").insert({
-        object_type: body.object || "unknown",
-        raw_body: body,
-        received_at: new Date().toISOString(),
-      });
-    } catch {
-      // Table might not exist yet — that's fine, don't crash
-    }
 
     for (const entry of (body.entry || [])) {
       // ── Deduplication: skip if we've already processed this entry ──
