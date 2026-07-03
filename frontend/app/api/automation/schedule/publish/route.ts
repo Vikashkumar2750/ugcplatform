@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
         contentType: content_type as any,
         caption,
         mediaUrl:    media_url || undefined,
+        carouselUrls: carousel_urls || undefined,
       });
     } else {
       return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });

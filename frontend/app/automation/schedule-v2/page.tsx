@@ -89,25 +89,40 @@ export default function SchedulerV2Page() {
     accounts.filter(a => selectedAccountIds.has(a.id)).map(a => a.platform)
   ));
 
-  const makePayload = (account: ConnectedAccount) => ({
-    platform: account.platform,
-    content_type: contentType,
-    caption: tweaks[account.platform]?.caption || baseCaption,
-    first_comment: account.platform === "instagram" ? tweaks.instagram?.firstComment : undefined,
-    media_url: mediaFiles.length > 0 ? mediaFiles[0].url : undefined,
-    carousel_urls: mediaFiles.length > 1 ? mediaFiles.map(m => m.url) : undefined,
-    image_captions: mediaFiles.length > 0 ? mediaFiles.map(m => m.caption) : undefined,
-    audio_name: contentType === "reel" && account.platform === "instagram" ? tweaks.instagram?.audioName : undefined,
-    dm_automation_id: account.platform === "instagram" ? tweaks.instagram?.dmAutomationId : undefined,
-    youtube_category_id: account.platform === "youtube" ? tweaks.youtube?.youtubeCategory : undefined,
-    account_id: account.id,
-  });
+  const makePayload = (account: ConnectedAccount) => {
+    let finalCaption = tweaks[account.platform]?.caption || baseCaption;
+    
+    // If multiple images are uploaded, combine their captions into the main caption
+    if (mediaFiles.length > 1) {
+      const combined = mediaFiles.map((m, i) => m.caption ? `[Image ${i + 1}] ${m.caption}` : "").filter(Boolean).join("\n\n");
+      if (combined) {
+        finalCaption = combined;
+      }
+    } else if (mediaFiles.length === 1 && mediaFiles[0].caption) {
+      // If single image and it has a caption, use it instead of base caption
+      finalCaption = mediaFiles[0].caption;
+    }
+
+    return {
+      platform: account.platform,
+      content_type: mediaFiles.length > 1 && contentType === "post" ? "carousel" : contentType,
+      caption: finalCaption,
+      first_comment: account.platform === "instagram" ? tweaks.instagram?.firstComment : undefined,
+      media_url: mediaFiles.length > 0 ? mediaFiles[0].url : undefined,
+      carousel_urls: mediaFiles.length > 1 ? mediaFiles.map(m => m.url) : undefined,
+      audio_name: contentType === "reel" && account.platform === "instagram" ? tweaks.instagram?.audioName : undefined,
+      dm_automation_id: account.platform === "instagram" ? tweaks.instagram?.dmAutomationId : undefined,
+      youtube_category_id: account.platform === "youtube" ? tweaks.youtube?.youtubeCategory : undefined,
+      account_id: account.id,
+    };
+  };
 
   const handlePublishNow = async () => {
     if (!baseCaption.trim() && mediaFiles.length === 0) return;
     setPublishing(true); setError("");
     try {
-      for (const acc of accounts.filter(a => selectedAccountIds.has(a.id))) {
+      const selectedAccounts = accounts.filter(a => selectedAccountIds.has(a.id));
+      for (const acc of selectedAccounts) {
         const res = await fetch("/api/automation/schedule/publish", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -116,7 +131,12 @@ export default function SchedulerV2Page() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Publish failed");
       }
-      alert("Successfully published to all selected platforms!");
+      alert(`Successfully published to ${selectedAccounts.length} account(s)!`);
+      
+      // Reset state
+      setBaseCaption("");
+      setMediaFiles([]);
+      setTweaks({ instagram: {}, facebook: {}, youtube: {}, linkedin: {} });
     } catch (err: any) {
       setError(err.message || "Publish failed");
     }
@@ -128,7 +148,8 @@ export default function SchedulerV2Page() {
     if (!scheduledDate) return;
     setSaving(true); setError("");
     try {
-      for (const acc of accounts.filter(a => selectedAccountIds.has(a.id))) {
+      const selectedAccounts = accounts.filter(a => selectedAccountIds.has(a.id));
+      for (const acc of selectedAccounts) {
         const payload = {
           ...makePayload(acc),
           scheduled_at: new Date(scheduledDate).toISOString(),
@@ -141,7 +162,12 @@ export default function SchedulerV2Page() {
         });
         if (!res.ok) throw new Error("Scheduling failed for " + acc.platform);
       }
-      alert("Successfully scheduled to all selected platforms!");
+      alert(`Successfully scheduled to ${selectedAccounts.length} account(s)!`);
+      
+      // Reset state
+      setBaseCaption("");
+      setMediaFiles([]);
+      setTweaks({ instagram: {}, facebook: {}, youtube: {}, linkedin: {} });
     } catch (err: any) {
       setError(err.message || "Schedule failed");
     }

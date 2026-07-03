@@ -277,10 +277,11 @@ interface FacebookPublishOptions {
   contentType: ContentType;
   caption: string;
   mediaUrl?: string;
+  carouselUrls?: string[];
 }
 
 export async function publishToFacebook(opts: FacebookPublishOptions): Promise<PublishResult> {
-  const { pageId, token, contentType, caption, mediaUrl } = opts;
+  const { pageId, token, contentType, caption, mediaUrl, carouselUrls } = opts;
 
   try {
     // ── Video / Reel ──
@@ -304,8 +305,48 @@ export async function publishToFacebook(opts: FacebookPublishOptions): Promise<P
       return { success: true, postId: d.id };
     }
 
+    // ── Carousel (Multi-photo post) ──
+    if (contentType === "carousel" && carouselUrls?.length) {
+      console.log(`[Publisher] Publishing Facebook multi-photo post`);
+      const attachedMedia: { media_fbid: string }[] = [];
+      
+      for (const url of carouselUrls) {
+        const isVideo = /\.(mp4|mov|avi|webm)$/i.test(url);
+        if (isVideo) continue; // FB multi-photo endpoint generally accepts only photos for simple feed attachment
+        
+        const r = await fetch(`${BASE_URL}/${pageId}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: url,
+            published: false,
+            access_token: token,
+          }),
+        });
+        const d = await r.json();
+        if (d.id) {
+          attachedMedia.push({ media_fbid: d.id });
+        }
+      }
+
+      if (attachedMedia.length > 0) {
+        const r = await fetch(`${BASE_URL}/${pageId}/feed`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: caption,
+            attached_media: attachedMedia,
+            access_token: token,
+          }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(parseMetaApiError(d).message);
+        return { success: true, postId: d.id };
+      }
+    }
+
     // ── Photo ──
-    if (mediaUrl) {
+    if (mediaUrl && (contentType === "photo" || contentType === "post")) {
       console.log(`[Publisher] Publishing Facebook photo`);
       const r = await fetch(`${BASE_URL}/${pageId}/photos`, {
         method: "POST",
