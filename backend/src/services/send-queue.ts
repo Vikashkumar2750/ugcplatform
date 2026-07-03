@@ -348,18 +348,10 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       message: {} as Record<string, unknown>,
     };
 
+    // Meta Private Replies to comments ONLY support plain text, no templates!
     if (payload.link) {
-      (privateReplyBody.message as Record<string, unknown>).attachment = {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title: payload.text.substring(0, 80),
-            default_action: { type: "web_url", url: payload.link },
-            buttons: [{ type: "web_url", url: payload.link, title: "Open Link →" }],
-          }],
-        },
-      };
+      // Append the link to the text since we can't use buttons
+      (privateReplyBody.message as Record<string, unknown>).text = `${payload.text}\n\n${payload.link}`;
     } else {
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }

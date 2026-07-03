@@ -406,10 +406,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     .in("type", ["comment_reply", "comment_to_dm", "hide_comment", "comment_automation"])
     .eq("is_active", true);
 
-  // If we found the page account, filter rules for this user
-  // Use OR to match: current account_id, null account_id, OR stale account_id (after reconnect)
+  // If we found the page account, filter rules for this user AND account
   if (pageAccount) {
-    rulesQuery = rulesQuery.eq("user_id", pageAccount.user_id);
+    rulesQuery = rulesQuery
+      .eq("user_id", pageAccount.user_id)
+      .or(`account_id.eq.${pageAccount.id},account_id.is.null`);
   }
 
   const { data: rules, error: rulesError } = await rulesQuery;
@@ -592,21 +593,9 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         try {
           const privateReplyBody: any = {
             recipient: { comment_id: commentId },
-            message: dmLink
-              ? {
-                  attachment: {
-                    type: "template",
-                    payload: {
-                      template_type: "generic",
-                      elements: [{
-                        title: dmText.substring(0, 80),
-                        default_action: { type: "web_url", url: dmLink },
-                        buttons: [{ type: "web_url", url: dmLink, title: "Open Link →" }],
-                      }],
-                    },
-                  },
-                }
-              : { text: dmText },
+            message: {
+              text: dmLink ? `${dmText}\n\n${dmLink}` : dmText
+            },
           };
 
           // Use the IG account's user ID as the sender endpoint

@@ -176,10 +176,10 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
 
     setSaving(true); setError("");
     try {
-      // If ALL selected, create rules for each account
-      const accountIds = selectedAccountId === "ALL" && accounts.length > 0
-        ? accounts.map(a => a.id)
-        : [selectedAccountId === "ALL" ? null : selectedAccountId];
+      // If ALL selected, create a single rule with account_id = null
+      const accountIds = selectedAccountId === "ALL" 
+        ? [null] 
+        : [selectedAccountId];
 
       for (const accId of accountIds) {
         const res = await fetch("/api/automation/rules", {
