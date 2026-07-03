@@ -110,6 +110,7 @@ export async function PATCH(req: NextRequest) {
       if (statusErr) throw new Error(statusErr.message);
     } else if (action === "set_plan") {
       const now = new Date().toISOString();
+      // Update user_subscriptions table
       const { error: planErr } = await supabase
         .from("user_subscriptions")
         .upsert(
@@ -117,6 +118,22 @@ export async function PATCH(req: NextRequest) {
           { onConflict: "user_id" }
         );
       if (planErr) throw new Error(planErr.message);
+
+      // ALSO update profiles table — check-limit reads from here!
+      // Paid plans (lifetime/monthly/yearly) get admin_granted tier + 5 accounts
+      const isPaid = value !== "free";
+      const { error: profileErr } = await supabase
+        .from("profiles")
+        .update({
+          subscription_tier: isPaid ? "admin_granted" : "free",
+          max_accounts_per_platform: isPaid ? 5 : 1,
+          subscription_expires_at: null, // Admin-set plans don't expire
+          updated_at: now,
+        })
+        .eq("id", userId);
+      if (profileErr) {
+        console.warn("[set_plan] profiles update error:", profileErr.message);
+      }
     } else {
       return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
