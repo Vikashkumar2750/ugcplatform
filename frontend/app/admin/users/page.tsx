@@ -459,7 +459,7 @@ export default function AdminUsersPage() {
 
           {/* Desktop: table */}
           <div className="hidden lg:block rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-h-[400px] pb-32">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-zinc-800 bg-zinc-900/60">

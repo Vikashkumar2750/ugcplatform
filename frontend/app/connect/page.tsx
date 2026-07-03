@@ -131,7 +131,7 @@ function PlatformCard({
   const handleConnect = async () => {
     // Check limit before redirecting
     try {
-      const res = await fetch(`/api/connect/check-limit?platform=${platformKey}`);
+      const res = await fetch(`/api/connect/check-limit?platform=${platformKey}`, { cache: "no-store" });
       const limit = await res.json();
       if (!limit.allowed) {
         onShowUpgrade();
