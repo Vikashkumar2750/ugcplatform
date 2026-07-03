@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 /**
  * POST /api/webhooks/meta/subscribe
  * Forces webhook subscription for all connected pages.
- * Call this once after connecting accounts if automation isn't firing.
+ * If stored token is a user token (not page token), auto-fixes it.
  * 
  * GET /api/webhooks/meta/subscribe
  * Diagnostic: shows subscription status of all connected pages.
@@ -34,7 +34,6 @@ export async function GET(request: NextRequest) {
   const results = [];
 
   for (const acc of (accounts || [])) {
-    // Check current subscriptions
     try {
       const res = await fetch(
         `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps?access_token=${acc.access_token}`
@@ -70,7 +69,7 @@ export async function POST(request: NextRequest) {
   // Get all active connected accounts that have a page_id
   const { data: accounts, error } = await supabase
     .from("connected_accounts")
-    .select("id, platform_username, page_id, page_name, access_token")
+    .select("id, user_id, platform_username, page_id, page_name, access_token, platform_user_id")
     .eq("is_active", true)
     .not("page_id", "is", null);
 
@@ -87,16 +86,16 @@ export async function POST(request: NextRequest) {
 
   const results = [];
 
-  // Field sets to try — most complete first, then fallback
   const fieldSets = [
-    "feed,messages,messaging_postbacks,mention",    // Full (needs pages_manage_metadata)
-    "messages,messaging_postbacks",                  // Minimal (just DMs, no feed/mention)
+    "feed,messages,messaging_postbacks,mention",
+    "messages,messaging_postbacks",
   ];
 
   for (const acc of accounts) {
     let subscribed = false;
     let lastError = "";
 
+    // ── Try subscribing with the stored token first ──
     for (const fields of fieldSets) {
       try {
         const subRes = await fetch(
@@ -120,7 +119,6 @@ export async function POST(request: NextRequest) {
             page_name: acc.page_name,
             success: true,
             fields_subscribed: fields,
-            note: fields.includes("feed") ? "Full subscription" : "Partial — reconnect IG with updated permissions for full support",
           });
           subscribed = true;
           break;
@@ -133,6 +131,70 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── If failed due to permissions, the stored token is likely a USER token ──
+    // Try to get the real PAGE token via me/accounts
+    if (!subscribed && lastError.includes("permission")) {
+      console.log(`[Subscribe] Attempting page token fix for ${acc.page_name}...`);
+      try {
+        const pagesRes = await fetch(
+          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${acc.access_token}`
+        );
+        const pagesData = await pagesRes.json();
+
+        for (const page of (pagesData.data || [])) {
+          if (page.id !== acc.page_id) continue;
+          
+          const pageToken = page.access_token;
+          if (!pageToken) continue;
+
+          console.log(`[Subscribe] Got page token for ${page.name}, updating DB and retrying...`);
+
+          // Update the DB with the correct page token
+          await supabase.from("connected_accounts")
+            .update({ access_token: pageToken })
+            .eq("id", acc.id);
+
+          // Retry subscription with page token
+          for (const fields of fieldSets) {
+            try {
+              const subRes = await fetch(
+                `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    subscribed_fields: fields,
+                    access_token: pageToken,
+                  }),
+                }
+              );
+              const subData = await subRes.json();
+              if (subData.success) {
+                console.log(`[Subscribe] ✅ Page ${acc.page_name} subscribed with PAGE token`);
+                results.push({
+                  username: acc.platform_username,
+                  page_id: acc.page_id,
+                  page_name: acc.page_name,
+                  success: true,
+                  fields_subscribed: fields,
+                  note: "Fixed: auto-upgraded to page token",
+                });
+                subscribed = true;
+                break;
+              } else {
+                lastError = subData.error?.message || "Unknown error";
+              }
+            } catch (e: any) {
+              lastError = e.message;
+            }
+          }
+          break;
+        }
+      } catch (e: any) {
+        console.warn(`[Subscribe] Page token fetch failed:`, e.message);
+      }
+    }
+
     if (!subscribed) {
       results.push({
         username: acc.platform_username,
@@ -140,7 +202,7 @@ export async function POST(request: NextRequest) {
         page_name: acc.page_name,
         success: false,
         error: lastError,
-        fix: "Reconnect Instagram at /connect to get updated permissions (pages_manage_metadata)",
+        fix: "Reconnect Instagram at /connect to get updated permissions",
       });
     }
   }
