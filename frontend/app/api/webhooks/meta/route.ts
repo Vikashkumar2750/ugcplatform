@@ -704,10 +704,13 @@ async function enqueueViaBackend(opts: {
 // ─────────────────────────────────────────────────────────────
 function verifySignature(body: string, signature: string): boolean {
   // SECURITY: Signature verification is mandatory in production.
-  // META_SKIP_SIGNATURE_CHECK removed — all webhooks must be signed.
-  if (!META_APP_SECRET) {
-    console.warn("[Webhook] META_APP_SECRET not set — REJECTING webhook (set META_APP_SECRET in env)");
-    // In production, reject unsigned webhooks. In dev, allow with warning.
+  const secrets = [
+    process.env.META_APP_SECRET,
+    process.env.META_LOGIN_APP_SECRET,
+  ].filter(Boolean) as string[];
+
+  if (secrets.length === 0) {
+    console.warn("[Webhook] No META_APP_SECRET set — REJECTING webhook (set META_APP_SECRET in env)");
     if (process.env.NODE_ENV === "production") return false;
     console.warn("[Webhook] Allowing unsigned webhook in development mode ONLY");
     return true;
@@ -718,22 +721,23 @@ function verifySignature(body: string, signature: string): boolean {
     return false;
   }
 
-  try {
-    const expected = "sha256=" +
-      crypto.createHmac("sha256", META_APP_SECRET)
-        .update(Buffer.from(body, "utf-8"))
-        .digest("hex");
+  for (const secret of secrets) {
+    try {
+      const expected = "sha256=" +
+        crypto.createHmac("sha256", secret)
+          .update(Buffer.from(body, "utf-8"))
+          .digest("hex");
 
-    // Timing-safe comparison
-    const sigBuf = Buffer.from(signature);
-    const expBuf = Buffer.from(expected);
-    if (sigBuf.length !== expBuf.length) {
-      console.warn("[Webhook] Signature length mismatch");
-      return false;
+      // Timing-safe comparison
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return true; // Match found
+      }
+    } catch (e) {
+      console.error("[Webhook] Signature verification error:", e);
     }
-    return crypto.timingSafeEqual(sigBuf, expBuf);
-  } catch (e) {
-    console.error("[Webhook] Signature verification error:", e);
-    return false;
   }
+
+  return false; // No secret matched
 }
