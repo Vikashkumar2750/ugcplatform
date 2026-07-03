@@ -108,6 +108,58 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── POST-STRATEGY 0/1: If account saved but no page_id, find the page ──
+    // Webhook subscription requires a PAGE token, not IG/FB user token.
+    if (accountSaved) {
+      try {
+        const pagesRes2 = await fetch(
+          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${userToken}`
+        );
+        const pagesData2 = await pagesRes2.json();
+        console.log("[IG] Post-save: fetching pages for webhook setup, found", (pagesData2.data || []).length, "pages");
+        
+        for (const page of (pagesData2.data || [])) {
+          const pageToken = page.access_token || userToken;
+          const pageIgId = page.instagram_business_account?.id;
+          
+          // Update connected_accounts with page_id + page_token
+          if (pageIgId) {
+            await supabase.from("connected_accounts")
+              .update({
+                page_id: page.id,
+                page_name: page.name,
+                access_token: pageToken,
+              })
+              .eq("user_id", user.id)
+              .eq("platform", "instagram")
+              .eq("platform_user_id", pageIgId);
+            console.log(`[IG] ✅ Updated account with page_id=${page.id}`);
+          }
+
+          // Subscribe page to webhooks
+          for (const fields of ["feed,messages,messaging_postbacks,mention", "messages,messaging_postbacks"]) {
+            try {
+              const subRes = await fetch(
+                `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ subscribed_fields: fields, access_token: pageToken }),
+                }
+              );
+              const subData = await subRes.json();
+              if (subData.success) {
+                console.log(`[IG] ✅ Page ${page.name} subscribed (fields: ${fields})`);
+                break;
+              }
+            } catch {}
+          }
+        }
+      } catch (e: any) {
+        console.warn("[IG] Post-save page fetch error:", e.message);
+      }
+    }
+
     // ── STRATEGY 2: me/accounts with Page tokens (standard Pages approach) ──
     if (!accountSaved) {
       const pagesRes = await fetch(
