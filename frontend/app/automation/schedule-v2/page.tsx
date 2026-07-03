@@ -25,6 +25,7 @@ interface PlatformTweaks {
   dmAutomationId?: string;
   youtubeTitle?: string;
   youtubeTags?: string;
+  youtubeCategory?: string;
 }
 
 export default function SchedulerV2Page() {
@@ -35,7 +36,7 @@ export default function SchedulerV2Page() {
   // Composer State
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
   const [baseCaption, setBaseCaption] = useState("");
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaFiles, setMediaFiles] = useState<{ url: string; caption: string }[]>([]);
   const [contentType, setContentType] = useState<ContentType>("post");
   
   // Tweaks State (keyed by platform)
@@ -93,14 +94,17 @@ export default function SchedulerV2Page() {
     content_type: contentType,
     caption: tweaks[account.platform]?.caption || baseCaption,
     first_comment: account.platform === "instagram" ? tweaks.instagram?.firstComment : undefined,
-    media_url: mediaUrl || undefined,
+    media_url: mediaFiles.length > 0 ? mediaFiles[0].url : undefined,
+    carousel_urls: mediaFiles.length > 1 ? mediaFiles.map(m => m.url) : undefined,
+    image_captions: mediaFiles.length > 0 ? mediaFiles.map(m => m.caption) : undefined,
     audio_name: contentType === "reel" && account.platform === "instagram" ? tweaks.instagram?.audioName : undefined,
     dm_automation_id: account.platform === "instagram" ? tweaks.instagram?.dmAutomationId : undefined,
+    youtube_category_id: account.platform === "youtube" ? tweaks.youtube?.youtubeCategory : undefined,
     account_id: account.id,
   });
 
   const handlePublishNow = async () => {
-    if (!baseCaption.trim() && !mediaUrl) return;
+    if (!baseCaption.trim() && mediaFiles.length === 0) return;
     setPublishing(true); setError("");
     try {
       for (const acc of accounts.filter(a => selectedAccountIds.has(a.id))) {
@@ -120,7 +124,7 @@ export default function SchedulerV2Page() {
   };
 
   const handleSchedule = async () => {
-    if (!baseCaption.trim() && !mediaUrl) return;
+    if (!baseCaption.trim() && mediaFiles.length === 0) return;
     if (!scheduledDate) return;
     setSaving(true); setError("");
     try {
@@ -220,12 +224,11 @@ export default function SchedulerV2Page() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Media</label>
+            <div className="space-y-4">
+              <label className="text-sm font-medium">Media & Captions</label>
               <MediaUpload 
-                mediaUrl={mediaUrl} 
-                onUploaded={setMediaUrl} 
-                onClear={() => setMediaUrl("")} 
+                mediaFiles={mediaFiles} 
+                onFilesChanged={setMediaFiles} 
                 accept={contentType === "reel" ? "video/mp4,video/quicktime" : "image/*,video/*"}
               />
             </div>
@@ -293,7 +296,7 @@ export default function SchedulerV2Page() {
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   onClick={handleSchedule}
-                  disabled={saving || (!baseCaption.trim() && !mediaUrl)}
+                  disabled={saving || (!baseCaption.trim() && mediaFiles.length === 0)}
                   className="w-full py-3 rounded-xl border border-amber-400/40 bg-amber-400/10 text-amber-600 dark:text-amber-400 text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2 hover:bg-amber-400/20 transition"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />}
@@ -302,7 +305,7 @@ export default function SchedulerV2Page() {
 
                 <button
                   onClick={handlePublishNow}
-                  disabled={publishing || (!baseCaption.trim() && !mediaUrl)}
+                  disabled={publishing || (!baseCaption.trim() && mediaFiles.length === 0)}
                   className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40 flex items-center justify-center gap-2 transition-all bg-gradient-to-r from-amber-400 to-orange-400 text-black hover:from-amber-500 hover:to-orange-500"
                 >
                   {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -334,7 +337,7 @@ export default function SchedulerV2Page() {
                    key={platform}
                    platform={platform as Platform}
                    account={accounts.find(a => a.platform === platform && selectedAccountIds.has(a.id))}
-                   mediaUrl={mediaUrl}
+                   mediaFiles={mediaFiles}
                    caption={tweaks[platform]?.caption || baseCaption}
                    contentType={contentType}
                  />
@@ -447,6 +450,27 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
                   className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none transition"
                 />
               </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Category</label>
+                <select 
+                  value={tweaks.youtubeCategory || "22"} 
+                  onChange={e => onChange({ youtubeCategory: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none transition"
+                >
+                  <option value="1">Film & Animation</option>
+                  <option value="2">Autos & Vehicles</option>
+                  <option value="10">Music</option>
+                  <option value="15">Pets & Animals</option>
+                  <option value="17">Sports</option>
+                  <option value="20">Gaming</option>
+                  <option value="22">People & Blogs</option>
+                  <option value="23">Comedy</option>
+                  <option value="24">Entertainment</option>
+                  <option value="26">Howto & Style</option>
+                  <option value="27">Education</option>
+                  <option value="28">Science & Technology</option>
+                </select>
+              </div>
             </div>
           )}
         </div>
@@ -455,9 +479,10 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
   );
 }
 
-function PostPreview({ platform, account, mediaUrl, caption, contentType }: any) {
+function PostPreview({ platform, account, mediaFiles, caption, contentType }: any) {
   if (!account) return null;
-  const isVideo = mediaUrl?.match(/\.(mp4|mov)$/i);
+  const firstMedia = mediaFiles?.[0]?.url;
+  const isVideo = firstMedia?.match(/\.(mp4|mov)$/i);
   const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? PlayCircle : Users;
 
   return (
@@ -476,17 +501,23 @@ function PostPreview({ platform, account, mediaUrl, caption, contentType }: any)
         <Icon className="w-4 h-4 text-muted-foreground opacity-50" />
       </div>
 
-      {/* Media */}
       <div className="bg-muted aspect-square sm:aspect-auto sm:min-h-[250px] flex items-center justify-center relative overflow-hidden">
-        {!mediaUrl ? (
+        {!firstMedia ? (
           <div className="text-muted-foreground/30 flex flex-col items-center gap-2">
             <Camera className="w-8 h-8" />
             <span className="text-xs font-medium">No media uploaded</span>
           </div>
         ) : isVideo ? (
-          <video src={mediaUrl} className="absolute inset-0 w-full h-full object-cover" />
+          <video src={firstMedia} className="absolute inset-0 w-full h-full object-cover" />
         ) : (
-          <img src={mediaUrl} className="absolute inset-0 w-full h-full object-cover" />
+          <div className="w-full h-full relative">
+            <img src={firstMedia} className="absolute inset-0 w-full h-full object-cover" />
+            {mediaFiles?.length > 1 && (
+              <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-md">
+                1/{mediaFiles.length}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -505,61 +536,119 @@ function PostPreview({ platform, account, mediaUrl, caption, contentType }: any)
   );
 }
 
-function MediaUpload({ mediaUrl, onUploaded, onClear, accept }: any) {
+function MediaUpload({ mediaFiles, onFilesChanged, accept }: any) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const upload = async (file: File) => {
+  const upload = async (files: FileList) => {
     setUploading(true);
     setProgress(20);
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/automation/schedule/upload", { method: "POST", body: formData });
-      setProgress(90);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setProgress(100);
-      setTimeout(() => { setProgress(0); setUploading(false); onUploaded(data.url); }, 300);
-    } catch {
-      setUploading(false);
-      setProgress(0);
+    
+    const newFiles = [...mediaFiles];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch("/api/automation/schedule/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        newFiles.push({ url: data.url, caption: "" });
+        setProgress(20 + Math.floor(((i + 1) / files.length) * 70));
+      } catch (err) {
+        console.error("Upload failed", err);
+      }
     }
+    
+    setProgress(100);
+    setTimeout(() => { 
+      setProgress(0); 
+      setUploading(false); 
+      onFilesChanged(newFiles); 
+    }, 300);
   };
 
-  if (mediaUrl) {
-    const isVideo = mediaUrl.match(/\.(mp4|mov)$/i);
-    return (
-      <div className="relative rounded-xl overflow-hidden border border-border bg-muted/20 flex items-center justify-center min-h-[150px]">
-        {isVideo ? <video src={mediaUrl} className="w-full max-h-64 object-contain" controls /> : <img src={mediaUrl} className="w-full max-h-64 object-contain" />}
-        <button onClick={onClear} className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 text-white hover:bg-black transition"><X className="w-4 h-4" /></button>
-      </div>
-    );
-  }
+  const removeFile = (index: number) => {
+    const updated = [...mediaFiles];
+    updated.splice(index, 1);
+    onFilesChanged(updated);
+  };
+
+  const updateCaption = (index: number, caption: string) => {
+    const updated = [...mediaFiles];
+    updated[index].caption = caption;
+    onFilesChanged(updated);
+  };
 
   return (
-    <div
-      onClick={() => inputRef.current?.click()}
-      className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5 transition-all"
-    >
-      {uploading ? (
-        <div className="space-y-3 max-w-xs mx-auto">
-          <Loader2 className="w-6 h-6 mx-auto animate-spin text-amber-500" />
-          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-             <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${progress}%` }} />
+    <div className="space-y-4">
+      {mediaFiles.map((file: any, index: number) => {
+        const isVideo = file.url.match(/\.(mp4|mov)$/i);
+        return (
+          <div key={index} className="flex flex-col sm:flex-row gap-4 p-4 rounded-xl border border-border bg-muted/20">
+            <div className="relative w-full sm:w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-black/5 flex items-center justify-center">
+              {isVideo ? (
+                <video src={file.url} className="w-full h-full object-cover" controls />
+              ) : (
+                <img src={file.url} className="w-full h-full object-cover" />
+              )}
+              <button 
+                onClick={() => removeFile(index)} 
+                className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white hover:bg-black transition"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex-grow flex flex-col justify-center">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <LayoutTemplate className="w-3 h-3" /> Image {index + 1} Caption
+              </label>
+              <textarea
+                value={file.caption}
+                onChange={(e) => updateCaption(index, e.target.value)}
+                placeholder="Optional specific caption for this image..."
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:border-amber-500/50 resize-none transition"
+              />
+            </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
-             <Upload className="w-5 h-5 text-muted-foreground" />
+        );
+      })}
+
+      <div
+        onClick={() => inputRef.current?.click()}
+        className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/5 transition-all"
+      >
+        {uploading ? (
+          <div className="space-y-3 max-w-xs mx-auto">
+            <Loader2 className="w-6 h-6 mx-auto animate-spin text-amber-500" />
+            <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+               <div className="h-full bg-amber-400 rounded-full transition-all" style={{ width: `${progress}%` }} />
+            </div>
           </div>
-          <p className="text-sm font-medium">Click to upload media</p>
-          <p className="text-xs text-muted-foreground mt-1">Image or Video (max 50MB)</p>
-        </>
-      )}
-      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={e => { const f = e.target.files?.[0]; if(f) upload(f); }} />
+        ) : (
+          <>
+            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+               <Upload className="w-5 h-5 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-medium">Click to upload media</p>
+            <p className="text-xs text-muted-foreground mt-1">Images or Videos (Select multiple if supported)</p>
+          </>
+        )}
+        <input 
+          ref={inputRef} 
+          type="file" 
+          multiple
+          accept={accept} 
+          className="hidden" 
+          onChange={e => { 
+            if(e.target.files?.length) upload(e.target.files); 
+            e.target.value = ""; // Reset input so same file can be uploaded again if needed
+          }} 
+        />
+      </div>
     </div>
   );
 }

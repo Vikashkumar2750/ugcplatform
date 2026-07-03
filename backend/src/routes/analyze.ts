@@ -8,6 +8,7 @@ import {
   RealProfileData,
 } from "../services/meta-data";
 import { supabase } from "../lib/supabase";
+import { decrypt } from "../services/crypto";
 
 const router = Router();
 router.use(requireAuth);
@@ -82,6 +83,24 @@ function extractUsername(url: string, platform: string): string {
   return "";
 }
 
+async function getUserScraperKeys(userId: string): Promise<{ rapidapi?: string, apify?: string }> {
+  const { data: keyRows } = await supabase
+    .from("user_api_keys")
+    .select("provider, encrypted_key")
+    .eq("user_id", userId)
+    .in("provider", ["rapidapi", "apify"])
+    .eq("is_active", true);
+
+  const userKeys: { rapidapi?: string, apify?: string } = {};
+  for (const row of keyRows || []) {
+    try { 
+      if (row.provider === "rapidapi") userKeys.rapidapi = decrypt(row.encrypted_key);
+      if (row.provider === "apify") userKeys.apify = decrypt(row.encrypted_key);
+    } catch {}
+  }
+  return userKeys;
+}
+
 // ─── Helper: get real data from connected accounts OR scraper fallback ────────
 async function getRealProfileData(
   userId: string,
@@ -100,10 +119,13 @@ async function getRealProfileData(
     if (data) return { data, source: "meta_graph_api" };
   }
 
-  // 2. Fallback: RapidAPI scraper
+  // 2. Fetch user's scraper API keys from DB
+  const userKeys = await getUserScraperKeys(userId);
+
+  // 3. Fallback: Scraper
   try {
     if (platform === "instagram" && username) {
-      const result = await scrapeInstagramProfile(username);
+      const result = await scrapeInstagramProfile(username, userKeys);
       if (result.posts.length > 0) {
         const posts = result.posts.slice(0, 20);
         const avgLikes = Math.round(posts.reduce((s, p) => s + (p.likes || 0), 0) / posts.length);
@@ -292,8 +314,9 @@ Return ONLY this JSON array. No markdown, no comments, no extra text.`;
 
       console.log(`[competitors] Starting enhanced Apify scrape for: ${usernames.join(", ")}`);
 
+      const userKeys = await getUserScraperKeys(userId);
       const results = await Promise.allSettled(
-        usernames.map((u: string) => scrapeCompetitorFull(u))
+        usernames.map((u: string) => scrapeCompetitorFull(u, userKeys))
       );
 
       enhancedCompetitors = results

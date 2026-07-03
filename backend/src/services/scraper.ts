@@ -82,11 +82,11 @@ export interface EnhancedPost {
 
 // ─── Instagram — Multiple API sources with fallback ──────────────────────────
 
-export async function scrapeInstagramProfile(username: string): Promise<ScrapeResult> {
+export async function scrapeInstagramProfile(username: string, userKeys?: { rapidapi?: string, apify?: string }): Promise<ScrapeResult> {
   // Source 1: instagram120 RapidAPI
-  if (RAPID_API_KEY) {
+  if (userKeys?.rapidapi || RAPID_API_KEY) {
     try {
-      const result = await scrapeViaInstagram120(username);
+      const result = await scrapeViaInstagram120(username, userKeys);
       if (result.posts.length > 0 || result.profile) {
         console.log(`[scraper] instagram120 success for @${username}: ${result.posts.length} posts`);
         return result;
@@ -97,7 +97,7 @@ export async function scrapeInstagramProfile(username: string): Promise<ScrapeRe
 
     // Source 2: instagram-scraper3 RapidAPI
     try {
-      const result = await scrapeViaInstagramScraper3(username);
+      const result = await scrapeViaInstagramScraper3(username, userKeys);
       if (result.posts.length > 0 || result.profile) {
         console.log(`[scraper] instagram-scraper3 success for @${username}`);
         return result;
@@ -108,9 +108,9 @@ export async function scrapeInstagramProfile(username: string): Promise<ScrapeRe
   }
 
   // Source 3: Apify
-  if (APIFY_TOKEN) {
+  if (userKeys?.apify || APIFY_TOKEN) {
     try {
-      const result = await scrapeViaApifyBasic(username);
+      const result = await scrapeViaApifyBasic(username, userKeys);
       if (result.posts.length > 0 || result.profile) {
         console.log(`[scraper] Apify basic success for @${username}`);
         return result;
@@ -126,7 +126,7 @@ export async function scrapeInstagramProfile(username: string): Promise<ScrapeRe
 
 // ─── ENHANCED Competitor Scrape (uses BOTH Apify actors for maximum data) ─────
 
-export async function scrapeCompetitorFull(username: string): Promise<EnhancedCompetitorData> {
+export async function scrapeCompetitorFull(username: string, userKeys?: { rapidapi?: string, apify?: string }): Promise<EnhancedCompetitorData> {
   console.log(`[scraper] Starting enhanced scrape for @${username}`);
 
   let profile: ProfileInfo = { username };
@@ -139,14 +139,14 @@ export async function scrapeCompetitorFull(username: string): Promise<EnhancedCo
       runApifyActor("apify/instagram-profile-scraper", {
         usernames: [username],
         instagram_urls: [`https://www.instagram.com/${username}/`],
-      }),
+      }, userKeys),
       runApifyActor("apify/instagram-post-scraper", {
         username: [username],
         usernames: [username],
         instagram_urls: [`https://www.instagram.com/${username}/`],
         resultsLimit: 20,
         posts_count: 20,
-      }),
+      }, userKeys),
     ]);
 
     // Process profile data
@@ -274,11 +274,13 @@ function extractHashtags(caption: string): string[] {
 }
 
 // ── Source 1: instagram120 RapidAPI ──────────────────────────────────────────
-async function scrapeViaInstagram120(username: string): Promise<ScrapeResult> {
+async function scrapeViaInstagram120(username: string, userKeys?: { rapidapi?: string }): Promise<ScrapeResult> {
+  const key = userKeys?.rapidapi || RAPID_API_KEY;
+  if (!key) throw new Error("No RapidAPI key provided");
   const headers = {
     "Content-Type": "application/json",
     "x-rapidapi-host": "instagram120.p.rapidapi.com",
-    "x-rapidapi-key": RAPID_API_KEY,
+    "x-rapidapi-key": key,
   };
 
   const postsRes = await fetch("https://instagram120.p.rapidapi.com/api/instagram/posts", {
@@ -329,10 +331,12 @@ async function scrapeViaInstagram120(username: string): Promise<ScrapeResult> {
 }
 
 // ── Source 2: instagram-scraper3 RapidAPI ─────────────────────────────────────
-async function scrapeViaInstagramScraper3(username: string): Promise<ScrapeResult> {
+async function scrapeViaInstagramScraper3(username: string, userKeys?: { rapidapi?: string }): Promise<ScrapeResult> {
+  const key = userKeys?.rapidapi || RAPID_API_KEY;
+  if (!key) throw new Error("No RapidAPI key provided");
   const headers = {
     "x-rapidapi-host": "instagram-scraper3.p.rapidapi.com",
-    "x-rapidapi-key": RAPID_API_KEY,
+    "x-rapidapi-key": key,
   };
 
   const profileRes = await fetch(
@@ -377,10 +381,10 @@ async function scrapeViaInstagramScraper3(username: string): Promise<ScrapeResul
 }
 
 // ── Source 3: Apify basic (profile scraper only, no posts) ────────────────────
-async function scrapeViaApifyBasic(username: string): Promise<ScrapeResult> {
+async function scrapeViaApifyBasic(username: string, userKeys?: { apify?: string }): Promise<ScrapeResult> {
   const items = await runApifyActor("apify/instagram-profile-scraper", {
     usernames: [username],
-  });
+  }, userKeys);
 
   if (!items || items.length === 0) return { posts: [], profile: { username } };
 
@@ -535,11 +539,9 @@ export async function scrapeLinkedInCompany(domain: string): Promise<ScrapeResul
 
 // ─── Apify ────────────────────────────────────────────────────────────────────
 
-export async function runApifyActor(
-  actorId: string,
-  input: Record<string, unknown>
-): Promise<any[]> {
-  if (!APIFY_TOKEN) throw new Error("APIFY_TOKEN not configured");
+export async function runApifyActor(actorId: string, input: Record<string, unknown>, userKeys?: { apify?: string }): Promise<any[]> {
+  const token = userKeys?.apify || APIFY_TOKEN;
+  if (!token) throw new Error("No Apify token provided");
 
   // 25s timeout on the start call
   const controller = new AbortController();
@@ -548,7 +550,7 @@ export async function runApifyActor(
   let startData: any;
   try {
     const startRes = await fetch(
-      `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${APIFY_TOKEN}`,
+      `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${token}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },

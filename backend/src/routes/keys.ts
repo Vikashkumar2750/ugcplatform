@@ -37,7 +37,7 @@ router.post("/", async (req: import("express").Request, res: Response) => {
   }
 
   const ALLOWED_PROVIDERS = [
-    "gemini", "anthropic", "openai", "bedrock", "apify", "rapidapi",
+    "gemini", "anthropic", "openai", "bedrock", "apify", "rapidapi", "openrouter",
   ];
   if (!ALLOWED_PROVIDERS.includes(provider)) {
     return res.status(400).json({ error: `Unknown provider: ${provider}` });
@@ -168,6 +168,25 @@ async function testProviderKey(
         throw new Error(err.error?.message || `HTTP ${res.status}`);
       }
       return { model: "gpt-3.5-turbo", message: "Key is valid" };
+    }
+
+    case "openrouter": {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-preview",
+          messages: [{ role: "user", content: "Reply: ok" }],
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+      return { model: "openrouter", message: "Key is valid" };
     }
 
     case "apify": {
