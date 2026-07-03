@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Calendar, Camera, Share2, Youtube, Linkedin, PlayCircle,
+  Calendar, Camera, Share2, PlayCircle, Users,
   Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
   Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate
 } from "lucide-react";
@@ -175,7 +175,7 @@ export default function SchedulerV2Page() {
                 const selected = selectedAccountIds.has(acc.id);
                 const Icon = acc.platform === "instagram" ? Camera :
                              acc.platform === "facebook" ? Share2 :
-                             acc.platform === "youtube" ? Youtube : Linkedin;
+                             acc.platform === "youtube" ? PlayCircle : Users;
                 return (
                   <button
                     key={acc.id}
@@ -357,7 +357,7 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
   isReel: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? Youtube : Linkedin;
+  const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? PlayCircle : Users;
   
   return (
     <div className="border border-border rounded-xl bg-card overflow-hidden transition-all">
@@ -458,7 +458,7 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
 function PostPreview({ platform, account, mediaUrl, caption, contentType }: any) {
   if (!account) return null;
   const isVideo = mediaUrl?.match(/\.(mp4|mov)$/i);
-  const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? Youtube : Linkedin;
+  const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? PlayCircle : Users;
 
   return (
     <div className="bg-background rounded-2xl border border-border overflow-hidden shadow-sm flex flex-col">
