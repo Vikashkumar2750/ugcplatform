@@ -12,7 +12,6 @@ const FACEBOOK_SCOPES = [
   "instagram_basic",
   "instagram_manage_insights",
   "instagram_content_publish",
-  "instagram_business_content_publish",
   "instagram_manage_messages",
   "instagram_manage_comments",
   "public_profile",
