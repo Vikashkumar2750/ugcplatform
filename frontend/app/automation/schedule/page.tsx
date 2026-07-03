@@ -47,10 +47,12 @@ function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).get
 function getFirstDay(y: number, m: number)    { return new Date(y, m, 1).getDay(); }
 
 // ── Media Upload ──────────────────────────────────────────────────
-function MediaUpload({ mediaUrl, onUploaded, onClear }: {
+function MediaUpload({ mediaUrl, onUploaded, onClear, accept, acceptLabel }: {
   mediaUrl: string;
   onUploaded: (url: string) => void;
   onClear: () => void;
+  accept?: string;
+  acceptLabel?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading]   = useState(false);
@@ -96,6 +98,9 @@ function MediaUpload({ mediaUrl, onUploaded, onClear }: {
     );
   }
 
+  const defaultAccept = "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime";
+  const defaultLabel = "JPG, PNG, WebP, MP4, MOV";
+
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium">Media</label>
@@ -117,13 +122,13 @@ function MediaUpload({ mediaUrl, onUploaded, onClear }: {
           <>
             <Upload className="w-6 h-6 mx-auto mb-1.5 text-muted-foreground/50" />
             <p className="text-sm font-medium">Click to upload or drag & drop</p>
-            <p className="text-xs text-muted-foreground mt-0.5">JPG, PNG, WebP, MP4, MOV</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{acceptLabel || defaultLabel}</p>
           </>
         )}
       </div>
       {uploadError && <p className="text-xs text-red-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{uploadError}</p>}
       <input ref={inputRef} type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"
+        accept={accept || defaultAccept}
         className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); }} />
     </div>
   );
@@ -408,7 +413,21 @@ function PostModal({ onClose, onSave, onPublishNow, defaultDate, automationRules
               </div>
 
               {/* Media upload */}
-              <MediaUpload mediaUrl={mediaUrl} onUploaded={setMediaUrl} onClear={() => setMediaUrl("")} />
+              <MediaUpload 
+                mediaUrl={mediaUrl} 
+                onUploaded={setMediaUrl} 
+                onClear={() => setMediaUrl("")} 
+                accept={
+                  contentType === "reel" ? "video/mp4,video/quicktime" :
+                  contentType === "post" || contentType === "carousel" ? "image/jpeg,image/png,image/webp,image/gif" :
+                  undefined
+                }
+                acceptLabel={
+                  contentType === "reel" ? "MP4, MOV (Video Only)" :
+                  contentType === "post" || contentType === "carousel" ? "JPG, PNG, WebP (Image Only)" :
+                  undefined
+                }
+              />
 
               {/* Trending Audio (for Reels only) */}
               {isReel && (

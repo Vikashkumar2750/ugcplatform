@@ -174,7 +174,7 @@ export async function publishToInstagram(opts: InstagramPublishOptions): Promise
       if (container.error) throw new Error(parseMetaApiError(container).message);
 
       // Wait for video processing with exponential backoff
-      const { ready, error } = await waitForProcessing(container.id, token, 15, 5000);
+      const { ready, error } = await waitForProcessing(container.id, token, 25, 5000);
       if (!ready) throw new Error(error || "Video processing timed out");
 
       const publishRes = await fetch(`${BASE_URL}/${igUserId}/media_publish`, {

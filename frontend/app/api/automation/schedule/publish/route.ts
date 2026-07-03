@@ -135,13 +135,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unsupported platform" }, { status: 400 });
     }
 
-    // ── Update DB if post_id given ────────────────────────────────
+    // ── Update DB if post_id given, or Insert if Publish Now ──────
     if (post_id) {
       await supabase.from("scheduled_posts").update({
         status:        result.success ? "published" : "failed",
         published_at:  result.success ? new Date().toISOString() : null,
         error_message: result.error || null,
       }).eq("id", post_id);
+    } else {
+      // It's a "Publish Now", insert it to keep history
+      await supabase.from("scheduled_posts").insert({
+        user_id:       user.id,
+        account_id:    account_id,
+        platform,
+        content_type,
+        caption,
+        media_url:     media_url || null,
+        scheduled_at:  new Date().toISOString(),
+        status:        result.success ? "published" : "failed",
+        published_at:  result.success ? new Date().toISOString() : null,
+        error_message: result.error || null,
+      });
     }
 
     if (!result.success) {
