@@ -92,11 +92,16 @@ export async function POST(request: NextRequest) {
     if (!verifySignature(rawBody, signature)) {
       console.warn("[Webhook] Signature mismatch — rejecting");
       console.warn("[Webhook] Received signature:", signature?.substring(0, 20) + "...");
+      // Calculate expected for debugging
+      const expected = process.env.META_APP_SECRET 
+        ? "sha256=" + crypto.createHmac("sha256", process.env.META_APP_SECRET).update(Buffer.from(rawBody, "utf-8")).digest("hex")
+        : "no_secret";
+
       // Log the rejection to DB so we can see it in debug endpoint
       try {
         await supabase.from("webhook_raw_log").insert({
           object_type: "SIGNATURE_REJECTED",
-          raw_body: { error: "signature_mismatch", signature_prefix: signature?.substring(0, 30), body_length: rawBody.length },
+          raw_body: { error: "signature_mismatch", signature_prefix: signature?.substring(0, 30), expected: expected.substring(0, 30), body_length: rawBody.length },
           received_at: new Date().toISOString(),
         });
       } catch {}
