@@ -6,13 +6,10 @@ export async function GET(request: NextRequest) {
   const challengeCode = searchParams.get("challengeCode");
 
   if (challengeCode) {
-    // LinkedIn requires the exact challengeCode to be returned in the body
-    return new NextResponse(challengeCode, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain",
-      },
-    });
+    // LinkedIn requires a JSON object with the challengeCode
+    return NextResponse.json({
+      challengeCode: challengeCode
+    }, { status: 200 });
   }
 
   return NextResponse.json({ error: "Missing challengeCode" }, { status: 400 });
