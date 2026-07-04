@@ -6,7 +6,7 @@ import { isNightTime, getSleepCycleDelayMs, checkDailyLimit } from "@/lib/compli
 
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
-const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
+const BACKEND_URL = process.env.RENDER_WORKER_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
 // ─────────────────────────────────────────────────────────────
