@@ -181,6 +181,37 @@ router.post("/publish/:id", async (req: Request, res: Response) => {
       })
       .eq("id", id);
 
+    // Cleanup: Delete the raw big files from Supabase if no other scheduled post needs them
+    if (post.media_url || (post.media_urls && post.media_urls.length > 0)) {
+      const urlsToCheck = post.media_urls || [post.media_url];
+      
+      // Check if ANY other scheduled post (status='scheduled' or 'publishing') still uses these URLs
+      for (const url of urlsToCheck) {
+        if (!url) continue;
+        
+        const { count } = await supabase
+          .from("scheduled_posts")
+          .select("*", { count: "exact", head: true })
+          .neq("id", id)
+          .in("status", ["scheduled", "publishing"])
+          .or(`media_url.eq.${url},media_urls.cs.{${url}}`);
+          
+        if (count === 0) {
+          // Safe to delete
+          try {
+            const urlObj = new URL(url);
+            const pathParts = urlObj.pathname.split('/post-media/');
+            if (pathParts.length > 1) {
+              const pathToDelete = decodeURIComponent(pathParts[1]);
+              await supabase.storage.from("post-media").remove([pathToDelete]);
+            }
+          } catch (e) {
+            console.error("Failed to parse and delete media URL", e);
+          }
+        }
+      }
+    }
+
     return res.json({ success: true, platformPostId: publishedPostId });
   } catch (err: any) {
     console.error("[/api/automation/publish]", err.message);

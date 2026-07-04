@@ -97,6 +97,24 @@ export default function SchedulerV2Page() {
       }
       alert(`Successfully published to ${selectedAccounts.length} account(s)!`);
       
+      // Cleanup: Delete the raw big files from Supabase after successful publish
+      if (mediaFiles.length > 0) {
+        const supabase = createClient();
+        const pathsToDelete = mediaFiles.map(f => {
+          try {
+            const urlObj = new URL(f.url);
+            const pathParts = urlObj.pathname.split('/post-media/');
+            return pathParts.length > 1 ? decodeURIComponent(pathParts[1]) : null;
+          } catch {
+            return null;
+          }
+        }).filter(Boolean) as string[];
+        
+        if (pathsToDelete.length > 0) {
+          await supabase.storage.from("post-media").remove(pathsToDelete);
+        }
+      }
+      
       // Reset state
       setBaseCaption("");
       setMediaFiles([]);
