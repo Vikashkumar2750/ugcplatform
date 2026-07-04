@@ -102,7 +102,9 @@ export default function SchedulerV2Page() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Publish failed");
       }
-      alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!\n\nNote: Videos may take 1-2 minutes to process on Instagram.`);
+      const hasInstagram = selectedAccounts.some(a => a.platform === "instagram");
+      const note = hasInstagram ? "\n\nNote: Videos may take 1-2 minutes to process on Instagram." : "";
+      alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!${note}`);
       
       // Reset state
       setBaseCaption("");
@@ -257,7 +259,12 @@ export default function SchedulerV2Page() {
               <label className="text-sm font-medium">Media & Captions</label>
               <MediaUpload 
                 mediaFiles={mediaFiles} 
-                onFilesChanged={setMediaFiles} 
+                onFilesChanged={(files: any[]) => {
+                  setMediaFiles(files);
+                  if (files.length > 0 && files[0].url.match(/\.(mp4|mov)$/i) && contentType === "post") {
+                    setContentType("reel");
+                  }
+                }} 
                 accept={contentType === "reel" ? "video/mp4,video/quicktime" : "image/*,video/*"}
               />
             </div>
