@@ -515,14 +515,16 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // For unified rules: prefer explicit actions_enabled flags.
     // FALLBACK: if actions_enabled is null (old rule created before this field),
     // infer intent from whether the action content is set.
+    // For unified rules: use explicit boolean columns if available.
+    // FALLBACK: action_config.actions_enabled, then finally infer from text existence.
     const shouldReply = isUnified
-      ? (actionsEnabled ? actionsEnabled.reply : !!rule.action_config?.reply_text)
+      ? (rule.reply_enabled ?? (actionsEnabled ? actionsEnabled.reply : !!rule.action_config?.reply_text))
       : rule.type === "comment_reply";
     const shouldDM = isUnified
-      ? (actionsEnabled ? actionsEnabled.dm : !!rule.action_config?.message)
+      ? (rule.dm_enabled ?? (actionsEnabled ? actionsEnabled.dm : !!rule.action_config?.message))
       : rule.type === "comment_to_dm";
     const shouldHide = isUnified
-      ? (actionsEnabled ? actionsEnabled.hide : !!rule.action_config?.hide)
+      ? (rule.hide_enabled ?? (actionsEnabled ? actionsEnabled.hide : !!rule.action_config?.hide))
       : rule.type === "hide_comment";
 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
