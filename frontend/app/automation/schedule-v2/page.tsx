@@ -585,46 +585,52 @@ function MediaUpload({ mediaFiles, onFilesChanged, accept }: any) {
     setUploading(true);
     setProgress(20);
     
-    const newFiles = [...mediaFiles];
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      try {
-        if (!user) throw new Error("Must be logged in to upload");
-        
-        const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
-        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        
-        // Upload directly from client to bypass Vercel 4.5MB limit
-        const { data, error } = await supabase.storage
-          .from("post-media")
-          .upload(path, file, { 
-            contentType: file.type,
-            upsert: false 
+    try {
+      const newFiles = [...mediaFiles];
+      const supabase = createClient();
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          // 1. Get signed upload URL from backend
+          const res = await fetch("/api/automation/schedule/get-upload-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: file.name }),
           });
           
-        if (error) throw new Error(error.message);
-        
-        const { data: { publicUrl } } = supabase.storage
-          .from("post-media")
-          .getPublicUrl(data.path);
+          const { signedUrl, token, path, publicUrl, error: apiError } = await res.json();
+          if (apiError || !token) throw new Error(apiError || "Failed to get upload URL");
           
-        newFiles.push({ url: publicUrl, caption: "" });
-        setProgress(20 + Math.floor(((i + 1) / files.length) * 70));
-      } catch (err: any) {
-        console.error("Upload failed", err);
-        alert(`Failed to upload ${file.name}: ${err.message}. If this is an RLS error, ensure your Supabase storage bucket allows authenticated inserts.`);
+          // 2. Upload file directly to Supabase using the signed token
+          const { error: uploadError } = await supabase.storage
+            .from("post-media")
+            .uploadToSignedUrl(path, token, file);
+            
+          if (uploadError) throw new Error(uploadError.message);
+            
+          newFiles.push({ url: publicUrl, caption: "" });
+          setProgress(20 + Math.floor(((i + 1) / files.length) * 70));
+        } catch (err: any) {
+          console.error("Upload failed for file:", file.name, err);
+          alert(`Failed to upload ${file.name}: ${err.message}`);
+        }
       }
+      
+      setProgress(100);
+      setTimeout(() => { 
+        setProgress(0); 
+        setUploading(false); 
+        onFilesChanged(newFiles); 
+        if (inputRef.current) inputRef.current.value = "";
+      }, 300);
+    } catch (err: any) {
+      console.error("Fatal upload error:", err);
+      alert(`Initialization error: ${err.message}`);
+      setUploading(false);
+      setProgress(0);
+      if (inputRef.current) inputRef.current.value = "";
     }
-    
-    setProgress(100);
-    setTimeout(() => { 
-      setProgress(0); 
-      setUploading(false); 
-      onFilesChanged(newFiles); 
-    }, 300);
   };
 
   const removeFile = (index: number) => {
@@ -701,8 +707,9 @@ function MediaUpload({ mediaFiles, onFilesChanged, accept }: any) {
           accept={accept} 
           className="hidden" 
           onChange={e => { 
-            if(e.target.files?.length) upload(e.target.files); 
-            e.target.value = ""; // Reset input so same file can be uploaded again if needed
+            if(e.target.files && e.target.files.length > 0) {
+              upload(e.target.files); 
+            }
           }} 
         />
       </div>
