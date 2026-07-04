@@ -3,12 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 // Handle LinkedIn Webhook Challenge
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const appType = searchParams.get("app") || "page";
   const challengeCode = searchParams.get("challengeCode");
 
   if (challengeCode) {
     const crypto = require("crypto");
-    // Use the Pages App Client Secret since this webhook is for Organization Social Actions
-    const clientSecret = process.env.LINKEDIN_PAGE_CLIENT_SECRET || "";
+    const clientSecret = appType === "profile"
+      ? process.env.LINKEDIN_PROFILE_CLIENT_SECRET || ""
+      : process.env.LINKEDIN_PAGE_CLIENT_SECRET || "";
     
     const challengeResponse = crypto
       .createHmac("sha256", clientSecret)
