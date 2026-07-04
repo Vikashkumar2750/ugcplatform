@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { randomGaussianDelayMs, parseSpintax } from "@/lib/anti-bot";
+import { isNightTime, getSleepCycleDelayMs, checkDailyLimit } from "@/lib/compliance";
 
 const VERIFY_TOKEN = process.env.META_WEBHOOK_VERIFY_TOKEN!;
 const META_APP_SECRET = process.env.META_APP_SECRET!;
@@ -17,14 +19,7 @@ function keywordMatch(text: string, keyword: string): boolean {
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
 }
 
-// ─────────────────────────────────────────────────────────────
-// Anti-ban: randomized human-like delays
-// Competitors use delays to mimic human behavior and avoid Meta's
-// bot-detection which triggers account bans.
-// ─────────────────────────────────────────────────────────────
-function randomDelayMs(minSec: number, maxSec: number): number {
-  return (Math.floor(Math.random() * (maxSec - minSec + 1)) + minSec) * 1000;
-}
+
 
 function scheduledSendAt(delayMs: number): string {
   return new Date(Date.now() + delayMs).toISOString();
@@ -506,6 +501,12 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.error(`[Webhook] ❌ No token available for rule "${rule.name}" — cannot execute`);
       continue;
     }
+    
+    // Anti-ban check: Rate Limit
+    if (!checkDailyLimit(rule.account_id || pageAccount?.id, 100)) {
+      console.warn(`[Webhook] ⚠️ Daily outbound limit reached for account ${rule.account_id || pageAccount?.id}`);
+      continue;
+    }
 
     // ── Determine which actions to run ───────────────────────────────────
     const actionsEnabled = rule.action_config?.actions_enabled;
@@ -529,7 +530,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     if (shouldReply && rule.action_config?.reply_text) {
       // Add a random 2-5 second delay to mimic human behavior without feeling broken
-      const replyDelayMs = randomDelayMs(2, 5);
+      const replyDelayMs = randomGaussianDelayMs(2, 5) + getSleepCycleDelayMs();
+      const spunReplyText = parseSpintax(rule.action_config.reply_text);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
 
       // Enqueue via backend with delay (uses scheduled_send_at)
@@ -537,7 +539,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentId,          // comment_id for comment_reply type
-        messagePayload: { text: rule.action_config.reply_text },
+        messagePayload: { text: spunReplyText },
         messageType: "comment_reply",
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(replyDelayMs),
@@ -551,7 +553,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: rule.action_config.reply_text, access_token: token }),
+            body: JSON.stringify({ message: spunReplyText, access_token: token }),
           });
           const replyData = await replyRes.json();
           if (!replyRes.ok) {
@@ -574,12 +576,12 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // as long as the account is an App Admin/Tester/Developer.
     // Only ONE private reply is allowed per comment (Meta enforced).
     if (shouldDM && commentorId && commentId) {
-      const dmText = rule.action_config?.message || "Namaste! 🙏";
+      const dmText = parseSpintax(rule.action_config?.message || "Namaste! 🙏");
       const dmLink = rule.action_config?.link || undefined;
 
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
-      const dmDelayMs = randomDelayMs(3, 8);
+      const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs();
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
       const enqueueResult = await enqueueViaBackend({

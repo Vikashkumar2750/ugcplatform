@@ -30,7 +30,11 @@ export async function GET(request: NextRequest) {
       }),
     });
     const tokenData = await tokenRes.json();
-    if (!tokenData.access_token) throw new Error("Token exchange failed");
+    if (!tokenData.access_token) {
+      console.error("Token exchange error:", tokenData);
+      const errorMessage = tokenData.error_description || tokenData.error || "Token exchange failed";
+      throw new Error(`Token exchange failed: ${errorMessage}`);
+    }
 
     // 2. Get YouTube channel info
     const channelRes = await fetch(
