@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Calendar, Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
-  Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate,
-  Instagram, Facebook, Youtube, Linkedin
+  Calendar, Camera, Share2, PlayCircle, Users,
+  Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
+  Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate
 } from "lucide-react";
 import { useDashboardStore, type ConnectedAccount, type Platform } from "@/lib/store";
 
@@ -172,9 +172,9 @@ export default function SchedulerV2Page() {
                   const platformAccounts = accounts.filter(acc => acc.platform === platform);
                   if (platformAccounts.length === 0) return null;
                   
-                  const PlatformIcon = platform === "instagram" ? Instagram :
-                                       platform === "facebook" ? Facebook :
-                                       platform === "youtube" ? Youtube : Linkedin;
+                  const PlatformIcon = platform === "instagram" ? Camera :
+                                       platform === "facebook" ? Share2 :
+                                       platform === "youtube" ? PlayCircle : Users;
                                        
                   const platformColor = platform === "instagram" ? "text-pink-500 border-pink-500/20" :
                                         platform === "facebook" ? "text-blue-500 border-blue-500/20" :
