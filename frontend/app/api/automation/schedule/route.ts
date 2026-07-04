@@ -29,11 +29,13 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { platform, content_type, caption, first_comment, media_url, scheduled_at, status, audio_name, dm_automation_id, account_id } = body;
+    const { platform, content_type, caption, first_comment, media_urls, media_url, scheduled_at, status, audio_name, dm_automation_id, account_id } = body;
 
     if (!platform || !content_type || !caption || !scheduled_at) {
       return NextResponse.json({ error: "platform, content_type, caption, scheduled_at are required" }, { status: 400 });
     }
+
+    const finalMediaUrls = media_urls || (media_url ? [media_url] : []);
 
     const { data: post, error } = await supabase
       .from("scheduled_posts")
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
         content_type,
         caption,
         first_comment: first_comment || null,
-        media_url: media_url || null,
+        media_urls: finalMediaUrls,
         scheduled_at,
         status: status || "scheduled",
         audio_name: audio_name || null,
