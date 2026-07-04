@@ -385,7 +385,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   // This is the MASTER token lookup — used as fallback for any rule without account_id
   const { data: pageAccount } = await supabase
     .from("connected_accounts")
-    .select("id, user_id, access_token, platform_user_id")
+    .select("id, user_id, access_token, platform_user_id, page_id")
     .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
     .eq("is_active", true)
     .maybeSingle();
