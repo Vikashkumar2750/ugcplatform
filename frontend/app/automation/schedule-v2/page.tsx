@@ -87,33 +87,22 @@ export default function SchedulerV2Page() {
     try {
       const selectedAccounts = accounts.filter(a => selectedAccountIds.has(a.id));
       for (const acc of selectedAccounts) {
-        const res = await fetch("/api/automation/schedule/publish", {
+        // We use the scheduling endpoint with the current time to bypass Vercel's 10s serverless timeout.
+        // The backend cron will pick it up and process the video container (which takes >30s) automatically.
+        const payload = {
+          ...makePayload(acc),
+          scheduled_at: new Date().toISOString(),
+          status: "scheduled"
+        };
+        const res = await fetch("/api/automation/schedule", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(makePayload(acc)),
+          body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Publish failed");
       }
-      alert(`Successfully published to ${selectedAccounts.length} account(s)!`);
-      
-      // Cleanup: Delete the raw big files from Supabase after successful publish
-      if (mediaFiles.length > 0) {
-        const supabase = createClient();
-        const pathsToDelete = mediaFiles.map(f => {
-          try {
-            const urlObj = new URL(f.url);
-            const pathParts = urlObj.pathname.split('/post-media/');
-            return pathParts.length > 1 ? decodeURIComponent(pathParts[1]) : null;
-          } catch {
-            return null;
-          }
-        }).filter(Boolean) as string[];
-        
-        if (pathsToDelete.length > 0) {
-          await supabase.storage.from("post-media").remove(pathsToDelete);
-        }
-      }
+      alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!\n\nNote: Videos may take 1-2 minutes to process on Instagram.`);
       
       // Reset state
       setBaseCaption("");

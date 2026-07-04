@@ -395,6 +395,35 @@ async function publishScheduledPosts(): Promise<number> {
       }).eq("id", post.id);
 
       publishedCount++;
+      
+      // Cleanup: Delete the raw big files from Supabase if no other scheduled post needs them
+      if (post.media_url || (post.media_urls && post.media_urls.length > 0)) {
+        const urlsToCheck = post.media_urls || [post.media_url];
+        
+        for (const url of urlsToCheck) {
+          if (!url) continue;
+          
+          const { count } = await supabase
+            .from("scheduled_posts")
+            .select("*", { count: "exact", head: true })
+            .neq("id", post.id)
+            .in("status", ["scheduled", "publishing"])
+            .or(`media_url.eq.${url},media_urls.cs.{${url}}`);
+            
+          if (count === 0) {
+            try {
+              const urlObj = new URL(url);
+              const pathParts = urlObj.pathname.split('/post-media/');
+              if (pathParts.length > 1) {
+                const pathToDelete = decodeURIComponent(pathParts[1]);
+                await supabase.storage.from("post-media").remove([pathToDelete]);
+              }
+            } catch (e) {
+              console.error("Failed to parse and delete media URL", e);
+            }
+          }
+        }
+      }
     } catch (err: any) {
       console.error(`Failed to publish post ${post.id}:`, err.message);
       const retryCount = (post.retry_count || 0) + 1;
