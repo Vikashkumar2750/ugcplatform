@@ -86,10 +86,11 @@ interface InstagramPublishOptions {
   caption: string;
   mediaUrl?: string;
   carouselUrls?: string[];
+  imageCaptions?: string[];
 }
 
 export async function publishToInstagram(opts: InstagramPublishOptions): Promise<PublishResult> {
-  const { igUserId, token, contentType, caption, mediaUrl, carouselUrls } = opts;
+  const { igUserId, token, contentType, caption, mediaUrl, carouselUrls, imageCaptions } = opts;
 
   try {
     // ── Carousel ──
@@ -98,12 +99,18 @@ export async function publishToInstagram(opts: InstagramPublishOptions): Promise
       
       // Step 1: Create individual carousel items
       const itemIds: string[] = [];
-      for (const url of carouselUrls) {
+      for (let i = 0; i < carouselUrls.length; i++) {
+        const url = carouselUrls[i];
         const isVideo = /\.(mp4|mov|avi|webm)$/i.test(url);
         const body: Record<string, any> = {
           is_carousel_item: true,
           access_token: token,
         };
+        
+        // Add slide-specific caption if provided
+        if (imageCaptions && imageCaptions[i]) {
+          body.caption = imageCaptions[i];
+        }
         
         if (isVideo) {
           body.media_type = "VIDEO";

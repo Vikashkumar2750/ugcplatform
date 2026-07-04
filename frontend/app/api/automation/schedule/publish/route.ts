@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    let { post_id, platform, content_type, caption, media_url, carousel_urls, account_id } = body;
+    let { post_id, platform, content_type, caption, media_url, carousel_urls, image_captions, account_id } = body;
 
     // ── If post_id given, load from DB ────────────────────────────
     let dbPost: any = null;
@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
         caption,
         mediaUrl:    media_url || undefined,
         carouselUrls: carousel_urls || undefined,
+        imageCaptions: image_captions || undefined,
       });
     } else if (platform === "facebook") {
       // For Facebook, use page token if available (page_id stored during OAuth)

@@ -6,17 +6,10 @@ import {
   Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
   Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate
 } from "lucide-react";
+import { useDashboardStore, type ConnectedAccount, type Platform } from "@/lib/store";
 
 // Types
-type Platform = "instagram" | "facebook" | "youtube" | "linkedin";
 type ContentType = "post" | "reel" | "story" | "carousel";
-
-interface ConnectedAccount {
-  id: string;
-  platform: Platform;
-  platform_username: string;
-  avatar_url?: string;
-}
 
 interface PlatformTweaks {
   caption?: string;
@@ -29,9 +22,11 @@ interface PlatformTweaks {
 }
 
 export default function SchedulerV2Page() {
-  const [loading, setLoading] = useState(true);
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  const [automationRules, setAutomationRules] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const { accounts, rules: automationRules, isLoading: loading, load } = useDashboardStore();
+  
+  useEffect(() => {
+    load();
+  }, [load]);
   
   // Composer State
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
@@ -55,26 +50,6 @@ export default function SchedulerV2Page() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rulesRes, accountsRes] = await Promise.all([
-        fetch("/api/automation/rules"),
-        fetch("/api/connect/accounts"),
-      ]);
-      if (rulesRes.ok) {
-        const j = await rulesRes.json();
-        setAutomationRules(j.rules || []);
-      }
-      if (accountsRes.ok) {
-        const j = await accountsRes.json();
-        setAccounts(j.accounts || []);
-      }
-    } catch {}
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
 
   const toggleAccount = (id: string) => {
     setSelectedAccountIds(prev => {
@@ -90,26 +65,14 @@ export default function SchedulerV2Page() {
   ));
 
   const makePayload = (account: ConnectedAccount) => {
-    let finalCaption = tweaks[account.platform]?.caption || baseCaption;
-    
-    // If multiple images are uploaded, combine their captions into the main caption
-    if (mediaFiles.length > 1) {
-      const combined = mediaFiles.map((m, i) => m.caption ? `[Image ${i + 1}] ${m.caption}` : "").filter(Boolean).join("\n\n");
-      if (combined) {
-        finalCaption = combined;
-      }
-    } else if (mediaFiles.length === 1 && mediaFiles[0].caption) {
-      // If single image and it has a caption, use it instead of base caption
-      finalCaption = mediaFiles[0].caption;
-    }
-
     return {
       platform: account.platform,
       content_type: mediaFiles.length > 1 && contentType === "post" ? "carousel" : contentType,
-      caption: finalCaption,
+      caption: tweaks[account.platform]?.caption || baseCaption,
       first_comment: account.platform === "instagram" ? tweaks.instagram?.firstComment : undefined,
       media_url: mediaFiles.length > 0 ? mediaFiles[0].url : undefined,
       carousel_urls: mediaFiles.length > 1 ? mediaFiles.map(m => m.url) : undefined,
+      image_captions: mediaFiles.length > 1 ? mediaFiles.map(m => m.caption) : undefined,
       audio_name: contentType === "reel" && account.platform === "instagram" ? tweaks.instagram?.audioName : undefined,
       dm_automation_id: account.platform === "instagram" ? tweaks.instagram?.dmAutomationId : undefined,
       youtube_category_id: account.platform === "youtube" ? tweaks.youtube?.youtubeCategory : undefined,

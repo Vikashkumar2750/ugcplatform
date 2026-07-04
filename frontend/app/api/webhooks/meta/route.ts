@@ -528,8 +528,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     if (shouldReply && rule.action_config?.reply_text) {
-      // Add a random 10-30 second delay to mimic human behavior
-      const replyDelayMs = randomDelayMs(10, 30);
+      // Add a random 2-5 second delay to mimic human behavior without feeling broken
+      const replyDelayMs = randomDelayMs(2, 5);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
 
       // Enqueue via backend with delay (uses scheduled_send_at)
@@ -577,9 +577,9 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const dmText = rule.action_config?.message || "Namaste! 🙏";
       const dmLink = rule.action_config?.link || undefined;
 
-      // Add a random 30-60 second delay — DM comes AFTER the public reply
+      // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
-      const dmDelayMs = randomDelayMs(30, 60);
+      const dmDelayMs = randomDelayMs(3, 8);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
       const enqueueResult = await enqueueViaBackend({
