@@ -128,7 +128,7 @@ function PlatformCard({
   const Icon = config.icon;
   const hasAny = connectedAccounts.length > 0;
 
-  const handleConnect = async () => {
+  const handleConnect = async (urlSuffix: string = "") => {
     // Check limit before redirecting
     try {
       const res = await fetch(`/api/connect/check-limit?platform=${platformKey}`, { cache: "no-store" });
@@ -139,7 +139,7 @@ function PlatformCard({
       }
     } catch { /* allow on error */ }
     setConnecting(true);
-    window.location.href = config.oauthUrl;
+    window.location.href = config.oauthUrl + urlSuffix;
   };
 
   const handleDisconnect = async (accountId: string, username: string) => {
@@ -198,7 +198,7 @@ function PlatformCard({
                 <p className="text-xs text-muted-foreground">{acc.account_type} · {connectedAt}</p>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button onClick={() => { setConnecting(true); window.location.href = config.oauthUrl; }}
+                <button onClick={() => { setConnecting(true); window.location.href = config.oauthUrl + (acc.account_type === "PAGE" ? "?type=page" : "?type=profile"); }}
                   className="p-1.5 rounded-lg hover:bg-muted/60 transition text-muted-foreground hover:text-foreground" title="Reconnect">
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
@@ -231,16 +231,29 @@ function PlatformCard({
       </div>
 
       <div className="border-t border-border px-5 py-3">
-        <button id={`connect-${platformKey}-btn`} onClick={handleConnect} disabled={connecting}
-          className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
-          {connecting ? (
-            <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</>
-          ) : hasAny ? (
-            <><Plus className="w-4 h-4" /> Connect Another {config.name}</>
-          ) : (
-            <><Zap className="w-4 h-4" /> Connect {config.name}</>
-          )}
-        </button>
+        {platformKey === "linkedin" ? (
+          <div className="flex flex-col gap-2">
+            <button id={`connect-linkedin-profile-btn`} onClick={() => handleConnect("?type=profile")} disabled={connecting}
+              className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+              {connecting ? <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</> : <><Zap className="w-4 h-4" /> Connect LinkedIn Profile</>}
+            </button>
+            <button id={`connect-linkedin-page-btn`} onClick={() => handleConnect("?type=page")} disabled={connecting}
+              className="w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 border border-blue-500 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition">
+              {connecting ? <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</> : <><Plus className="w-4 h-4" /> Connect Company Page</>}
+            </button>
+          </div>
+        ) : (
+          <button id={`connect-${platformKey}-btn`} onClick={() => handleConnect()} disabled={connecting}
+            className="btn-amber w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+            {connecting ? (
+              <><RefreshCw className="w-4 h-4 animate-spin" /> Redirecting...</>
+            ) : hasAny ? (
+              <><Plus className="w-4 h-4" /> Connect Another {config.name}</>
+            ) : (
+              <><Zap className="w-4 h-4" /> Connect {config.name}</>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

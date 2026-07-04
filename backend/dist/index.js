@@ -19,6 +19,7 @@ const messaging_1 = __importDefault(require("./routes/messaging"));
 const send_queue_1 = require("./services/send-queue");
 const rate_limiter_1 = require("./services/rate-limiter");
 const publish_youtube_1 = require("./services/publish-youtube");
+const publish_linkedin_1 = require("./services/publish-linkedin");
 // ─────────────────────────────────────────────
 // Config validation
 // ─────────────────────────────────────────────
@@ -431,6 +432,8 @@ async function publishPost(post) {
             return publishFacebookPost(post, token);
         case "youtube":
             return (0, publish_youtube_1.publishYoutubeVideo)(post, token);
+        case "linkedin":
+            return (0, publish_linkedin_1.publishLinkedinPost)(post, token);
         default:
             throw new Error(`Unsupported platform: ${post.platform}`);
     }
@@ -570,6 +573,45 @@ async function refreshExpiringTokens() {
         }
         catch (err) {
             console.error(`Failed to refresh YouTube token for ${account.id}:`, err.message);
+        }
+    }
+    const { data: liAccounts } = await supabase
+        .from("connected_accounts")
+        .select("*")
+        .eq("platform", "linkedin")
+        .eq("is_active", true)
+        .not("refresh_token", "is", null)
+        .lte("token_expires_at", sevenDaysFromNow);
+    for (const account of liAccounts || []) {
+        try {
+            const clientId = account.account_type === "PAGE"
+                ? process.env.LINKEDIN_PAGE_CLIENT_ID
+                : process.env.LINKEDIN_PROFILE_CLIENT_ID;
+            const clientSecret = account.account_type === "PAGE"
+                ? process.env.LINKEDIN_PAGE_CLIENT_SECRET
+                : process.env.LINKEDIN_PROFILE_CLIENT_SECRET;
+            const res = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    grant_type: "refresh_token",
+                    refresh_token: account.refresh_token,
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                }),
+            });
+            const data = await res.json();
+            if (data.access_token) {
+                await supabase.from("connected_accounts").update({
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token || account.refresh_token,
+                    token_expires_at: new Date(Date.now() + (data.expires_in || 5184000) * 1000).toISOString(),
+                }).eq("id", account.id);
+                refreshedCount++;
+            }
+        }
+        catch (err) {
+            console.error(`Failed to refresh LinkedIn token for ${account.id}:`, err.message);
         }
     }
     return refreshedCount;
