@@ -14,6 +14,7 @@ import messagingRouter from "./routes/messaging";
 // ─── Compliance Pipeline Services ─────────────────────────────────────────────
 import { processMessageQueue, recoverStaleMessages } from "./services/send-queue";
 import { cleanupExpiredRateLimits } from "./services/rate-limiter";
+import { publishYoutubeVideo } from "./services/publish-youtube";
 
 // ─────────────────────────────────────────────
 // Config validation
@@ -451,6 +452,8 @@ async function publishPost(post: any): Promise<string> {
       return publishInstagramPost(post, token);
     case "facebook":
       return publishFacebookPost(post, token);
+    case "youtube":
+      return publishYoutubeVideo(post, token);
     default:
       throw new Error(`Unsupported platform: ${post.platform}`);
   }
