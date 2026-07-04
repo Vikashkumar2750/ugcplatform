@@ -7,6 +7,7 @@ import {
   Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate
 } from "lucide-react";
 import { useDashboardStore, type ConnectedAccount, type Platform } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 
 // Types
 type ContentType = "post" | "reel" | "story" | "carousel";
@@ -567,19 +568,36 @@ function MediaUpload({ mediaFiles, onFilesChanged, accept }: any) {
     setProgress(20);
     
     const newFiles = [...mediaFiles];
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const formData = new FormData();
-      formData.append("file", file);
       try {
-        const res = await fetch("/api/automation/schedule/upload", { method: "POST", body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        newFiles.push({ url: data.url, caption: "" });
+        if (!user) throw new Error("Must be logged in to upload");
+        
+        const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
+        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        
+        // Upload directly from client to bypass Vercel 4.5MB limit
+        const { data, error } = await supabase.storage
+          .from("post-media")
+          .upload(path, file, { 
+            contentType: file.type,
+            upsert: false 
+          });
+          
+        if (error) throw new Error(error.message);
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from("post-media")
+          .getPublicUrl(data.path);
+          
+        newFiles.push({ url: publicUrl, caption: "" });
         setProgress(20 + Math.floor(((i + 1) / files.length) * 70));
-      } catch (err) {
+      } catch (err: any) {
         console.error("Upload failed", err);
+        alert(`Failed to upload ${file.name}: ${err.message}. If this is an RLS error, ensure your Supabase storage bucket allows authenticated inserts.`);
       }
     }
     
