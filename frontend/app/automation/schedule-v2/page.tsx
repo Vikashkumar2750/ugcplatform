@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Calendar, Camera, Share2, PlayCircle, Users,
-  Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
-  Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate
+  Calendar, Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
+  Music, Bot, Clock, Sparkles, Settings2, Eye, LayoutTemplate,
+  Instagram, Facebook, Youtube, Linkedin
 } from "lucide-react";
 import { useDashboardStore, type ConnectedAccount, type Platform } from "@/lib/store";
 
@@ -163,31 +163,63 @@ export default function SchedulerV2Page() {
           {/* 1. Select Accounts */}
           <section className="space-y-4">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">1. Select Accounts</h2>
-            <div className="flex flex-wrap gap-2">
-              {accounts.map(acc => {
-                const selected = selectedAccountIds.has(acc.id);
-                const Icon = acc.platform === "instagram" ? Camera :
-                             acc.platform === "facebook" ? Share2 :
-                             acc.platform === "youtube" ? PlayCircle : Users;
-                return (
-                  <button
-                    key={acc.id}
-                    onClick={() => toggleAccount(acc.id)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all ${
-                      selected 
-                        ? "border-amber-400 bg-amber-400/10 text-foreground" 
-                        : "border-border text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="font-medium">@{acc.platform_username}</span>
-                  </button>
-                );
-              })}
-              {accounts.length === 0 && (
-                <p className="text-sm text-muted-foreground">No accounts connected.</p>
-              )}
-            </div>
+            
+            {accounts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No accounts connected.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(["instagram", "facebook", "youtube", "linkedin"] as Platform[]).map(platform => {
+                  const platformAccounts = accounts.filter(acc => acc.platform === platform);
+                  if (platformAccounts.length === 0) return null;
+                  
+                  const PlatformIcon = platform === "instagram" ? Instagram :
+                                       platform === "facebook" ? Facebook :
+                                       platform === "youtube" ? Youtube : Linkedin;
+                                       
+                  const platformColor = platform === "instagram" ? "text-pink-500 border-pink-500/20" :
+                                        platform === "facebook" ? "text-blue-500 border-blue-500/20" :
+                                        platform === "youtube" ? "text-red-500 border-red-500/20" : "text-blue-700 border-blue-700/20";
+                                        
+                  const activeColor = platform === "instagram" ? "bg-pink-500/10 border-pink-500" :
+                                      platform === "facebook" ? "bg-blue-500/10 border-blue-500" :
+                                      platform === "youtube" ? "bg-red-500/10 border-red-500" : "bg-blue-700/10 border-blue-700";
+
+                  return (
+                    <div key={platform} className={`p-4 rounded-xl border ${platformColor} bg-card/50`}>
+                      <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/50">
+                        <PlatformIcon className={`w-5 h-5`} />
+                        <h3 className="font-semibold capitalize">{platform === "youtube" ? "YouTube" : platform === "linkedin" ? "LinkedIn" : platform}</h3>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {platformAccounts.map(acc => {
+                          const selected = selectedAccountIds.has(acc.id);
+                          return (
+                            <button
+                              key={acc.id}
+                              onClick={() => toggleAccount(acc.id)}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all ${
+                                selected 
+                                  ? activeColor 
+                                  : "border-border text-muted-foreground hover:bg-muted/50 hover:border-foreground/20"
+                              }`}
+                            >
+                              {acc.avatar_url ? (
+                                <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+                              ) : (
+                                <PlatformIcon className="w-4 h-4 opacity-70" />
+                              )}
+                              <span className={`font-medium ${selected ? "text-foreground" : ""}`}>
+                                @{acc.platform_username}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           {/* 2. Base Content */}
