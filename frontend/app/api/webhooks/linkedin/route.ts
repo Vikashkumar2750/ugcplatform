@@ -6,9 +6,18 @@ export async function GET(request: NextRequest) {
   const challengeCode = searchParams.get("challengeCode");
 
   if (challengeCode) {
-    // LinkedIn requires a JSON object with the challengeCode
+    const crypto = require("crypto");
+    // Use the Pages App Client Secret since this webhook is for Organization Social Actions
+    const clientSecret = process.env.LINKEDIN_PAGE_CLIENT_SECRET || "";
+    
+    const challengeResponse = crypto
+      .createHmac("sha256", clientSecret)
+      .update(challengeCode)
+      .digest("hex");
+
     return NextResponse.json({
-      challengeCode: challengeCode
+      challengeCode: challengeCode,
+      challengeResponse: challengeResponse
     }, { status: 200 });
   }
 
