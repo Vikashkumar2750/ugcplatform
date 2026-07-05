@@ -15,7 +15,8 @@ exports.aggregateIntelligence = aggregateIntelligence;
  * Clean caption and extract the first 15 words as a "hook"
  */
 function extractHook(caption = "") {
-    const cleanCaption = caption
+    const safeCaption = caption || "";
+    const cleanCaption = safeCaption
         .replace(/[#]/g, "")
         .replace(/\s+/g, " ")
         .trim();
@@ -48,7 +49,7 @@ function extractHook(caption = "") {
  * Detect the content category based on keywords
  */
 function detectContentCategory(caption = "") {
-    const c = caption.toLowerCase();
+    const c = (caption || "").toLowerCase();
     if (c.includes("how to") || c.includes("tutorial") || c.includes("step by step"))
         return "Tutorial";
     if (c.includes("story") || c.includes("dark") || c.includes("reality"))
@@ -63,7 +64,7 @@ function detectContentCategory(caption = "") {
  * Detect hook psychological type
  */
 function detectHookType(hook = "") {
-    const h = hook.toLowerCase();
+    const h = (hook || "").toLowerCase();
     if (h.includes("secret") || h.includes("truth") || h.includes("reality") || h.includes("nobody tells"))
         return "Curiosity";
     if (h.includes("dark") || h.includes("story") || h.includes("scary"))
@@ -80,7 +81,7 @@ function detectHookType(hook = "") {
  * Extract hashtags from caption
  */
 function extractHashtags(caption = "") {
-    const matches = caption.match(/#[\w]+/g);
+    const matches = (caption || "").match(/#[\w]+/g);
     return matches ? matches.map((tag) => tag.toLowerCase()) : [];
 }
 /**

@@ -62,19 +62,19 @@ export interface AggregatedIntelligence {
 /**
  * Clean caption and extract the first 15 words as a "hook"
  */
-export declare function extractHook(caption?: string): string;
+export declare function extractHook(caption?: string | null): string;
 /**
  * Detect the content category based on keywords
  */
-export declare function detectContentCategory(caption?: string): string;
+export declare function detectContentCategory(caption?: string | null): string;
 /**
  * Detect hook psychological type
  */
-export declare function detectHookType(hook?: string): string;
+export declare function detectHookType(hook?: string | null): string;
 /**
  * Extract hashtags from caption
  */
-export declare function extractHashtags(caption?: string): string[];
+export declare function extractHashtags(caption?: string | null): string[];
 /**
  * Convert raw post data into Enriched Post with calculated metrics
  */

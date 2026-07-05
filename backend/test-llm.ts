@@ -1,18 +1,22 @@
-import { callLLM } from "./src/services/llm";
-import { config } from "dotenv";
-config();
-process.env.SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-async function test() {
+require("dotenv/config");
+const { callLLM } = require("./src/services/llm");
+
+async function run() {
   try {
     const res = await callLLM({
-      userId: "134edb12-671b-467a-be4a-763d62dda983",
+      userId: "test-user-id", // mock user id
       endpoint: "audit",
-      prompt: "say hello",
-      systemPrompt: "you are a bot"
+      prompt: "Hello world",
+      systemPrompt: "You are a bot"
     });
-    console.log(res);
-  } catch (e) {
-    console.error("FAIL:", e);
+    console.log("Success:", res);
+  } catch (err: any) {
+    console.error("Caught error:", err);
+    console.error("Message:", err.message);
+    if (err.response) {
+      console.error("Response:", err.response);
+    }
   }
 }
-test();
+
+run();

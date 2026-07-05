@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
@@ -27,7 +27,7 @@ export function LeadFormModal({ isOpen, onClose }: LeadFormModalProps) {
   const [form, setForm] = useState<FormData>({
     fullName: "",
     email: "",
-    whatsapp: "",
+    whatsapp: "+91 ",
     platform: "",
     niche: "",
     source: "",

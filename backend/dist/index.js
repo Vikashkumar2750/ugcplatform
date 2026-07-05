@@ -724,18 +724,39 @@ async function handleCommentDMTrigger(event) {
         }
         try {
             // ── ENQUEUE via compliance pipeline (replaces direct Meta API call) ──
-            const messageText = rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏";
-            const result = await (0, send_queue_2.enqueueMessage)({
-                accountId: account.id,
-                userId: account.user_id,
-                recipientId: commentId, // comment_id — NOT sender IG ID
-                messagePayload: {
-                    text: messageText,
-                    link: rule.action_config?.link || undefined,
-                },
-                messageType: "private_reply", // Uses recipient: { comment_id } — works without App Review
-                automationRuleId: rule.id,
-            });
+            const actions = rule.action_config?.actions_enabled || { dm: true, reply: false };
+            const messageText = rule.action_config?.message || "Namaste! 🙏";
+            const replyText = rule.action_config?.reply_text || "Check your DM!";
+            let dmResult = null;
+            let replyResult = null;
+            if (actions.dm) {
+                dmResult = await (0, send_queue_2.enqueueMessage)({
+                    accountId: account.id,
+                    userId: account.user_id,
+                    recipientId: commentId, // comment_id — NOT sender IG ID
+                    messagePayload: {
+                        text: messageText,
+                        link: rule.action_config?.link || undefined,
+                    },
+                    messageType: "private_reply", // Uses recipient: { comment_id } — works without App Review
+                    automationRuleId: rule.id,
+                });
+            }
+            if (actions.reply) {
+                replyResult = await (0, send_queue_2.enqueueMessage)({
+                    accountId: account.id,
+                    userId: account.user_id,
+                    recipientId: commentId,
+                    messagePayload: {
+                        text: replyText,
+                    },
+                    messageType: "comment_reply",
+                    automationRuleId: rule.id,
+                });
+            }
+            const result = dmResult || replyResult; // use one for logging
+            if (!result)
+                return;
             if (result.blocked) {
                 console.log(`[DM] Blocked by compliance: ${result.blockReason}`);
                 await supabase.from("dm_trigger_log").update({

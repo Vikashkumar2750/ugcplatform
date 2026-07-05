@@ -88,12 +88,14 @@ export default function ResultsPage() {
           language: data.language || "hi",
           // Extract competitor usernames from either full response or AI JSON format
           competitors: (
-            (data.competitors as any)?.competitors?.map((c: any) => c.username || c.handle).filter(Boolean) ||
-            (Array.isArray((data.competitors as any)?.scrapedStats)
+            Array.isArray((data.competitors as any)?.competitors)
+              ? (data.competitors as any).competitors.map((c: any) => c.username || c.handle).filter(Boolean)
+              : Array.isArray((data.competitors as any)?.scrapedStats)
               ? (data.competitors as any).scrapedStats.map((c: any) => c.username).filter(Boolean)
-              : [])
+              : []
           ),
           rawCompetitorsData: rawCompetitors || null,
+          forceFresh: true,
         }),
       });
       if (!res.ok) {
@@ -104,12 +106,8 @@ export default function ResultsPage() {
       if (!json || typeof json !== "object") throw new Error("Invalid response from server");
 
       // BUG-FIX: For competitors tab, store the FULL response (preserves scrapedStats, dataQuality etc.)
-      // Strip rawCompetitorsData from nested objects before storing
       let newTabData = tab === "competitors"
-        ? (() => {
-            const { rawCompetitorsData: _r, ...rest } = json;
-            return rest;
-          })()
+        ? json
         : (json[tab] ?? json["resultData"] ?? json);
       if (!newTabData || typeof newTabData !== "object") {
         throw new Error(`Empty ${tab} data returned. Try again or re-run full analysis.`);
@@ -228,39 +226,9 @@ export default function ResultsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // PDF export — opens print dialog with formatted content
+  // PDF export — opens print dialog directly for the current page
   const exportPDF = () => {
-    if (!data) return;
-    const printContent = buildPrintableContent(data);
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-      <head>
-        <title>Content Analysis — ${data?.profileUrl || data?.platform || "Analysis"}</title>
-        <style>
-          body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #111; line-height: 1.6; }
-          h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: 0.25rem; }
-          h2 { font-size: 1rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.75rem; border-bottom: 2px solid #f59e0b; padding-bottom: 0.25rem; color: #b45309; }
-          h3 { font-size: 0.875rem; font-weight: 700; color: #555; margin: 1rem 0 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
-          p, li { font-size: 0.9rem; }
-          ul { padding-left: 1.2rem; }
-          .meta { color: #888; font-size: 0.8rem; margin-bottom: 2rem; }
-          .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
-          .stat { background: #fef9c3; padding: 0.75rem; border-radius: 8px; text-align: center; }
-          .stat-val { font-size: 1.4rem; font-weight: 800; color: #b45309; }
-          .stat-label { font-size: 0.7rem; color: #888; }
-          .section { margin: 1.5rem 0; padding: 1rem; background: #f9fafb; border-radius: 8px; border-left: 4px solid #f59e0b; }
-          .tag { display: inline-block; background: #fef3c7; color: #92400e; padding: 0.2rem 0.6rem; border-radius: 100px; font-size: 0.75rem; margin: 0.2rem; }
-          @media print { body { padding: 0; } }
-        </style>
-      </head>
-      <body>${printContent}</body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => printWindow.print(), 500);
+    window.print();
   };
 
   // Google Doc export — opens a new Google Doc pre-filled with content
@@ -470,22 +438,70 @@ export default function ResultsPage() {
                   </div>
                 </div>
 
-                {/* Diagnosis */}
-                {audit.diagnosis && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4">Seedha Diagnosis</p>
-                    <div className="space-y-3">
-                      {Object.entries(audit.diagnosis).map(([key, val]) => (
-                        <div key={key} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
-                          <span className="text-xs text-muted-foreground capitalize w-36 flex-shrink-0 mt-0.5">
-                            {key.replace(/([A-Z])/g, " $1").trim()}
-                          </span>
-                          <span className="text-sm">{val as string}</span>
-                        </div>
-                      ))}
+                {/* Diagnosis & Advanced Insights */}
+                <div className="grid grid-cols-1 gap-4">
+                  {audit.diagnosis && (
+                    <div className="p-5 rounded-2xl border border-border bg-card">
+                      <p className="text-sm font-bold mb-4">Seedha Diagnosis</p>
+                      <div className="space-y-3">
+                        {Object.entries(audit.diagnosis).map(([key, val]) => (
+                          <div key={key} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
+                            <span className="text-xs text-muted-foreground capitalize w-36 flex-shrink-0 mt-0.5">
+                              {key.replace(/([A-Z])/g, " $1").trim()}
+                            </span>
+                            <span className="text-sm">{val as string}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
+                  )}
+
+                  {audit.weak_content_areas && audit.weak_content_areas.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-border bg-card">
+                      <p className="text-sm font-bold mb-4 text-orange-400">Weak Content Areas</p>
+                      <ul className="list-disc pl-5 space-y-2 text-sm">
+                        {audit.weak_content_areas.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {audit.content_gaps && audit.content_gaps.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-border bg-card">
+                      <p className="text-sm font-bold mb-4 text-blue-400">Content Gaps</p>
+                      <ul className="list-disc pl-5 space-y-2 text-sm">
+                        {audit.content_gaps.map((item: string, i: number) => (
+                          <li key={i}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {audit.cta_insights && audit.cta_insights.length > 0 && (
+                      <div className="p-5 rounded-2xl border border-border bg-card">
+                        <p className="text-sm font-bold mb-4 text-purple-400">CTA Insights</p>
+                        <ul className="list-disc pl-5 space-y-2 text-sm">
+                          {audit.cta_insights.map((item: string, i: number) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {audit.viral_hook_suggestions && audit.viral_hook_suggestions.length > 0 && (
+                      <div className="p-5 rounded-2xl border border-border bg-card">
+                        <p className="text-sm font-bold mb-4 text-green-400">Viral Hook Suggestions</p>
+                        <ul className="list-disc pl-5 space-y-2 text-sm">
+                          {audit.viral_hook_suggestions.map((item: string, i: number) => (
+                            <li key={i}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </>
             )}
           </div>
@@ -766,7 +782,11 @@ export default function ResultsPage() {
                   <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
                     <p className="text-xs font-bold text-amber-500 mb-2">📅 Best Posting Times</p>
                     <p className="text-sm"><strong>Days:</strong> {pipeline.postingSchedule.bestDays?.join(", ")}</p>
-                    <p className="text-sm"><strong>Times:</strong> {pipeline.postingSchedule.bestTimes?.join(", ")}</p>
+                    <p className="text-sm"><strong>Times:</strong> {
+                      Array.isArray(pipeline.postingSchedule.bestTimes) 
+                        ? pipeline.postingSchedule.bestTimes.join(", ") 
+                        : Object.entries(pipeline.postingSchedule.bestTimes || {}).map(([day, time]) => `${day.substring(0,3)} ${time}`).join(" | ")
+                    }</p>
                     {pipeline.postingSchedule.reason && (
                       <p className="text-xs text-muted-foreground mt-1">{pipeline.postingSchedule.reason}</p>
                     )}
@@ -1206,6 +1226,31 @@ function HookScriptCard({ hook }: { hook: any }) {
 function CompetitorsTab({ competitors: raw }: { competitors: any }) {
   // Safe array helper: always returns an array regardless of input type
   const toArr = (v: any): any[] => Array.isArray(v) ? v : [];
+  const [expandedPosts, setExpandedPosts] = useState<Record<string, boolean>>({});
+
+  const togglePosts = (key: string) => setExpandedPosts(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // Download scraped posts as CSV
+  const downloadPostsCSV = (posts: any[], filename: string) => {
+    if (!posts.length) return;
+    const headers = ["Competitor", "Type", "Likes", "Comments", "Views", "Caption", "Hashtags", "URL"];
+    const rows = posts.map(p => [
+      p.competitor || "",
+      p.type || "",
+      p.likes || 0,
+      p.comments || 0,
+      p.views || 0,
+      `"${(p.caption || "").replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+      (p.hashtags || []).join(" "),
+      p.url || "",
+    ]);
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   try {
     // Normalize: handle both formats:
@@ -1218,11 +1263,20 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
     const dataConfidence = isWrapped ? raw.dataConfidence : (raw._dataConfidence || raw.dataConfidence);
     const totalPostsScraped = isWrapped ? raw.totalPostsScraped : raw.totalPostsScraped;
     const scrapedStats = toArr(isWrapped ? raw.scrapedStats : null);
+    const scrapedPosts = toArr(isWrapped ? raw.scrapedPosts : raw.scrapedPosts);
 
     // Detect when LLM JSON parsing failed (extractJSON returned { raw: "..." })
     const compArr = toArr(competitors?.competitors);
     const hasAIData = competitors && !competitors.raw &&
       (competitors.detectedNiche || compArr.length > 0 || toArr(competitors.keyInsights).length > 0);
+
+    // Group scraped posts by competitor
+    const postsByCompetitor: Record<string, any[]> = {};
+    for (const post of scrapedPosts) {
+      const key = post.competitor || "unknown";
+      if (!postsByCompetitor[key]) postsByCompetitor[key] = [];
+      postsByCompetitor[key].push(post);
+    }
 
     return (<>
       {/* Data confidence banner */}
@@ -1263,6 +1317,65 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── SCRAPED POSTS per competitor ── */}
+      {Object.keys(postsByCompetitor).length > 0 && (
+        <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-bold">📋 Scraped Posts ({scrapedPosts.length} total)</p>
+            <button
+              onClick={() => downloadPostsCSV(scrapedPosts, `competitor_posts_${new Date().toISOString().slice(0, 10)}.csv`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-400/40 bg-amber-400/5 hover:bg-amber-400/15 text-xs font-medium text-amber-600 dark:text-amber-400 transition"
+            >
+              <Download className="w-3.5 h-3.5" /> Download CSV
+            </button>
+          </div>
+
+          {Object.entries(postsByCompetitor).map(([username, posts]) => {
+            const isOpen = expandedPosts[username] ?? false;
+            return (
+              <div key={username} className="border border-border rounded-xl overflow-hidden">
+                <button
+                  onClick={() => togglePosts(username)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition text-sm"
+                >
+                  <span className="font-semibold">@{username} <span className="text-xs text-muted-foreground font-normal">({posts.length} posts)</span></span>
+                  {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {isOpen && (
+                  <div className="divide-y divide-border">
+                    {posts.map((post: any, pi: number) => (
+                      <div key={pi} className="px-4 py-3 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase">{post.type}</span>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>❤️ {(post.likes || 0).toLocaleString()}</span>
+                            <span>💬 {(post.comments || 0).toLocaleString()}</span>
+                            {post.views > 0 && <span>👁️ {(post.views || 0).toLocaleString()}</span>}
+                          </div>
+                        </div>
+                        <p className="text-xs leading-relaxed">{post.caption || <span className="italic text-muted-foreground">No caption</span>}</p>
+                        {toArr(post.hashtags).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {toArr(post.hashtags).slice(0, 8).map((tag: string, ti: number) => (
+                              <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        {post.url && (
+                          <a href={post.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] text-amber-500 hover:underline">
+                            <ExternalLink className="w-3 h-3" /> View post
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

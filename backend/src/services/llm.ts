@@ -170,6 +170,9 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     if (process.env.OPENROUTER_API_KEY) {
       attempts.push(() => callOpenRouter(process.env.OPENROUTER_API_KEY!, prompt, systemPrompt, "platform"));
     }
+    if (process.env.OPENROUTER_API_KEY_2) {
+      attempts.push(() => callOpenRouter(process.env.OPENROUTER_API_KEY_2!, prompt, systemPrompt, "platform"));
+    }
     // Anthropic Claude as secondary platform key
     if (process.env.ANTHROPIC_API_KEY) {
       attempts.push(() => callAnthropic(process.env.ANTHROPIC_API_KEY!, prompt, systemPrompt, "platform"));
@@ -194,6 +197,7 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
 
   // 4. Try each provider in order — stop at first success
   let lastError: Error | null = null;
+  let firstError: Error | null = null;
   let response: LLMResponse | null = null;
 
   for (const attempt of attempts) {
@@ -203,14 +207,26 @@ export async function callLLM(req: LLMRequest): Promise<LLMResponse> {
     } catch (err: any) {
       console.warn(`[LLM] Provider failed: ${err.message?.slice(0, 100)}`);
       lastError = err;
+      if (!firstError) firstError = err;
     }
   }
 
   if (!response) {
-    throw new Error(
-      lastError?.message ||
-      "All AI providers failed. Please add your own API key in Settings → API Keys."
-    );
+    console.error("[LLM DEBUG] All providers failed. firstError was:", firstError, "lastError was:", lastError);
+    let errorMsg = "All AI providers failed. Please add your own API key in Settings → API Keys.";
+    
+    // AWS Bedrock's auth failure throws a confusing message that looks like the user's key failed.
+    const isAwsAuthError = lastError?.name === "AccessDeniedException" || 
+                           lastError?.message?.includes("Authentication failed: Please make sure your API Key is valid.");
+                           
+    // Prefer the first error (e.g. OpenRouter/Gemini) over fallback AWS auth errors
+    const bestError = isAwsAuthError && firstError ? firstError : (lastError || firstError);
+                           
+    if (bestError?.message) {
+      errorMsg = bestError.message;
+    }
+
+    throw new Error(errorMsg);
   }
 
   // 5. Determine key source for logging
@@ -637,7 +653,7 @@ async function callOpenRouter(
   systemPrompt: string | undefined,
   _source: string
 ): Promise<LLMResponse> {
-  const model = "meta-llama/llama-3.3-70b-instruct:free"; // Free tier first, falls back to paid
+  const model = "meta-llama/llama-3.3-70b-instruct"; 
   const messages: any[] = [];
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: prompt });
@@ -653,7 +669,7 @@ async function callOpenRouter(
     body: JSON.stringify({
       model,
       messages,
-      max_tokens: 8192,
+      max_tokens: 2500,
     }),
   });
 

@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.pipelineProgressMap = void 0;
 const express_1 = require("express");
 const auth_1 = require("../middleware/auth");
 const llm_1 = require("../services/llm");
@@ -43,6 +44,16 @@ const crypto_1 = require("../services/crypto");
 const intelligence_1 = require("../services/intelligence");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
+// Global memory cache for tracking pipeline progress
+exports.pipelineProgressMap = new Map();
+// ─── GET /api/analyze/pipeline-progress ───────────────────────────────────────
+router.get("/pipeline-progress", (req, res) => {
+    const { userId } = req;
+    const profileUrl = req.query.profileUrl;
+    const key = `${userId}-${profileUrl}`;
+    const progress = exports.pipelineProgressMap.get(key) || 0;
+    res.json({ progress });
+});
 // ─── Helper: extract JSON from LLM response (multi-pass) ────────────────────
 function extractJSON(text) {
     if (!text)
@@ -206,6 +217,35 @@ async function getRealProfileData(userId, platform, profileUrl) {
     // 3. No data — LLM will work with URL only (AI general knowledge)
     return { data: null, source: "url_only" };
 }
+// ─── CACHE HELPER ─────────────────────────────────────────────────────────────
+async function getCachedAnalysis(userId, platform, profileUrl, type) {
+    const { data } = await supabase_1.supabase
+        .from("analysis_results")
+        .select("result, created_at")
+        .eq("user_id", userId)
+        .eq("platform", platform)
+        .filter("result->>profileUrl", "eq", profileUrl)
+        .order("created_at", { ascending: false })
+        .limit(5);
+    if (!data)
+        return null;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    for (const row of data) {
+        if (new Date(row.created_at) < sevenDaysAgo)
+            continue;
+        if (row.result) {
+            if (type === "audit" && row.result.audit)
+                return row.result.audit;
+            if (type === "competitors" && row.result.competitors)
+                return row.result.competitors;
+            if (type === "trends" && row.result.trends)
+                return row.result.trends;
+            if (type === "pipeline" && row.result.pipeline)
+                return row.result.pipeline;
+        }
+    }
+    return null;
+}
 // ─── POST /api/analyze/audit ──────────────────────────────────────────────────
 router.post("/audit", async (req, res) => {
     const { userId } = req;
@@ -213,12 +253,24 @@ router.post("/audit", async (req, res) => {
     if (!profileUrl)
         return res.status(400).json({ error: "profileUrl is required" });
     try {
+        if (!req.body.forceFresh) {
+            const cached = await getCachedAnalysis(userId, platform, profileUrl, "audit");
+            if (cached) {
+                console.log(`[audit] Using 7-day cache for ${profileUrl}`);
+                return res.json({
+                    success: true,
+                    audit: cached,
+                    dataSource: "cache",
+                    _meta: { provider: "cache", model: "cache", dataSource: "cache" }
+                });
+            }
+        }
         const { data: realData, source } = await getRealProfileData(userId, platform, profileUrl);
         console.log(`[audit] Data source: ${source}, posts: ${realData?.posts?.length || 0}`);
         const isHindi = language === "hi";
         const systemPrompt = isHindi
-            ? "Tu ek expert social media content strategist hai jo Indian creators ke liye kaam karta hai. Hinglish mein jawab de. SIRF valid JSON return kar — koi extra text mat likho."
-            : "You are an expert social media content strategist for Indian creators. Return ONLY valid JSON — no extra text.";
+            ? "Tu ek elite social media growth hacker aur content strategist hai jo Indian creators aur brands ke liye viral strategies banata hai. Tere suggestions extremely deep, actionable aur highly relevant hone chahiye. Hinglish ka natural use kar. Koi generic gyan nahi. SIRF valid JSON return kar — koi extra text mat likho."
+            : "You are an elite social media growth hacker and content strategist for Indian creators. Your analysis must be highly specific, culturally relevant, actionable, and based on modern algorithms (watch-time, saves, shares). Return ONLY valid JSON — no extra text.";
         let intelligenceSummary = "";
         if (realData && realData.posts && realData.posts.length > 0) {
             const intelPosts = realData.posts.map((p) => ({
@@ -254,7 +306,7 @@ ${intelligenceSummary}
 RECENT POSTS (last ${realData.posts.length} posts):
 ${realData.posts.slice(0, 10).map((p, i) => `Post ${i + 1}: ${p.mediaType} | Likes: ${p.likes} | Comments: ${p.comments}${p.saves ? ` | Saves: ${p.saves}` : ""}${p.reach ? ` | Reach: ${p.reach}` : ""} | Caption: "${(p.caption || "").substring(0, 100)}"`).join("\n")}`
             : `Profile URL: ${profileUrl}\n(No direct data available — analyze based on URL and niche)`;
-        const prompt = `Analyze this ${platform} creator and provide a detailed audit:
+        const prompt = `Perform a highly critical, non-generic audit of this ${platform} creator. Do NOT use generic advice like "post consistently" or "use good hashtags". Be brutal, specific, and actionable. Look at the actual data and captions.
 
 ${dataSection}
 Niche: ${niche || "Not specified"}
@@ -263,25 +315,29 @@ Data Source: ${source}
 Return JSON:
 {
   "engagementRate": "${realData?.engagementRate || 0}%",
-  "benchmark": "brief context — is this ER good/bad for ${niche} niche?",
+  "benchmark": "Is this ER actually good for the current algorithm in the ${niche} niche? Be honest.",
   "followerCount": "${realData?.followers?.toLocaleString() || "Unknown"}",
   "avgLikes": "${realData?.avgLikes || "Unknown"}",
   "avgComments": "${realData?.avgComments || "Unknown"}",
   "postsAnalyzed": ${realData?.posts?.length || 0},
   "dataSource": "${source}",
-  "strengths": ["strength 1 based on REAL data", "strength 2", "strength 3"],
-  "weaknesses": ["weakness 1 based on REAL data", "weakness 2", "weakness 3", "weakness 4"],
+  "strengths": ["Hyper-specific strength 1 based on actual hooks/data", "Specific strength 2", "Specific strength 3"],
+  "weaknesses": ["Crucial weakness 1 (e.g. boring hooks, bad visual pacing)", "Weakness 2", "Weakness 3"],
   "diagnosis": {
-    "hookQuality": "assessment based on captions and ADVANCED INTELLIGENCE top hooks",
-    "ctaPresence": "assessment",
-    "consistency": "assessment based on post timestamps",
-    "contentVariety": "assessment based on media types and content categories",
-    "hashtagStrategy": "assessment",
-    "captionDepth": "assessment based on actual captions",
-    "engagementLoop": "assessment"
+    "hookQuality": "Analyze the 3-second hook retention based on their captions and media types. Be critical.",
+    "ctaPresence": "Are they actually driving profile visits/saves? Analyze their Call to Actions.",
+    "consistency": "Are they posting enough for the 2026 algorithm?",
+    "contentVariety": "Are they relying too much on one format?",
+    "hashtagStrategy": "Critique their hashtag usage.",
+    "captionDepth": "Are the captions actually retaining read-time? Or are they generic?",
+    "engagementLoop": "Are they fostering community or just broadcasting?"
   },
+  "weak_content_areas": ["Detailed area 1 where they lose attention", "Detailed area 2"],
+  "cta_insights": ["Specific psychological CTA that would work better for their audience", "Another CTA insight"],
+  "content_gaps": ["Highly specific topic gap in their niche they aren't covering", "Another gap"],
+  "viral_hook_suggestions": ["Exact script for Hook 1 (Hinglish/English depending on language)", "Exact script for Hook 2", "Exact script for Hook 3"],
   "overallScore": 75,
-  "topRecommendation": "single most impactful action based on actual data"
+  "topRecommendation": "The single most brutal, actionable change they need to make right now."
 }`;
         const llmResult = await (0, llm_1.callLLM)({ userId, endpoint: "audit", prompt, systemPrompt });
         const auditData = extractJSON(llmResult.text) || { raw: llmResult.text };
@@ -315,6 +371,18 @@ router.post("/competitors", async (req, res) => {
     const { userId } = req;
     const { platform, niche, language, competitors, profession, profileUrl } = req.body;
     try {
+        if (!req.body.forceFresh) {
+            const cached = await getCachedAnalysis(userId, platform, profileUrl, "competitors");
+            if (cached) {
+                console.log(`[competitors] Using 7-day cache for ${profileUrl}`);
+                return res.json({
+                    success: true,
+                    competitors: cached,
+                    dataSource: "cache",
+                    _meta: { provider: "cache", model: "cache", dataSource: "cache" }
+                });
+            }
+        }
         // Get user's own real data first (for comparison baseline)
         let ownData = null;
         if (profileUrl) {
@@ -322,7 +390,7 @@ router.post("/competitors", async (req, res) => {
             ownData = data;
         }
         // ── ENHANCED: Scrape EACH competitor using BOTH Apify actors ─────────────
-        let enhancedCompetitors = [];
+        let enhancedCompetitors = req.body.rawCompetitorsData || [];
         let targetCompetitors = competitors || [];
         if (targetCompetitors.length === 0 && platform === "instagram") {
             const searchNiche = niche || profession || "Digital Creator";
@@ -349,7 +417,7 @@ Return ONLY this JSON array. No markdown, no comments, no extra text.`;
                 console.warn(`[competitors] Failed to discover competitors: ${err.message}`);
             }
         }
-        if (targetCompetitors?.length && platform === "instagram") {
+        if (enhancedCompetitors.length === 0 && targetCompetitors?.length && platform === "instagram") {
             const usernames = targetCompetitors
                 .map((url) => extractUsername(url, "instagram"))
                 .filter(Boolean)
@@ -372,14 +440,14 @@ Return ONLY this JSON array. No markdown, no comments, no extra text.`;
 - Instagram growth strategy
 - trend forecasting
 
-SIRF real scraped data use karo — koi hallucination nahi. Hinglish mein jawab de. SIRF valid JSON return karo.`
+SIRF real scraped data use karo — koi hallucination nahi. Ekdam brutal aur deep insights de, generic "post daily" wali baatein nahi. Hinglish ka natural use kar. SIRF valid JSON return karo.`
             : `You are an elite AI Content Intelligence Engine trained in:
 - Performance marketing & creator economy
 - Social media psychology & viral content analysis
 - Instagram growth strategy & trend forecasting
 - Audience retention & engagement optimization
 
-RULES: Use ONLY real scraped data. Never hallucinate metrics. Return ONLY valid JSON.`;
+RULES: Use ONLY real scraped data. Never hallucinate metrics. Provide deeply analytical, non-generic insights. Return ONLY valid JSON.`;
         const ownSection = ownData
             ? `USER's OWN ACCOUNT (@${ownData.username}):
 - Followers: ${ownData.followers.toLocaleString()} | Following: ${ownData.following}
@@ -390,7 +458,8 @@ RULES: Use ONLY real scraped data. Never hallucinate metrics. Return ONLY valid 
             : `User Platform: ${platform} | Niche: ${niche || "to be detected"}`;
         // Build rich competitor data section
         const buildCompetitorSection = (c, i) => {
-            const intel = (0, intelligence_1.aggregateIntelligence)(c.allPosts.map((p) => ({
+            const allPosts = c.allPosts || [];
+            const intel = (0, intelligence_1.aggregateIntelligence)(allPosts.map((p) => ({
                 id: p.id, caption: p.caption || "", likes: p.likes || 0, comments: p.comments || 0, views: p.views || 0, timestamp: p.timestamp, type: p.type
             })));
             return `
@@ -696,11 +765,36 @@ Return ONLY this JSON structure:
             topPostViews: c.engagementStats.topPostViews,
             totalPostsAnalyzed: c.engagementStats.totalPostsAnalyzed,
         }));
+        // Save to analysis_results for caching
+        await supabase_1.supabase.from("analysis_results").insert({
+            user_id: userId,
+            platform,
+            result: {
+                type: "competitors",
+                profileUrl,
+                competitors: data,
+                scrapedStats,
+                rawCompetitorsData: enhancedCompetitors,
+                dataSource: "apify",
+            },
+        });
+        // Build condensed posts for frontend display (small enough for localStorage)
+        const scrapedPosts = enhancedCompetitors.flatMap(c => (c.allPosts || []).slice(0, 20).map((p) => ({
+            competitor: c.username,
+            caption: (p.caption || "").substring(0, 300),
+            likes: p.likes || 0,
+            comments: p.comments || 0,
+            views: p.views || 0,
+            type: p.type || "POST",
+            url: p.url || "",
+            hashtags: (p.hashtags || []).slice(0, 10),
+        })));
         return res.json({
             success: true,
             competitors: data,
             scrapedCount: enhancedCompetitors.length,
             scrapedStats,
+            scrapedPosts,
             rawCompetitorsData: enhancedCompetitors,
             dataQuality,
             dataConfidence,
@@ -717,9 +811,21 @@ Return ONLY this JSON structure:
 // ─── POST /api/analyze/trends ─────────────────────────────────────────────────
 router.post("/trends", async (req, res) => {
     const { userId } = req;
-    const { platform, niche, language, competitors, rawCompetitorsData } = req.body;
+    const { platform, niche, language, competitors, rawCompetitorsData, profileUrl } = req.body;
     const effectiveNiche = niche || "General / Auto-detect from context";
     try {
+        if (!req.body.forceFresh) {
+            const cached = await getCachedAnalysis(userId, platform, profileUrl, "trends");
+            if (cached) {
+                console.log(`[trends] Using 7-day cache for ${profileUrl}`);
+                return res.json({
+                    success: true,
+                    trends: cached,
+                    dataSource: "cache",
+                    _meta: { provider: "cache", model: "cache", dataSource: "cache" }
+                });
+            }
+        }
         let trendData = [];
         try {
             if (platform === "youtube") {
@@ -729,7 +835,6 @@ router.post("/trends", async (req, res) => {
                 });
             }
             else {
-                // Scrape trending niche hashtag posts for trend signal
                 const tag = (effectiveNiche || "india").toLowerCase().replace(/[^a-z0-9]/g, "").substring(0, 20) || "india";
                 trendData = await (0, scraper_1.runApifyActor)("apify/instagram-hashtag-scraper", {
                     hashtags: [tag, `${tag}india`],
@@ -742,8 +847,8 @@ router.post("/trends", async (req, res) => {
         }
         const isHindi = language === "hi";
         const systemPrompt = isHindi
-            ? `Tu Indian social media trend expert hai. Hinglish mein specific examples do. SIRF valid JSON return kar — koi extra text nahi.`
-            : `You are an Indian social media trend expert. Give SPECIFIC trending content examples with real numbers. Return ONLY valid JSON.`;
+            ? `Tu ek elite Indian social media trend analyst aur strategist hai. Tere paas current Indian cultural trends, viral memes, aur algorithm secrets ka deep knowledge hai. Hinglish mein jawab de. Highly specific examples de jo aajkal viral ho rahe hain. SIRF valid JSON return kar — koi extra text nahi.`
+            : `You are an elite Indian social media trend analyst. Provide hyper-specific, actionable insights based on current Indian cultural trends, viral formats, and algorithm secrets. Return ONLY valid JSON.`;
         const currentMonth = new Date().toLocaleString("en-IN", { month: "long", year: "numeric" });
         const competitorContext = competitors?.length
             ? `Competitor accounts being analyzed: ${competitors.join(", ")}`
@@ -814,6 +919,17 @@ Return ONLY this JSON (no extra text, no markdown wrapper):
 }`;
         const llmResult = await (0, llm_1.callLLM)({ userId, endpoint: "trends", prompt, systemPrompt });
         const data = extractJSON(llmResult.text) || { raw: llmResult.text, trendingFormats: [], trendingTopics: [], trendingHashtags: [], viralHookFormulas: [], contentIdeas: [] };
+        // Save to analysis_results for caching
+        await supabase_1.supabase.from("analysis_results").insert({
+            user_id: userId,
+            platform,
+            result: {
+                type: "trends",
+                profileUrl,
+                trends: data,
+                dataSource: "apify",
+            },
+        });
         return res.json({
             success: true,
             trends: data,
@@ -831,6 +947,18 @@ router.post("/pipeline", async (req, res) => {
     const { platform, niche, language, profileUrl, competitors, rawCompetitorsData } = req.body;
     const effectiveNiche = niche || "Digital Creator";
     try {
+        if (!req.body.forceFresh) {
+            const cached = await getCachedAnalysis(userId, platform, profileUrl, "pipeline");
+            if (cached) {
+                console.log(`[pipeline] Using 7-day cache for ${profileUrl}`);
+                return res.json({
+                    success: true,
+                    pipeline: cached,
+                    dataSource: "cache",
+                    _meta: { provider: "cache", model: "cache", dataSource: "cache" }
+                });
+            }
+        }
         let ownData = null;
         if (profileUrl) {
             const { data } = await getRealProfileData(userId, platform, profileUrl);
@@ -884,20 +1012,28 @@ RULES:
 3. STRICTLY FORBIDDEN: Do not use ANY placeholders like [Your Name], [Your Product], [Niche], [insert link here]. Generate realistic generic names or concrete details instead so that the script can be read word-for-word immediately.
 
 Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
-        // Upgraded: 7 posts/week covering all 7 days
+        // Upgraded: 7 posts/week covering all 7 days with forced angles to prevent repetition
         const WEEK_DEFS = [
             { week: 1, theme: "Awareness - Introduce your expertise, hook new audience, build curiosity",
                 days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-                formats: ["Reel", "Carousel", "Reel", "Post", "Reel", "Story+Post", "Reel"] },
+                formats: ["Reel", "Carousel", "Reel", "Post", "Reel", "Story+Post", "Reel"],
+                angles: ["Myth vs Fact", "Step-by-Step Tutorial", "Personal Story of Failure/Success", "Contrarian Opinion (Hot Take)", "Tool/Resource Sharing", "Behind the Scenes / Day in the Life", "Actionable Checklist"]
+            },
             { week: 2, theme: "Education - Teach your best tips, deliver massive value, build trust",
                 days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-                formats: ["Reel", "Carousel", "Reel", "Carousel", "Reel", "Post", "Reel"] },
-            { week: 3, theme: "Engagement - Community stories, behind-the-scenes, relatability",
+                formats: ["Reel", "Carousel", "Reel", "Carousel", "Reel", "Post", "Reel"],
+                angles: ["Common Beginner Mistake", "Advanced Strategy Breakdown", "Case Study / Client Result", "Industry News/Update", "Resource/Template Reveal", "Q&A / Answering FAQs", "System/Process Walkthrough"]
+            },
+            { week: 3, theme: "Engagement - Community stories, relatability, sparking conversations",
                 days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-                formats: ["Reel", "Post", "Carousel", "Reel", "Reel", "Carousel", "Story+Reel"] },
+                formats: ["Reel", "Post", "Carousel", "Reel", "Reel", "Carousel", "Story+Reel"],
+                angles: ["Relatable Meme/Struggle", "Poll/Question for Audience", "Controversial Debate Topic", "Personal Reflection / Journey", "Challenge for the Audience", "Before & After Transformation", "User Generated Content/Story"]
+            },
             { week: 4, theme: "Authority & Conversion - Results, transformation, strong CTA, social proof",
                 days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-                formats: ["Reel", "Carousel", "Reel", "Post", "Reel", "Carousel", "Reel"] },
+                formats: ["Reel", "Carousel", "Reel", "Post", "Reel", "Carousel", "Reel"],
+                angles: ["Client Testimonial/Success Story", "Why My Method Works (Proof)", "Overcoming a Specific Objection", "Direct Pitch / Hard Sell", "Limited Time Offer / Urgency", "The Cost of Inaction", "Vision Casting / Aspirational"]
+            },
         ];
         let competitorPostsContext = "";
         if (Array.isArray(rawCompetitorsData) && rawCompetitorsData.length > 0) {
@@ -915,6 +1051,7 @@ Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
         const buildPostPrompt = (wd, postIdx, compContext) => {
             const day = wd.days[postIdx];
             const format = wd.formats[postIdx];
+            const angle = wd.angles[postIdx];
             const postNumber = (wd.week - 1) * 7 + postIdx + 1;
             // Calculate suggested posting time based on day
             const timeSuggestions = {
@@ -927,6 +1064,7 @@ Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
 CREATOR PROFILE: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
 POST DETAILS: ${day} | Format: ${format} | Language: ${lang}
+REQUIRED ANGLE/FRAMEWORK FOR THIS POST: **${angle}**
 SUGGESTED TIME: ${timeSuggestions[day] || "7:00 PM IST"}
 DATE CONTEXT: ${currentMonth} | Events: ${upcomingEvents.join(", ") || "None special"}
 ${competitorInsights}
@@ -935,10 +1073,12 @@ ${compContext}
 
 CRITICAL RULES:
 1. NO PLACEHOLDERS — every word must be real, usable content. No [brackets] allowed.
-2. Caption must be 100+ words with a strong hook opening, specific value points, and a clear CTA.
-3. Script must be word-for-word what the creator says to camera — natural spoken ${lang}.
-4. Hook must stop the scroll in under 2 seconds — use curiosity, controversy, or relatable pain.
-5. Each tip/point in the script must be SPECIFIC — not generic advice.
+2. STRICT UNIQUE ANGLE: You MUST use the exact Required Angle/Framework ("${angle}"). Do not use generic lists like "3 tools" unless the angle specifically calls for it.
+3. BAN GENERIC ADVICE: Do NOT suggest extremely basic, outdated tools or advice that everyone knows (e.g., Canva, Hootsuite, Google Analytics, "post consistently", "use hashtags"). Suggest highly specific, modern, 2026-relevant tools, AI software, or hyper-niche strategies.
+4. Caption must be 100+ words with a strong hook opening, specific value points, and a clear CTA.
+5. Script must be word-for-word what the creator says to camera — natural spoken ${lang}.
+6. Hook must stop the scroll in under 2 seconds — use curiosity, controversy, or relatable pain.
+7. Each tip/point in the script must be SPECIFIC — not generic advice.
 
 FEW-SHOT EXAMPLE of a GOOD hook (${lang}):
 ${isHindi
@@ -953,7 +1093,7 @@ Your output must be a single JSON object:
   "day": "${day}",
   "format": "${format}",
   "content_pillar": "Education / Entertainment / Inspiration / Authority / Community",
-  "topic": "Specific compelling topic (e.g. '3 free tools that replaced my Rs 5000/month subscription')",
+  "topic": "Specific compelling topic based purely on the angle '${angle}'",
   "hook": "Scroll-stopping opening line in ${lang} (max 15 words, must grab attention immediately)",
   "caption": "Full publication-ready ${lang} caption: hook + relatable story/context + 3 highly specific value points + clear CTA with emojis (150+ words minimum, zero placeholders)",
   "hashtags": ["#Tag1","#Tag2","#Tag3","#Tag4","#Tag5","#Tag6","#Tag7","#Tag8","#Tag9","#Tag10"],
@@ -980,6 +1120,8 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
         const contentCalendar = [];
         let provider = "gemini";
         let model = "";
+        const progressKey = `${userId}-${profileUrl}`;
+        exports.pipelineProgressMap.set(progressKey, 5); // Initialization
         for (let w = 0; w < WEEK_DEFS.length; w++) {
             const wd = WEEK_DEFS[w];
             // Process 7 posts per week in batches of 3-4 to stay within rate limits
@@ -995,6 +1137,9 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
                 for (let bi = 0; bi < postResults.length; bi++) {
                     const pi = batchStart + bi;
                     const pr = postResults[bi];
+                    // Increment progress per post (approx 90% total for 28 posts ~ 3.2% per post)
+                    const currentProgress = exports.pipelineProgressMap.get(progressKey) || 5;
+                    exports.pipelineProgressMap.set(progressKey, Math.min(95, currentProgress + 3.2));
                     if (!pr.ok) {
                         console.warn(`[pipeline] w${w + 1} p${pi + 1} LLM failed: ${pr.error}`);
                         continue;
@@ -1040,6 +1185,7 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
                 contentCalendar.push({ week: w + 1, theme: wd.theme, posts: [] });
             }
         }
+        exports.pipelineProgressMap.set(progressKey, 98); // Meta step remaining
         contentCalendar.sort((a, b) => (a.week || 0) - (b.week || 0));
         // Cap targetER: micro-accounts can produce inflated ER (e.g. 300 followers, 500 avg likes = 233%).
         const rawTargetER = ownData ? (ownData.engagementRate ?? 0) * 1.3 : 3.5;
@@ -1059,9 +1205,21 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
         const weeksWithContent = contentCalendar.filter((w) => w.posts?.length > 0).length;
         const totalPosts = contentCalendar.reduce((s, w) => s + (w.posts?.length || 0), 0);
         console.log(`[pipeline] Done: ${weeksWithContent}/4 weeks, ${totalPosts} total posts generated`);
+        const pipelineFinal = { contentCalendar, contentPillars: metaData.contentPillars || [], batchingStrategy: metaData.batchingStrategy || "", postingSchedule: metaData.postingSchedule || { bestDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], bestTimes: { "Monday": "8:30 AM IST" } }, kpis: metaData.kpis || { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } };
+        // Save to analysis_results for caching
+        await supabase_1.supabase.from("analysis_results").insert({
+            user_id: userId,
+            platform,
+            result: {
+                type: "pipeline",
+                profileUrl,
+                pipeline: pipelineFinal,
+                dataSource: "apify",
+            },
+        });
         return res.json({
             success: true,
-            pipeline: { contentCalendar, contentPillars: metaData.contentPillars || [], batchingStrategy: metaData.batchingStrategy || "", postingSchedule: metaData.postingSchedule || { bestDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], bestTimes: { "Monday": "8:30 AM IST" } }, kpis: metaData.kpis || { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } },
+            pipeline: pipelineFinal,
             hasRealContent: weeksWithContent > 0,
             weeksGenerated: weeksWithContent,
             _meta: { provider, model }

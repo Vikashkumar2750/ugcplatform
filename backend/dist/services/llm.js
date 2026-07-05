@@ -145,6 +145,9 @@ async function callLLM(req) {
         if (process.env.OPENROUTER_API_KEY) {
             attempts.push(() => callOpenRouter(process.env.OPENROUTER_API_KEY, prompt, systemPrompt, "platform"));
         }
+        if (process.env.OPENROUTER_API_KEY_2) {
+            attempts.push(() => callOpenRouter(process.env.OPENROUTER_API_KEY_2, prompt, systemPrompt, "platform"));
+        }
         // Anthropic Claude as secondary platform key
         if (process.env.ANTHROPIC_API_KEY) {
             attempts.push(() => callAnthropic(process.env.ANTHROPIC_API_KEY, prompt, systemPrompt, "platform"));
@@ -166,6 +169,7 @@ async function callLLM(req) {
     }
     // 4. Try each provider in order — stop at first success
     let lastError = null;
+    let firstError = null;
     let response = null;
     for (const attempt of attempts) {
         try {
@@ -175,11 +179,22 @@ async function callLLM(req) {
         catch (err) {
             console.warn(`[LLM] Provider failed: ${err.message?.slice(0, 100)}`);
             lastError = err;
+            if (!firstError)
+                firstError = err;
         }
     }
     if (!response) {
-        throw new Error(lastError?.message ||
-            "All AI providers failed. Please add your own API key in Settings → API Keys.");
+        console.error("[LLM DEBUG] All providers failed. firstError was:", firstError, "lastError was:", lastError);
+        let errorMsg = "All AI providers failed. Please add your own API key in Settings → API Keys.";
+        // AWS Bedrock's auth failure throws a confusing message that looks like the user's key failed.
+        const isAwsAuthError = lastError?.name === "AccessDeniedException" ||
+            lastError?.message?.includes("Authentication failed: Please make sure your API Key is valid.");
+        // Prefer the first error (e.g. OpenRouter/Gemini) over fallback AWS auth errors
+        const bestError = isAwsAuthError && firstError ? firstError : (lastError || firstError);
+        if (bestError?.message) {
+            errorMsg = bestError.message;
+        }
+        throw new Error(errorMsg);
     }
     // 5. Determine key source for logging
     const keySource = userKeys[response.provider] ? "user_own" : "platform";
@@ -514,7 +529,7 @@ async function callBedrock(accessKeyId, secretAccessKey, bearerToken, prompt, sy
 }
 // ─── OpenRouter (unified access to GPT-4o, Claude, Llama, etc.) ───────────────
 async function callOpenRouter(apiKey, prompt, systemPrompt, _source) {
-    const model = "google/gemini-2.0-flash-exp:free"; // Free tier first, falls back to paid
+    const model = "meta-llama/llama-3.3-70b-instruct";
     const messages = [];
     if (systemPrompt)
         messages.push({ role: "system", content: systemPrompt });
@@ -530,7 +545,7 @@ async function callOpenRouter(apiKey, prompt, systemPrompt, _source) {
         body: JSON.stringify({
             model,
             messages,
-            max_tokens: 8192,
+            max_tokens: 2500,
         }),
     });
     if (!res.ok) {

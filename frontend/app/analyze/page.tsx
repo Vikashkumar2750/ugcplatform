@@ -5,7 +5,8 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   ChevronRight, ChevronLeft, Zap, Camera, PlayCircle, Share2,
   Search, CheckCircle2, Loader2, AlertCircle, Lightbulb, Brain,
-  Clock, FileText, TrendingUp, BarChart3, Target, Plus, Trash2
+  Clock, FileText, TrendingUp, BarChart3, Target, Plus, Trash2,
+  Save, X
 } from "lucide-react";
 
 // Singleton browser supabase client (reads cookies = works after login)
@@ -76,6 +77,7 @@ export default function AnalyzePage() {
   // Competitors
   const [competitorMode, setCompetitorMode] = useState<"known" | "discover" | "skip">("discover");
   const [competitorUrls, setCompetitorUrls] = useState(["", "", ""]);
+  const [savedCompetitors, setSavedCompetitors] = useState<{ handle: string; url: string; platform: string }[]>([]);
   const [profession, setProfession] = useState("");
   const [resume, setResume] = useState("");
 
@@ -88,10 +90,44 @@ export default function AnalyzePage() {
 
   // Running
   const [running, setRunning] = useState(false);
+  const [forceFresh, setForceFresh] = useState(false);
   const [phaseStatus, setPhaseStatus] = useState<PhaseStatus>({ audit: "idle", competitors: "idle", trends: "idle", pipeline: "idle" });
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [phaseModels, setPhaseModels] = useState<Record<string, { provider: string; model: string }>>({});
   const [phaseResults, setPhaseResults] = useState<Record<string, unknown>>({});
+  const [pipelineProgress, setPipelineProgress] = useState(0);
+
+  // Real-time progress for 7-day content pipeline
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (phaseStatus.pipeline === "running") {
+      setPipelineProgress(0);
+      
+      const pollProgress = async () => {
+        try {
+          const { data: { session } } = await supabaseBrowser.auth.getSession();
+          const authToken = session?.access_token;
+          if (!authToken) return;
+          
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
+          const res = await fetch(`${backendUrl}/api/analyze/pipeline-progress?profileUrl=${encodeURIComponent(profileUrl)}`, {
+            headers: { "Authorization": `Bearer ${authToken}` }
+          });
+          const data = await res.json();
+          if (typeof data.progress === "number") {
+            setPipelineProgress(Math.round(data.progress));
+          }
+        } catch (err) {}
+      };
+
+      interval = setInterval(pollProgress, 2500);
+    } else if (phaseStatus.pipeline === "done") {
+      setPipelineProgress(100);
+    } else {
+      setPipelineProgress(0);
+    }
+    return () => clearInterval(interval);
+  }, [phaseStatus.pipeline, profileUrl]);
 
   // Fetch connected accounts and auto-fill URL
   useEffect(() => {
@@ -117,6 +153,53 @@ export default function AnalyzePage() {
       }
     });
   }, []);
+
+  // Load saved competitors from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("saved_competitors");
+      if (stored) setSavedCompetitors(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  // Extract handle from URL for display
+  const extractHandle = (url: string): string => {
+    if (!url.trim()) return "";
+    try {
+      const cleaned = url.replace(/\/+$/, "");
+      const parts = cleaned.split("/").filter(Boolean);
+      let handle = parts[parts.length - 1] || "";
+      handle = handle.replace(/^@/, "");
+      return handle;
+    } catch { return ""; }
+  };
+
+  const saveCompetitor = (url: string) => {
+    if (!url.trim() || !platformDetected) return;
+    const handle = extractHandle(url);
+    if (!handle) return;
+    // Don't save duplicates
+    if (savedCompetitors.some(s => s.handle === handle && s.platform === platformDetected)) return;
+    const updated = [...savedCompetitors, { handle, url: url.trim(), platform: platformDetected }];
+    setSavedCompetitors(updated);
+    localStorage.setItem("saved_competitors", JSON.stringify(updated));
+  };
+
+  const removeSavedCompetitor = (handle: string, platform: string) => {
+    const updated = savedCompetitors.filter(s => !(s.handle === handle && s.platform === platform));
+    setSavedCompetitors(updated);
+    localStorage.setItem("saved_competitors", JSON.stringify(updated));
+  };
+
+  const addSavedToInput = (saved: { handle: string; url: string; platform: string }) => {
+    // Find first empty slot or replace last
+    const emptyIdx = competitorUrls.findIndex(u => !u.trim());
+    if (emptyIdx !== -1) {
+      updateCompetitor(emptyIdx, saved.url);
+    } else if (competitorUrls.length < 3) {
+      setCompetitorUrls([...competitorUrls, saved.url]);
+    }
+  };
 
   const handleUrlChange = (url: string) => {
     setProfileUrl(url);
@@ -192,6 +275,7 @@ export default function AnalyzePage() {
             competitors: competitorMode === "known" ? competitorUrls.filter(Boolean) : [],
             profession: competitorMode === "discover" ? profession : "",
             resume: competitorMode === "discover" ? resume : "",
+            forceFresh,
             ...extraBody,
           }),
         });
@@ -374,6 +458,20 @@ export default function AnalyzePage() {
                       <Loader2 className="w-2.5 h-2.5 animate-spin" /> AI soch raha hai...
                     </span>
                   )}
+                  {phase.id === "pipeline" && status === "running" && (
+                    <div className="mt-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">Generating 28 posts...</span>
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">{pipelineProgress}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-amber-400 transition-all duration-1000 ease-out" 
+                          style={{ width: `${pipelineProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -458,7 +556,7 @@ export default function AnalyzePage() {
                   const isSelected = platformDetected === acc.platform && profileUrl.includes(acc.platform_username || "");
                   return (
                     <button
-                      key={acc.platform}
+                      key={`${acc.platform}-${acc.platform_user_id || acc.platform_username}`}
                       onClick={() => fillConnectedAccount(acc)}
                       className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                         isSelected
@@ -572,22 +670,80 @@ export default function AnalyzePage() {
           {/* Known competitors URLs */}
           {competitorMode === "known" && (
             <div className="space-y-3">
-              {competitorUrls.map((url, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    type="url"
-                    placeholder={`Competitor ${i + 1} URL`}
-                    value={url}
-                    onChange={(e) => updateCompetitor(i, e.target.value)}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 transition"
-                  />
-                  {i > 0 && (
-                    <button onClick={() => removeCompetitor(i)} className="p-2.5 rounded-xl border border-border hover:border-red-400/50 hover:text-red-500 transition">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+              {/* Saved competitors chips — click to add */}
+              {platformDetected && savedCompetitors.filter(s => s.platform === platformDetected).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-muted-foreground self-center mr-1">Saved:</span>
+                  {savedCompetitors.filter(s => s.platform === platformDetected).map(saved => {
+                    const alreadyAdded = competitorUrls.some(u => u.trim() && extractHandle(u) === saved.handle);
+                    return (
+                      <button
+                        key={`${saved.platform}-${saved.handle}`}
+                        onClick={() => !alreadyAdded && addSavedToInput(saved)}
+                        disabled={alreadyAdded}
+                        className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all ${
+                          alreadyAdded
+                            ? "border-green-400/40 bg-green-400/10 text-green-600 dark:text-green-400 cursor-default"
+                            : "border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/15 hover:border-amber-400 cursor-pointer"
+                        }`}
+                        title={alreadyAdded ? "Already added" : `Click to add @${saved.handle}`}
+                      >
+                        {alreadyAdded ? (
+                          <CheckCircle2 className="w-3 h-3" />
+                        ) : (
+                          <Plus className="w-3 h-3" />
+                        )}
+                        @{saved.handle}
+                        <span
+                          onClick={(e) => { e.stopPropagation(); removeSavedCompetitor(saved.handle, saved.platform); }}
+                          className="ml-0.5 text-muted-foreground hover:text-red-500 transition opacity-0 group-hover:opacity-100"
+                          title="Remove saved"
+                        >
+                          <X className="w-3 h-3" />
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
+              )}
+
+              {/* URL inputs with inline save */}
+              {competitorUrls.map((url, i) => {
+                const handle = extractHandle(url);
+                const isSaved = handle && platformDetected && savedCompetitors.some(s => s.handle === handle && s.platform === platformDetected);
+                return (
+                  <div key={i} className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder={`Competitor ${i + 1} URL`}
+                      value={url}
+                      onChange={(e) => updateCompetitor(i, e.target.value)}
+                      className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring/30 transition"
+                    />
+                    {/* Save button — shows when URL has a valid handle and isn't already saved */}
+                    {url.trim() && handle && !isSaved && (
+                      <button
+                        onClick={() => saveCompetitor(url)}
+                        className="px-3 py-2.5 rounded-xl border border-amber-400/40 bg-amber-400/5 hover:bg-amber-400/15 hover:border-amber-400 text-xs font-medium text-amber-600 dark:text-amber-400 transition-all flex items-center gap-1"
+                        title={`Save @${handle}`}
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {/* Already saved indicator */}
+                    {url.trim() && handle && isSaved && (
+                      <div className="px-3 py-2.5 rounded-xl border border-green-400/30 bg-green-400/5 text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </div>
+                    )}
+                    {i > 0 && (
+                      <button onClick={() => removeCompetitor(i)} className="p-2.5 rounded-xl border border-border hover:border-red-400/50 hover:text-red-500 transition">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
               {competitorUrls.length < 3 && (
                 <button onClick={addCompetitor} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition">
                   <Plus className="w-4 h-4" /> Add another competitor
@@ -762,6 +918,20 @@ export default function AnalyzePage() {
           <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-400/8 border border-amber-400/20 text-xs text-muted-foreground">
             <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
             Analysis ~90 seconds mein complete hogi. API keys securely server pe stored hain — koi bhi key network mein nahi jayegi.
+          </div>
+
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+            <input 
+              type="checkbox" 
+              id="forceFresh" 
+              checked={forceFresh} 
+              onChange={(e) => setForceFresh(e.target.checked)}
+              className="w-4 h-4 accent-amber-500 cursor-pointer"
+            />
+            <label htmlFor="forceFresh" className="text-sm cursor-pointer select-none">
+              <span className="font-medium">Force Fresh Analysis</span>
+              <p className="text-xs text-muted-foreground mt-0.5">Ignore 7-day cache and force a new analysis (takes longer)</p>
+            </label>
           </div>
 
           <button
