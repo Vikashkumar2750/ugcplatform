@@ -637,7 +637,7 @@ async function callOpenRouter(
   systemPrompt: string | undefined,
   _source: string
 ): Promise<LLMResponse> {
-  const model = "google/gemini-2.0-flash-exp:free"; // Free tier first, falls back to paid
+  const model = "meta-llama/llama-3.3-70b-instruct:free"; // Free tier first, falls back to paid
   const messages: any[] = [];
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: prompt });
