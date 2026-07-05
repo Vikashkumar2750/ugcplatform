@@ -379,7 +379,8 @@ RULES: Use ONLY real scraped data. Never hallucinate metrics. Return ONLY valid 
 
     // Build rich competitor data section
     const buildCompetitorSection = (c: EnhancedCompetitorData, i: number) => {
-      const intel = aggregateIntelligence(c.allPosts.map((p: any) => ({
+      const allPosts = c.allPosts || [];
+      const intel = aggregateIntelligence(allPosts.map((p: any) => ({
         id: p.id, caption: p.caption || "", likes: p.likes || 0, comments: p.comments || 0, views: p.views || 0, timestamp: p.timestamp, type: p.type
       })));
       return `

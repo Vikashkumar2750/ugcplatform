@@ -45,8 +45,9 @@ export interface AggregatedIntelligence {
 /**
  * Clean caption and extract the first 15 words as a "hook"
  */
-export function extractHook(caption: string = ""): string {
-  const cleanCaption = caption
+export function extractHook(caption: string | null = ""): string {
+  const safeCaption = caption || "";
+  const cleanCaption = safeCaption
     .replace(/[#]/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -83,8 +84,8 @@ export function extractHook(caption: string = ""): string {
 /**
  * Detect the content category based on keywords
  */
-export function detectContentCategory(caption: string = ""): string {
-  const c = caption.toLowerCase();
+export function detectContentCategory(caption: string | null = ""): string {
+  const c = (caption || "").toLowerCase();
   if (c.includes("how to") || c.includes("tutorial") || c.includes("step by step")) return "Tutorial";
   if (c.includes("story") || c.includes("dark") || c.includes("reality")) return "Storytelling";
   if (c.includes("ai") || c.includes("seo") || c.includes("marketing")) return "Educational";
@@ -95,8 +96,8 @@ export function detectContentCategory(caption: string = ""): string {
 /**
  * Detect hook psychological type
  */
-export function detectHookType(hook: string = ""): string {
-  const h = hook.toLowerCase();
+export function detectHookType(hook: string | null = ""): string {
+  const h = (hook || "").toLowerCase();
   if (h.includes("secret") || h.includes("truth") || h.includes("reality") || h.includes("nobody tells")) return "Curiosity";
   if (h.includes("dark") || h.includes("story") || h.includes("scary")) return "Storytelling";
   if (h.includes("ai") || h.includes("seo") || h.includes("marketing") || h.includes("growth")) return "Educational";
@@ -108,8 +109,8 @@ export function detectHookType(hook: string = ""): string {
 /**
  * Extract hashtags from caption
  */
-export function extractHashtags(caption: string = ""): string[] {
-  const matches = caption.match(/#[\w]+/g);
+export function extractHashtags(caption: string | null = ""): string[] {
+  const matches = (caption || "").match(/#[\w]+/g);
   return matches ? matches.map((tag) => tag.toLowerCase()) : [];
 }
 
