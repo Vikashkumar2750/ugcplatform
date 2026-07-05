@@ -40,6 +40,7 @@ const scraper_1 = require("../services/scraper");
 const meta_data_1 = require("../services/meta-data");
 const supabase_1 = require("../lib/supabase");
 const crypto_1 = require("../services/crypto");
+const intelligence_1 = require("../services/intelligence");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
 // ─── Helper: extract JSON from LLM response (multi-pass) ────────────────────
@@ -218,6 +219,26 @@ router.post("/audit", async (req, res) => {
         const systemPrompt = isHindi
             ? "Tu ek expert social media content strategist hai jo Indian creators ke liye kaam karta hai. Hinglish mein jawab de. SIRF valid JSON return kar — koi extra text mat likho."
             : "You are an expert social media content strategist for Indian creators. Return ONLY valid JSON — no extra text.";
+        let intelligenceSummary = "";
+        if (realData && realData.posts && realData.posts.length > 0) {
+            const intelPosts = realData.posts.map((p) => ({
+                id: p.id,
+                caption: p.caption,
+                likes: p.likes || 0,
+                comments: p.comments || 0,
+                views: p.views || p.reach || p.likes * 10 || 0,
+                timestamp: p.timestamp,
+                type: p.mediaType,
+            }));
+            const intel = (0, intelligence_1.aggregateIntelligence)(intelPosts);
+            intelligenceSummary = `
+ADVANCED INTELLIGENCE DATA:
+- Dominant Hook Types: ${intel.trend_intelligence.dominant_hook_types.map(h => `${h.type}(${h.count})`).join(", ")}
+- Content Categories: ${intel.trend_intelligence.dominant_content_categories.map(c => `${c.category}(${c.count})`).join(", ")}
+- Top Hooks (Viral):
+${intel.top_hooks.slice(0, 3).map(h => `  * "${h.hook}" (Viral Score: ${h.viral_score})`).join("\n")}
+`;
+        }
         const dataSection = realData
             ? `
 REAL ACCOUNT DATA (use these exact numbers):
@@ -229,7 +250,7 @@ REAL ACCOUNT DATA (use these exact numbers):
 - Avg Comments per post: ${realData.avgComments}
 - Engagement Rate: ${realData.engagementRate}%
 - Bio: ${realData.biography || "Not available"}
-
+${intelligenceSummary}
 RECENT POSTS (last ${realData.posts.length} posts):
 ${realData.posts.slice(0, 10).map((p, i) => `Post ${i + 1}: ${p.mediaType} | Likes: ${p.likes} | Comments: ${p.comments}${p.saves ? ` | Saves: ${p.saves}` : ""}${p.reach ? ` | Reach: ${p.reach}` : ""} | Caption: "${(p.caption || "").substring(0, 100)}"`).join("\n")}`
             : `Profile URL: ${profileUrl}\n(No direct data available — analyze based on URL and niche)`;
@@ -251,10 +272,10 @@ Return JSON:
   "strengths": ["strength 1 based on REAL data", "strength 2", "strength 3"],
   "weaknesses": ["weakness 1 based on REAL data", "weakness 2", "weakness 3", "weakness 4"],
   "diagnosis": {
-    "hookQuality": "assessment based on captions",
+    "hookQuality": "assessment based on captions and ADVANCED INTELLIGENCE top hooks",
     "ctaPresence": "assessment",
     "consistency": "assessment based on post timestamps",
-    "contentVariety": "assessment based on media types",
+    "contentVariety": "assessment based on media types and content categories",
     "hashtagStrategy": "assessment",
     "captionDepth": "assessment based on actual captions",
     "engagementLoop": "assessment"
@@ -368,7 +389,11 @@ RULES: Use ONLY real scraped data. Never hallucinate metrics. Return ONLY valid 
 - Total Posts: ${ownData.mediaCount}`
             : `User Platform: ${platform} | Niche: ${niche || "to be detected"}`;
         // Build rich competitor data section
-        const buildCompetitorSection = (c, i) => `
+        const buildCompetitorSection = (c, i) => {
+            const intel = (0, intelligence_1.aggregateIntelligence)(c.allPosts.map((p) => ({
+                id: p.id, caption: p.caption || "", likes: p.likes || 0, comments: p.comments || 0, views: p.views || 0, timestamp: p.timestamp, type: p.type
+            })));
+            return `
 ═══════════════════════════════════════
 COMPETITOR ${i + 1}: @${c.username}
 ═══════════════════════════════════════
@@ -386,13 +411,18 @@ ENGAGEMENT STATS (${c.engagementStats.totalPostsAnalyzed} posts):
 - Engagement Rate: ${c.engagementStats.engagementRate}%
 - Top Post Views: ${c.engagementStats.topPostViews.toLocaleString()}
 
+ADVANCED INTELLIGENCE DATA:
+- Dominant Hook Types: ${intel.trend_intelligence.dominant_hook_types.map((h) => `${h.type}(${h.count})`).join(", ")}
+- Content Categories: ${intel.trend_intelligence.dominant_content_categories.map((cat) => `${cat.category}(${cat.count})`).join(", ")}
+- Top Hashtags: ${intel.trend_intelligence.top_hashtags.map((t) => t.tag).join(", ")}
+- CTA Patterns: ${intel.trend_intelligence.cta_patterns.slice(0, 2).map((cta) => `"${cta.hook}"`).join(", ")}
+
 TOP 5 VIRAL POSTS (by views):
 ${c.topPosts.slice(0, 5).map((p, pi) => `  #${pi + 1} [${p.type}] Views:${p.views.toLocaleString()} Likes:${p.likes.toLocaleString()}
    Hook: "${p.hookText.substring(0, 80)}"
    Tags: ${p.hashtags.slice(0, 6).join(" ")} | CTA:${p.hasCTA}`).join("\n")}
-
-TOP HASHTAGS: ${[...new Set(c.allPosts.flatMap(p => p.hashtags))].slice(0, 12).join(" ")}
 `;
+        };
         const competitorDataSection = enhancedCompetitors.length > 0
             ? enhancedCompetitors.map((c, i) => buildCompetitorSection(c, i)).join("\n")
             : `Competitor URLs: ${competitors?.join(", ") || "None provided"}\n(No scraped data available — analyze based on URL and niche knowledge)`;
@@ -738,30 +768,48 @@ ${trendData.length > 0
             : `Use the competitor posts above and your knowledge of current Indian ${platform} trends for ${effectiveNiche} niche. Be specific with real examples.`}
 
 IMPORTANT: If niche is "auto-detect", infer it from the competitor context or default to Digital Creator / Content Creator niche.
+Think strategically and behaviorally. Generate deep psychological insights.
 
 Return ONLY this JSON (no extra text, no markdown wrapper):
 {
   "detectedNiche": "${niche || "inferred niche name"}",
-  "trendingFormats": [
-    { "format": "specific format name", "growth": "+X%", "type": "Reel/Carousel/Post", "whyItWorks": "specific reason with Indian context" }
+  "audiencePsychology": [
+    "deep psychological driver 1",
+    "emotional trigger 2",
+    "behavioral pattern 3"
   ],
-  "trendingTopics": [
-    { "topic": "specific topic name in ${effectiveNiche}", "searchVolume": "High/Medium/Low", "competition": "High/Medium/Low", "contentAngle": "specific angle to take" }
+  "viralPatterns": [
+    "hook pattern 1",
+    "content format 2",
+    "visual style 3"
   ],
-  "trendingHashtags": ["#HashTag1", "#HashTag2", "#HashTag3", "#HashTag4", "#HashTag5", "#HashTag6", "#HashTag7", "#HashTag8"],
-  "trendingAudio": ["Audio trend 1 for Reels", "Audio trend 2"],
-  "seasonalOpportunity": "Specific ${currentMonth} opportunity — e.g. festival, exam season, weather event relevant to Indian ${effectiveNiche} creators",
-  "viralHookFormulas": [
-    { "formula": "exact hook structure", "example": "Example hook in ${isHindi ? "Hinglish" : "English"} for ${effectiveNiche}", "emotion": "Curiosity/Fear/Relatability/Inspiration" },
-    { "formula": "second hook formula", "example": "Another example", "emotion": "emotion type" },
-    { "formula": "third hook formula", "example": "Third example", "emotion": "emotion type" }
+  "highPerformingCategories": [
+    "Educational/Storytelling etc with specific angle"
   ],
-  "contentIdeas": [
-    "Specific viral idea 1 for ${effectiveNiche} with hook line",
-    "Specific viral idea 2 based on current trend",
-    "Specific viral idea 3 — collaboration or challenge format",
-    "Specific viral idea 4 — educational or informational",
-    "Specific viral idea 5 — trending format applied to ${effectiveNiche}"
+  "weakContentAreas": [
+    "what people are doing wrong or getting low engagement on"
+  ],
+  "contentGaps": [
+    "untapped topic 1",
+    "missing angle 2"
+  ],
+  "ctaInsights": [
+    "what calls to action convert best in this niche"
+  ],
+  "viralHookSuggestions": [
+    "highly viral hook 1",
+    "highly viral hook 2",
+    "highly viral hook 3"
+  ],
+  "trendPredictions": [
+    "what will trend next month",
+    "audio or visual format prediction"
+  ],
+  "growthStrategy": [
+    "strategic step 1",
+    "strategic step 2",
+    "strategic step 3",
+    "strategic step 4"
   ]
 }`;
         const llmResult = await (0, llm_1.callLLM)({ userId, endpoint: "trends", prompt, systemPrompt });
@@ -882,6 +930,7 @@ POST DETAILS: ${day} | Format: ${format} | Language: ${lang}
 SUGGESTED TIME: ${timeSuggestions[day] || "7:00 PM IST"}
 DATE CONTEXT: ${currentMonth} | Events: ${upcomingEvents.join(", ") || "None special"}
 ${competitorInsights}
+${req.body.growthStrategy?.length ? `GROWTH STRATEGY TO FOLLOW: ${req.body.growthStrategy.join(", ")}\n` : ""}
 ${compContext}
 
 CRITICAL RULES:

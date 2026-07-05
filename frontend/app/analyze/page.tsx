@@ -239,6 +239,7 @@ export default function AnalyzePage() {
         niche: detectedNiche,
         competitors: targetCompetitorsForNextPhases,
         rawCompetitorsData: (compRes as any)?.fullResponseData?.rawCompetitorsData,
+        growthStrategy: (trendsRes as any)?.resultData?.growthStrategy || [],
       });
 
       // Build full analysis object and save to localStorage for results page

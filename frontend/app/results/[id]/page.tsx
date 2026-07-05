@@ -511,82 +511,128 @@ export default function ResultsPage() {
               <EmptyState tab="Trend Report" />
             ) : (
               <>
-                {/* Trending formats */}
-                {trends.trendingFormats?.length > 0 && (
+                {/* 1. Audience Psychology */}
+                {trends.audiencePsychology?.length > 0 && (
                   <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4">Trending Formats</p>
-                    <div className="space-y-3">
-                      {trends.trendingFormats.map((fmt: any, i: number) => (
-                        <div key={i} className="flex items-center gap-4 py-2.5 border-b border-border last:border-0">
-                          <span className="w-6 h-6 rounded-full bg-muted text-xs font-bold flex items-center justify-center">{i + 1}</span>
-                          <div className="flex-1">
-                            <span className="text-sm font-medium">{fmt.format}</span>
-                            {fmt.whyItWorks && <p className="text-xs text-muted-foreground mt-0.5">{fmt.whyItWorks}</p>}
-                          </div>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-muted">{fmt.type}</span>
-                          <span className="text-xs font-bold text-green-500">{fmt.growth}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Trending topics */}
-                {trends.trendingTopics?.length > 0 && (
-                  <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4">Trending Topics</p>
+                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-purple-500" /> Audience Psychology & Behavior</p>
                     <div className="space-y-2">
-                      {trends.trendingTopics.map((topic: any, i: number) => (
-                        <div key={i} className="flex items-center gap-3 py-1.5">
-                          <span className="flex-1 text-sm">{topic.topic}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${topic.searchVolume === "High" ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground"}`}>{topic.searchVolume}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${topic.competition === "Low" ? "bg-green-500/10 text-green-500" : "bg-muted text-muted-foreground"}`}>{topic.competition} competition</span>
+                      {trends.audiencePsychology.map((insight: string, i: number) => (
+                        <div key={i} className="flex gap-3">
+                          <span className="text-purple-500 font-bold mt-0.5">•</span>
+                          <span className="text-sm text-muted-foreground">{insight}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Hashtags */}
-                {trends.trendingHashtags?.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* 2. Viral Patterns */}
+                  {trends.viralPatterns?.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-border bg-card">
+                      <p className="text-sm font-bold mb-4 flex items-center gap-2"><Zap className="w-4 h-4 text-amber-500" /> Viral Patterns</p>
+                      <div className="space-y-2">
+                        {trends.viralPatterns.map((pattern: string, i: number) => (
+                          <div key={i} className="flex gap-3">
+                            <span className="text-amber-500 font-bold mt-0.5">✓</span>
+                            <span className="text-sm text-muted-foreground">{pattern}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. High Performing Categories */}
+                  {trends.highPerformingCategories?.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-border bg-card">
+                      <p className="text-sm font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-green-500" /> Top Categories</p>
+                      <div className="space-y-2">
+                        {trends.highPerformingCategories.map((cat: string, i: number) => (
+                          <div key={i} className="flex gap-3">
+                            <span className="text-green-500 font-bold mt-0.5">✓</span>
+                            <span className="text-sm text-muted-foreground">{cat}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* 4. Weak Content Areas */}
+                  {trends.weakContentAreas?.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-red-500/20 bg-red-500/5">
+                      <p className="text-sm font-bold mb-4 flex items-center gap-2 text-red-500"><AlertTriangle className="w-4 h-4" /> Weak Content Areas</p>
+                      <div className="space-y-2">
+                        {trends.weakContentAreas.map((area: string, i: number) => (
+                          <div key={i} className="flex gap-3">
+                            <span className="text-red-500 font-bold mt-0.5">✕</span>
+                            <span className="text-sm">{area}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. Content Gaps */}
+                  {trends.contentGaps?.length > 0 && (
+                    <div className="p-5 rounded-2xl border border-blue-500/20 bg-blue-500/5">
+                      <p className="text-sm font-bold mb-4 flex items-center gap-2 text-blue-500"><Lightbulb className="w-4 h-4" /> Content Gaps (Opportunity)</p>
+                      <div className="space-y-2">
+                        {trends.contentGaps.map((gap: string, i: number) => (
+                          <div key={i} className="flex gap-3">
+                            <span className="text-blue-500 font-bold mt-0.5">💡</span>
+                            <span className="text-sm">{gap}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. CTA Insights */}
+                {trends.ctaInsights?.length > 0 && (
                   <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3 flex items-center gap-2"><Hash className="w-4 h-4" /> Trending Hashtags</p>
-                    <div className="flex flex-wrap gap-2">
-                      {trends.trendingHashtags.map((tag: string) => (
-                        <span key={tag} className="px-3 py-1.5 rounded-full bg-muted text-sm font-medium hover:bg-amber-400/10 hover:text-amber-600 dark:hover:text-amber-400 transition cursor-pointer">
-                          {tag}
-                        </span>
+                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><ArrowRight className="w-4 h-4 text-emerald-500" /> CTA Insights</p>
+                    <div className="space-y-2">
+                      {trends.ctaInsights.map((cta: string, i: number) => (
+                        <div key={i} className="flex gap-3 items-center">
+                          <span className="text-emerald-500 font-bold mt-0.5">•</span>
+                          <span className="text-sm text-muted-foreground">{cta}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Audio */}
-                {trends.trendingAudio?.length > 0 && trends.trendingAudio[0]?.includes?.("applicable") !== true && (
+                {/* 7. Viral Hook Suggestions */}
+                {trends.viralHookSuggestions?.length > 0 && (
                   <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-3 flex items-center gap-2"><Music className="w-4 h-4" /> Trending Audio</p>
-                    <div className="space-y-1.5">
-                      {trends.trendingAudio.map((audio: string, i: number) => (
-                        <p key={i} className="text-sm">🎵 {audio}</p>
+                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><Zap className="w-4 h-4 text-amber-500" /> Viral Hook Suggestions</p>
+                    <div className="space-y-3">
+                      {trends.viralHookSuggestions.map((hook: string, i: number) => (
+                        <div key={i} className="p-3 bg-muted rounded-xl border border-border/50">
+                          <p className="text-sm font-semibold">"{hook}"</p>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* Seasonal + Hook formulas */}
-                {trends.seasonalOpportunity && (
-                  <div className="p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
-                    <p className="text-xs font-bold text-amber-500 mb-1.5">🗓 Seasonal Opportunity</p>
-                    <p className="text-sm">{trends.seasonalOpportunity}</p>
-                  </div>
-                )}
-
-                {trends.viralHookFormulas?.length > 0 && (
+                {/* 8. Growth Strategy */}
+                {trends.growthStrategy?.length > 0 && (
                   <div className="p-5 rounded-2xl border border-border bg-card">
-                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><Lightbulb className="w-4 h-4" /> Viral Hook Formulas + Reel Scripts</p>
-                    <div className="space-y-4">
-                      {trends.viralHookFormulas.map((hook: any, i: number) => (
-                        <HookScriptCard key={i} hook={hook} />
+                    <p className="text-sm font-bold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-primary" /> Growth Strategy Pipeline</p>
+                    <div className="space-y-3 relative before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
+                      {trends.growthStrategy.map((step: string, i: number) => (
+                        <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full border border-primary bg-background shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow shadow-primary/20">
+                            <span className="text-[10px] font-bold text-primary">{i + 1}</span>
+                          </div>
+                          <div className="w-[calc(100%-2.5rem)] md:w-[calc(50%-1.5rem)] p-4 rounded-xl border border-border bg-card shadow-sm">
+                            <p className="text-sm">{step}</p>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
