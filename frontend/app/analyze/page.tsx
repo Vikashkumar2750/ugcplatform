@@ -313,7 +313,7 @@ export default function AnalyzePage() {
 
   // Running view
   if (running) {
-    const allDone = Object.values(phaseStatus).every(s => s === "done" || s === "idle");
+    const allDone = Object.values(phaseStatus).every(s => s !== "running");
     return (
       <div className="p-6 max-w-2xl mx-auto">
         <div className="text-center mb-10">
