@@ -263,15 +263,29 @@ function ScoreBadge({ data }: { data: InsightsData }) {
   );
 }
 
-// ── Client-Side Memory Cache ───────────────────────────────────────
-const memoryCache: Record<string, { data: InsightsData; fetchedAt: number }> = {};
+// ── Helper to access sessionStorage safely ──
+const getSessionCache = (key: string) => {
+  if (typeof window === "undefined") return null;
+  try {
+    const item = sessionStorage.getItem(key);
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    // Valid for 24 hours
+    if (Date.now() - parsed.fetchedAt > 24 * 60 * 60 * 1000) return null;
+    return parsed.data;
+  } catch { return null; }
+};
+const setSessionCache = (key: string, data: any) => {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() }));
+};
 
 // ── Main Page ──────────────────────────────────────────────────────
 export default function InstagramInsightsPage() {
-  const [data, setData] = useState<InsightsData | null>(null);
+  const [data, setData] = useState<InsightsData | null>(() => getSessionCache("ig_insights_default"));
   const [tasks, setTasks] = useState<TasksData | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getSessionCache("ig_insights_default"));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -284,13 +298,14 @@ export default function InstagramInsightsPage() {
   const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
     const targetAccountId = accId || selectedAccountId;
     
-    // Check client-side memory cache first if not refreshing
-    if (!isRefresh && targetAccountId && memoryCache[targetAccountId]) {
-      const cached = memoryCache[targetAccountId];
-      // Valid for 5 minutes in memory to feel instantaneous but still fresh enough
-      if (Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
-        setData(cached.data);
-        return;
+    // Check client-side sessionStorage cache first if not refreshing
+    if (!isRefresh) {
+      const cacheKey = targetAccountId ? `ig_insights_${targetAccountId}` : "ig_insights_default";
+      const cached = getSessionCache(cacheKey);
+      if (cached) {
+        setData(cached);
+        if (loading) setLoading(false);
+        return; // Skip network request entirely if we have a valid 24h cache!
       }
     }
 
@@ -318,10 +333,11 @@ export default function InstagramInsightsPage() {
       setFromCache(insJson._fromCache === true);
       setFetchedAt(insJson._fetchedAt || null);
       
-      // Save to memory cache
-      if (targetAccountId || insJson.availableAccounts?.[0]?.id) {
-        const id = targetAccountId || insJson.availableAccounts[0].id;
-        memoryCache[id] = { data: insJson, fetchedAt: Date.now() };
+      // Save to sessionStorage
+      const idToCache = targetAccountId || insJson.availableAccounts?.[0]?.id;
+      if (idToCache) {
+        setSessionCache(`ig_insights_${idToCache}`, insJson);
+        setSessionCache("ig_insights_default", insJson);
       }
 
       if (taskRes.ok) setTasks(await taskRes.json());

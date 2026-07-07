@@ -54,13 +54,27 @@ function StatCard({ label, value, sub, icon: Icon, highlight }: {
   );
 }
 
-// ── Client-Side Memory Cache ───────────────────────────────────────
-const ytMemoryCache: Record<string, { data: YTInsightsData; fetchedAt: number }> = {};
+// ── Helper to access sessionStorage safely ──
+const getSessionCache = (key: string) => {
+  if (typeof window === "undefined") return null;
+  try {
+    const item = sessionStorage.getItem(key);
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    // Valid for 24 hours
+    if (Date.now() - parsed.fetchedAt > 24 * 60 * 60 * 1000) return null;
+    return parsed.data;
+  } catch { return null; }
+};
+const setSessionCache = (key: string, data: any) => {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() }));
+};
 
 // ── Main Page ──────────────────────────────────────────────────────
 export default function YouTubeInsightsPage() {
-  const [data, setData] = useState<YTInsightsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<YTInsightsData | null>(() => getSessionCache("yt_insights_default"));
+  const [loading, setLoading] = useState(() => !getSessionCache("yt_insights_default"));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -69,12 +83,13 @@ export default function YouTubeInsightsPage() {
   const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
     const targetAccountId = accId || selectedAccountId;
 
-    // Check client-side memory cache first if not refreshing
-    if (!isRefresh && targetAccountId && ytMemoryCache[targetAccountId]) {
-      const cached = ytMemoryCache[targetAccountId];
-      // Valid for 5 minutes in memory
-      if (Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
-        setData(cached.data);
+    // Check client-side sessionStorage cache first if not refreshing
+    if (!isRefresh) {
+      const cacheKey = targetAccountId ? `yt_insights_${targetAccountId}` : "yt_insights_default";
+      const cached = getSessionCache(cacheKey);
+      if (cached) {
+        setData(cached);
+        if (loading) setLoading(false);
         return;
       }
     }
@@ -98,10 +113,11 @@ export default function YouTubeInsightsPage() {
       
       setData(insJson);
 
-      // Save to memory cache
-      if (targetAccountId || insJson.availableAccounts?.[0]?.id) {
-        const id = targetAccountId || insJson.availableAccounts[0].id;
-        ytMemoryCache[id] = { data: insJson, fetchedAt: Date.now() };
+      // Save to sessionStorage
+      const idToCache = targetAccountId || insJson.availableAccounts?.[0]?.id;
+      if (idToCache) {
+        setSessionCache(`yt_insights_${idToCache}`, insJson);
+        setSessionCache("yt_insights_default", insJson);
       }
 
     } catch { setError("Network error — please retry"); }
