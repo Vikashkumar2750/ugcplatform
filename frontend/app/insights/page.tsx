@@ -328,7 +328,12 @@ export default function InstagramInsightsPage() {
         fetch("/api/insights/tasks/history?platform=instagram"),
       ]);
       const insJson = await insRes.json();
-      if (insRes.status === 404 && insJson.error === "not_connected") { setNotConnected(true); return; }
+      if (insRes.status === 404 && insJson.error === "not_connected") { 
+        sessionStorage.removeItem("ig_insights_default");
+        if (targetAccountId) sessionStorage.removeItem(`ig_insights_${targetAccountId}`);
+        setNotConnected(true); 
+        return; 
+      }
       if (insRes.status === 429) { setError(`Rate limited: ${insJson.error}. Wait ~1 hour.`); return; }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
       setData(insJson);

@@ -109,7 +109,12 @@ export default function YouTubeInsightsPage() {
       const insRes = await fetch(url);
       const insJson = await insRes.json();
       
-      if (insRes.status === 404 && insJson.error === "not_connected") { setNotConnected(true); return; }
+      if (insRes.status === 404 && insJson.error === "not_connected") { 
+        sessionStorage.removeItem("yt_insights_default");
+        if (targetAccountId) sessionStorage.removeItem(`yt_insights_${targetAccountId}`);
+        setNotConnected(true); 
+        return; 
+      }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
       
       setData(insJson);

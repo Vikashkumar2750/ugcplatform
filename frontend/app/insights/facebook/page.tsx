@@ -204,7 +204,12 @@ export default function FacebookInsightsPage() {
         fetch("/api/insights/tasks/history?platform=facebook"),
       ]);
       const insJson = await insRes.json();
-      if (insRes.status === 404 && insJson.error === "not_connected") { setNotConnected(true); return; }
+      if (insRes.status === 404 && insJson.error === "not_connected") { 
+        sessionStorage.removeItem("fb_insights_default");
+        if (targetAccountId) sessionStorage.removeItem(`fb_insights_${targetAccountId}`);
+        setNotConnected(true); 
+        return; 
+      }
       if (insRes.status === 429) { setError(`Rate limited: ${insJson.error}`); return; }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
       setData(insJson);
