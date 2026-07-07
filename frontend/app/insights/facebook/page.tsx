@@ -181,7 +181,7 @@ export default function FacebookInsightsPage() {
     if (!isRefresh) {
       const cacheKey = targetAccountId ? `fb_insights_${targetAccountId}` : "fb_insights_default";
       const cached = getSessionCache(cacheKey);
-      if (cached) {
+      if (cached && cached.accountId) {
         setData(cached);
         if (loading) setLoading(false);
         return;

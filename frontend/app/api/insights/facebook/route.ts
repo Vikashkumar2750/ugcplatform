@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
       handle: a.platform_username || "",
     }));
 
-    // ── Daily cache (skip Meta API if already fetched today IST) ──
+    // ── Daily cache check ──
     const cached = await getDailyCache(supabase, user.id, `facebook_${account.id}`, force);
     if (cached) {
       console.log("[FB Insights] Serving daily cache from Supabase");
-      return NextResponse.json({ ...cached.data, _fromCache: true });
+      return NextResponse.json({ ...cached.data, accountId: account.id, availableAccounts, _fromCache: true });
     }
 
     const pageId = account.platform_user_id;

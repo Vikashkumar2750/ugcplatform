@@ -88,7 +88,7 @@ export default function YouTubeInsightsPage() {
     if (!isRefresh) {
       const cacheKey = targetAccountId ? `yt_insights_${targetAccountId}` : "yt_insights_default";
       const cached = getSessionCache(cacheKey);
-      if (cached) {
+      if (cached && cached.accountId) {
         setData(cached);
         if (loading) setLoading(false);
         return;

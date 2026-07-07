@@ -304,7 +304,7 @@ export default function InstagramInsightsPage() {
     if (!isRefresh) {
       const cacheKey = targetAccountId ? `ig_insights_${targetAccountId}` : "ig_insights_default";
       const cached = getSessionCache(cacheKey);
-      if (cached) {
+      if (cached && cached.accountId) {
         setData(cached);
         if (loading) setLoading(false);
         return; // Skip network request entirely if we have a valid 24h cache!

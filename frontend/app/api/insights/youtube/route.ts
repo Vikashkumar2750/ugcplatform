@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     const cached = await getDailyCache(supabase, user.id, `youtube_${account.id}`, force);
     if (cached) {
       console.log("[YT Insights] Serving daily cache from Supabase");
-      return NextResponse.json({ ...cached.data, _fromCache: true });
+      return NextResponse.json({ ...cached.data, accountId: account.id, availableAccounts, _fromCache: true });
     }
 
     let token = account.access_token;

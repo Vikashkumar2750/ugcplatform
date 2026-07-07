@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const cached = await getDailyCache(supabase, user.id, `instagram_${account.id}`, force);
     if (cached) {
       console.log("[IG Insights] Serving daily cache from Supabase");
-      return NextResponse.json({ ...cached.data, _fromCache: true });
+      return NextResponse.json({ ...cached.data, accountId: account.id, availableAccounts, _fromCache: true });
     }
 
     const igId = account.platform_user_id;
