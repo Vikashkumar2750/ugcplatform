@@ -151,6 +151,21 @@ function PlatformCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform: platformKey, accountId }),
       });
+      
+      // Invalidate frontend sessionStorage cache for this platform
+      try {
+        if (platformKey === "instagram") {
+          sessionStorage.removeItem("ig_insights_default");
+          if (accountId) sessionStorage.removeItem(`ig_insights_${accountId}`);
+        } else if (platformKey === "facebook") {
+          sessionStorage.removeItem("fb_insights_default");
+          if (accountId) sessionStorage.removeItem(`fb_insights_${accountId}`);
+        } else if (platformKey === "youtube") {
+          sessionStorage.removeItem("yt_insights_default");
+          if (accountId) sessionStorage.removeItem(`yt_insights_${accountId}`);
+        }
+      } catch (e) {}
+
       onDisconnect();
     } finally {
       setDisconnecting(null);
