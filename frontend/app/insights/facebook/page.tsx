@@ -299,7 +299,7 @@ export default function FacebookInsightsPage() {
         {data.availableAccounts && data.availableAccounts.length > 1 && (
           <div className="ml-4 flex items-center">
             <select
-              value={selectedAccountId || data.availableAccounts[0].id}
+              value={selectedAccountId || data.accountId || data.availableAccounts[0].id}
               onChange={(e) => setSelectedAccountId(e.target.value)}
               className="bg-muted/40 border border-border text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[200px] truncate"
             >

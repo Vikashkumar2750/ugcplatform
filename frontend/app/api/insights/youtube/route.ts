@@ -134,6 +134,7 @@ export async function GET(request: NextRequest) {
 
     const responseData = {
       connected: true,
+      accountId: account.id,
       channelId: channel.id,
       channelName: channel.snippet.title,
       avatar: channel.snippet.thumbnails?.high?.url || channel.snippet.thumbnails?.default?.url,

@@ -190,7 +190,7 @@ export default function YouTubeInsightsPage() {
         <div className="flex items-center gap-3">
           {data.availableAccounts && data.availableAccounts.length > 1 && (
             <select
-              value={selectedAccountId || data.availableAccounts[0].id}
+              value={selectedAccountId || data.accountId || data.availableAccounts[0].id}
               onChange={(e) => setSelectedAccountId(e.target.value)}
               className="bg-muted/50 border border-border text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500/50 max-w-[200px] truncate font-medium cursor-pointer hover:bg-muted/80 transition"
             >

@@ -424,9 +424,11 @@ export default function InstagramInsightsPage() {
           {data.availableAccounts && data.availableAccounts.length > 1 && (
             <div className="ml-4 flex items-center">
               <select
-                value={selectedAccountId || data.availableAccounts[0].id}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="bg-muted/40 border border-border text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 max-w-[200px] truncate"
+                value={selectedAccountId || data.accountId || data.availableAccounts[0].id}
+                onChange={(e) => {
+                  setSelectedAccountId(e.target.value);
+                }}
+                className="bg-muted/50 border border-border text-sm rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500/50 max-w-[200px] truncate font-medium cursor-pointer hover:bg-muted/80 transition"
               >
                 {data.availableAccounts.map(acc => (
                   <option key={acc.id} value={acc.id}>

@@ -264,6 +264,7 @@ export async function GET(request: NextRequest) {
 
     const responseData = {
       connected: true,
+      accountId: account.id,
       handle: `@${profile.username || account.platform_username}`,
       name: profile.name || account.platform_name,
       avatar: profile.profile_picture_url || null,

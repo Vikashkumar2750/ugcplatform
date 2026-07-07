@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
 
     const responseData = {
       connected: true,
+      accountId: account.id,
       pageName: page.name || account.platform_name,
       pageId,
       fans,
