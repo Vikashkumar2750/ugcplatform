@@ -7,7 +7,9 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL!;
 const INSTAGRAM_SCOPES = [
   "instagram_basic",
   "instagram_manage_insights",
+  "instagram_business_manage_insights",
   "instagram_content_publish",
+  "instagram_business_content_publish",
   "instagram_manage_messages",
   "instagram_manage_comments",
   "pages_show_list",
