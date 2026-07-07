@@ -11,6 +11,8 @@ import {
   Globe, Image as ImageIcon, Bot, Sparkles, Lock,
   Layout, BookOpen, ChevronRight, Play
 } from "lucide-react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 
 // ─── Trigger Types ─────────────────────────────────────────────────────
 const ALL_TRIGGER_TYPES = [
@@ -714,24 +716,14 @@ function FlowCard({ rule, onToggle, onDelete, onPublish, onPause, onRollback }: 
 
 // ─── Main Page ─────────────────────────────────────────────────────────
 export default function FlowsPage() {
-  const [rules, setRules] = useState<FlowRule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [activeTab, setActiveTab] = useState<"automations" | "templates">("automations");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedTemplate, setSelectedTemplate] = useState<typeof TEMPLATES[0] | null>(null);
 
-  const fetchRules = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/automation/rules");
-      const data = await res.json();
-      setRules(data.rules || []);
-    } catch { }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchRules(); }, [fetchRules]);
+  const { data: rulesData, mutate: mutateRules } = useSWR("/api/automation/rules", fetcher);
+  const loading = !rulesData;
+  const rules = rulesData?.rules || [];
 
   const handleAction = async (ruleId: string, action: string) => {
     await fetch("/api/automation/rules/publish", {
@@ -739,21 +731,31 @@ export default function FlowsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ruleId, action }),
     });
-    fetchRules();
+    mutateRules();
   };
 
   const handleToggle = async (rule: FlowRule) => {
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
+    mutateRules({
+      ...rulesData,
+      rules: rules.map((r: FlowRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
+    }, false);
+    
     await fetch("/api/automation/rules", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: rule.id, is_active: !rule.is_active }),
     });
+    mutateRules();
   };
 
   const handleDelete = async (id: string) => {
-    setRules(prev => prev.filter(r => r.id !== id));
+    mutateRules({
+      ...rulesData,
+      rules: rules.filter((r: FlowRule) => r.id !== id)
+    }, false);
+    
     await fetch(`/api/automation/rules?id=${id}`, { method: "DELETE" });
+    mutateRules();
   };
 
   const useTemplate = (tpl: typeof TEMPLATES[0]) => {

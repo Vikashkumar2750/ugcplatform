@@ -8,6 +8,8 @@ import {
   Globe, Image as ImageIcon, CheckCircle2, AlertCircle, X,
   MessageSquare, Send, Link as LinkIcon, Eye, Users
 } from "lucide-react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 
 interface ConnectedAccount {
   id: string;
@@ -675,40 +677,37 @@ export default function CommentsAutomationPage() {
   const searchParams = useSearchParams();
   const platform = searchParams.get("platform") || "instagram";
   const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
-  const [rules, setRules] = useState<CommentRule[]>([]);
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
-  const fetchRules = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rulesRes, accountsRes] = await Promise.all([
-        fetch(`/api/automation/rules?type=comments&platform=${platform}`),
-        fetch("/api/connect/accounts"),
-      ]);
-      const rulesData = await rulesRes.json();
-      const accountsData = await accountsRes.json();
-      setRules(rulesData.rules || []);
-      setAccounts((accountsData.accounts || []).filter((a: any) => a.platform === platform));
-    } catch { }
-    setLoading(false);
-  }, [platform]);
+  const { data: accountsData } = useSWR("/api/connect/accounts", fetcher);
+  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=comments&platform=${platform}`, fetcher);
 
-  useEffect(() => { fetchRules(); }, [fetchRules]);
+  const loading = !accountsData || !rulesData;
+  const accounts = (accountsData?.accounts || []).filter((a: any) => a.platform === platform);
+  const rules = rulesData?.rules || [];
 
   const handleToggle = async (rule: CommentRule) => {
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
+    mutateRules({
+      ...rulesData,
+      rules: rules.map((r: CommentRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
+    }, false);
+    
     await fetch("/api/automation/rules", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: rule.id, is_active: !rule.is_active }),
     });
+    mutateRules();
   };
 
   const handleDelete = async (id: string) => {
-    setRules(prev => prev.filter(r => r.id !== id));
+    mutateRules({
+      ...rulesData,
+      rules: rules.filter((r: CommentRule) => r.id !== id)
+    }, false);
+    
     await fetch(`/api/automation/rules?id=${id}`, { method: "DELETE" });
+    mutateRules();
   };
 
   return (
@@ -724,7 +723,7 @@ export default function CommentsAutomationPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchRules} disabled={loading} className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground transition disabled:opacity-50">
+          <button onClick={() => mutateRules()} disabled={loading} className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground transition disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button onClick={() => setShowModal(true)} className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">

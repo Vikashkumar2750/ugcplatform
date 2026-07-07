@@ -12,6 +12,9 @@ import {
   ArrowDownRight, XCircle
 } from "lucide-react";
 
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+
 interface OverviewStats {
   totalRules: number;
   activeRules: number;
@@ -36,47 +39,45 @@ interface ActiveRule {
 export default function AutomationPage() {
   const searchParams = useSearchParams();
   const platform = searchParams.get("platform") || "instagram";
-  const [hasConnected, setHasConnected] = useState<boolean | null>(null);
-  const [stats, setStats] = useState<OverviewStats | null>(null);
-  const [rules, setRules] = useState<ActiveRule[]>([]);
-  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"today" | "7d" | "30d">("7d");
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
-      fetch("/api/connect/accounts").then(r => r.json()).catch(() => ({ accounts: [] })),
-      fetch(`/api/automation/analytics?period=${period}&platform=${platform}`).then(r => r.json()).catch(() => ({})),
-      fetch(`/api/automation/rules?platform=${platform}`).then(r => r.json()).catch(() => ({ rules: [] })),
-    ]).then(([accountsData, analyticsData, rulesData]) => {
-      const accounts = accountsData.accounts || [];
-      setHasConnected(accounts.some((a: any) => a.platform === platform));
-      setStats({
-        totalRules: analyticsData.totalRules || 0,
-        activeRules: analyticsData.activeRules || 0,
-        totalTriggers: analyticsData.totalTriggers || 0,
-        totalSent: analyticsData.totalSent || 0,
-        totalBlocked: analyticsData.totalBlocked || 0,
-        avgConfidence: analyticsData.avgConfidence || 0,
-        topRules: analyticsData.topRules || [],
-        hourlyActivity: analyticsData.hourlyActivity || Array(24).fill(0),
-      });
-      // Filter rules by platform
-      const allRules = rulesData.rules || [];
-      setRules(allRules.filter((r: any) => !r.platform || r.platform === platform).slice(0, 10));
-      setLoading(false);
-    });
+  const { data: accountsData } = useSWR("/api/connect/accounts", fetcher);
+  const { data: analyticsData } = useSWR(`/api/automation/analytics?period=${period}&platform=${platform}`, fetcher);
+  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?platform=${platform}`, fetcher);
+
+  const loading = !accountsData || !analyticsData || !rulesData;
+  const accounts = accountsData?.accounts || [];
+  const hasConnected = accounts.some((a: any) => a.platform === platform);
+
+  const stats: OverviewStats = analyticsData ? {
+    totalRules: analyticsData.totalRules || 0,
+    activeRules: analyticsData.activeRules || 0,
+    totalTriggers: analyticsData.totalTriggers || 0,
+    totalSent: analyticsData.totalSent || 0,
+    totalBlocked: analyticsData.totalBlocked || 0,
+    avgConfidence: analyticsData.avgConfidence || 0,
+    topRules: analyticsData.topRules || [],
+    hourlyActivity: analyticsData.hourlyActivity || Array(24).fill(0),
+  } : {
+    totalRules: 0, activeRules: 0, totalTriggers: 0, totalSent: 0, totalBlocked: 0, avgConfidence: 0, topRules: [], hourlyActivity: Array(24).fill(0)
   };
 
-  useEffect(() => { load(); }, [platform, period]);
+  const allRules = rulesData?.rules || [];
+  const rules = allRules.filter((r: ActiveRule) => !r.platform || r.platform === platform).slice(0, 10);
 
   const toggleRule = async (rule: ActiveRule) => {
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
+    // Optimistic update
+    mutateRules({
+      ...rulesData,
+      rules: allRules.map((r: ActiveRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
+    }, false);
+    
     await fetch("/api/automation/rules", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: rule.id, is_active: !rule.is_active }),
     });
+    mutateRules(); // Revalidate
   };
 
   const getTypeLabel = (type: string) => {

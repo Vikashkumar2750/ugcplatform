@@ -7,6 +7,8 @@ import {
   Link as LinkIcon, ChevronDown, ChevronUp, AlertCircle,
   Clock, Loader2, RefreshCw, Globe, Image as ImageIcon, X, Users
 } from "lucide-react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 
 interface ConnectedAccount {
   id: string;
@@ -421,40 +423,37 @@ export default function DmAutomationPage() {
   const searchParams = useSearchParams();
   const platform = searchParams.get("platform") || "instagram";
   const platformLabel = platform.charAt(0).toUpperCase() + platform.slice(1);
-  const [rules, setRules] = useState<DmRule[]>([]);
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
-  const fetchRules = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [rulesRes, accountsRes] = await Promise.all([
-        fetch(`/api/automation/rules?type=dm&platform=${platform}`),
-        fetch("/api/connect/accounts"),
-      ]);
-      const rulesData = await rulesRes.json();
-      const accountsData = await accountsRes.json();
-      setRules(rulesData.rules || []);
-      setAccounts((accountsData.accounts || []).filter((a: any) => a.platform === platform));
-    } catch { }
-    setLoading(false);
-  }, [platform]);
+  const { data: accountsData } = useSWR("/api/connect/accounts", fetcher);
+  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=dm&platform=${platform}`, fetcher);
 
-  useEffect(() => { fetchRules(); }, [fetchRules]);
+  const loading = !accountsData || !rulesData;
+  const accounts = (accountsData?.accounts || []).filter((a: any) => a.platform === platform);
+  const rules = rulesData?.rules || [];
 
   const handleToggle = async (rule: DmRule) => {
-    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, is_active: !r.is_active } : r));
+    mutateRules({
+      ...rulesData,
+      rules: rules.map((r: DmRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
+    }, false);
+    
     await fetch("/api/automation/rules", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: rule.id, is_active: !rule.is_active }),
     });
+    mutateRules();
   };
 
   const handleDelete = async (id: string) => {
-    setRules(prev => prev.filter(r => r.id !== id));
+    mutateRules({
+      ...rulesData,
+      rules: rules.filter((r: DmRule) => r.id !== id)
+    }, false);
+    
     await fetch(`/api/automation/rules?id=${id}`, { method: "DELETE" });
+    mutateRules();
   };
 
   return (
