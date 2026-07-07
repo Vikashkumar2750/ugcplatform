@@ -282,10 +282,10 @@ const setSessionCache = (key: string, data: any) => {
 
 // ── Main Page ──────────────────────────────────────────────────────
 export default function InstagramInsightsPage() {
-  const [data, setData] = useState<InsightsData | null>(() => getSessionCache("ig_insights_default"));
+  const [data, setData] = useState<InsightsData | null>(null);
   const [tasks, setTasks] = useState<TasksData | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
-  const [loading, setLoading] = useState(() => !getSessionCache("ig_insights_default"));
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notConnected, setNotConnected] = useState(false);
@@ -344,7 +344,8 @@ export default function InstagramInsightsPage() {
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
     } catch { setError("Network error — please retry"); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [data, selectedAccountId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccountId]);
 
   useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
