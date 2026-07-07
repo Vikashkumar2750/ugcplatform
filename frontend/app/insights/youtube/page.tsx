@@ -18,6 +18,7 @@ interface YTVideo {
 
 interface YTInsightsData {
   connected: boolean;
+  accountId?: string;
   channelId: string;
   channelName: string;
   avatar: string | null;

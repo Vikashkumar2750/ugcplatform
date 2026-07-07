@@ -13,7 +13,9 @@ import {
 // ── Types ──────────────────────────────────────────────────────────
 interface ComparisonMetric { current: number; previous: number; pct: number | null; }
 interface InsightsData {
-  connected: boolean; handle: string; name: string; avatar: string | null;
+  connected: boolean;
+  accountId?: string;
+  handle: string; name: string; avatar: string | null;
   followers: number; following: number; mediaCount: number;
   avgReach: number; avgImpressions: number; engagementRate: number;
   profileVisits: number; websiteClicks: number;

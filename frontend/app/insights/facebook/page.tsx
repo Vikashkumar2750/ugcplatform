@@ -11,7 +11,9 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────
 interface FBInsightsData {
-  connected: boolean; pageName: string; fans: number; followers: number;
+  connected: boolean;
+  accountId?: string;
+  pageName: string; fans: number; followers: number;
   category: string; totalReach: number; totalImpressions: number;
   totalViews: number; totalEngaged: number; engagementRate: number;
   postsCount: number;
