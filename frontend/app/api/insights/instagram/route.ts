@@ -13,15 +13,25 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: account } = await supabase
+    const accountId = request.nextUrl.searchParams.get("accountId");
+
+    const { data: accounts } = await supabase
       .from("connected_accounts")
       .select("*")
       .eq("user_id", user.id)
       .eq("platform", "instagram")
       .eq("is_active", true)
-      .single();
+      .order("connected_at", { ascending: false });
 
-    if (!account) return NextResponse.json({ error: "not_connected" }, { status: 404 });
+    if (!accounts || accounts.length === 0) return NextResponse.json({ error: "not_connected" }, { status: 404 });
+
+    const account = accountId ? accounts.find(a => a.id === accountId) || accounts[0] : accounts[0];
+    
+    const availableAccounts = accounts.map(a => ({
+      id: a.id,
+      name: a.platform_name || "Instagram Account",
+      handle: a.platform_username || "",
+    }));
 
     // ── Daily cache check (skip Meta API if already fetched today IST) ──
     const cached = await getDailyCache(supabase, user.id, "instagram", force);
@@ -277,6 +287,7 @@ export async function GET(request: NextRequest) {
       topPosts,
       accountType: account.account_type,
       connectedAt: account.connected_at,
+      availableAccounts,
     };
     await setDailyCache(supabase, user.id, "instagram", responseData);
     return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });

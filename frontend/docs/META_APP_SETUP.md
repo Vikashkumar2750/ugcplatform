@@ -1,4 +1,4 @@
-# Meta App Setup — ContentIQ
+# Meta App Setup — Content Engineer
 ### Dono Apps ki Complete Setup Guide (Copy-Paste Ready)
 
 > **Domain:** `contentengineer.techaasvik.in`  
@@ -14,14 +14,14 @@ Meta mein yeh use cases **mutually exclusive** hain — ek app mein dono nahi ch
 
 | App | Naam | App ID | Kya Karta Hai |
 |---|---|---|---|
-| **App 1** | `ContentIQ - Business` | `1502207694092231` | Instagram API, Page management, Messenger automation |
-| **App 2** | `ContentIQ - Login` | `2169224913932416` | User Facebook/Instagram Login (OAuth) |
+| **App 1** | `Content Engineer - Business` | `1502207694092231` | Instagram API, Page management, Messenger automation |
+| **App 2** | `Content Engineer - Login` | `2169224913932416` | User Facebook/Instagram Login (OAuth) |
 
 ---
 ---
 
 # ═══════════════════════════════════════════
-# APP 1 — `ContentIQ - Business`
+# APP 1 — `Content Engineer - Business`
 # App ID: 1502207694092231
 # ═══════════════════════════════════════════
 
@@ -30,7 +30,7 @@ Meta mein yeh use cases **mutually exclusive** hain — ek app mein dono nahi ch
 **App Dashboard → Settings → Basic**
 
 ```
-App Name:            ContentIQ - Business
+App Name:            Content Engineer - Business
 App ID:              1502207694092231
 App Secret:          0c9a1f963ec483d87cc7070d9f290921
 App Contact Email:   contact@techaasvik.com
@@ -135,7 +135,7 @@ pages_messaging                  ← Add karo (needs App Review)
 
 ```
 Callback URL:   https://contentengineer.techaasvik.in/api/webhooks/meta
-Verify Token:   contentiq_webhook_verify_2025
+Verify Token:   Content Engineer_webhook_verify_2025
 ```
 
 Click **"Verify and Save"** — then subscribe to:
@@ -155,7 +155,7 @@ Subscribe karo:
 
 ```
 Callback URL:   https://contentengineer.techaasvik.in/api/webhooks/meta
-Verify Token:   contentiq_webhook_verify_2025
+Verify Token:   Content Engineer_webhook_verify_2025
 ```
 
 Subscribe karo:
@@ -206,7 +206,7 @@ Yeh permissions request karo aur neeche ka exact text paste karo:
 
 **How will your app use this permission?**
 ```
-ContentIQ is a social media automation platform for Indian content creators.
+Content Engineer is a social media automation platform for Indian content creators.
 We use instagram_manage_messages to:
 1. Read DMs sent to the user's Instagram account
 2. Send automated DM replies when a follower comments with a specific keyword (e.g., user comments "link" on a post → we automatically DM them the link)
@@ -214,7 +214,7 @@ We use instagram_manage_messages to:
 4. All automated messages include an opt-out option: "Reply STOP to unsubscribe"
 5. We strictly follow Meta's 24-hour messaging window policy
 
-The user creates automation rules in our dashboard → ContentIQ sends DMs only based on those rules → no unsolicited messages are ever sent.
+The user creates automation rules in our dashboard → Content Engineer sends DMs only based on those rules → no unsolicited messages are ever sent.
 ```
 
 **Provide step-by-step instructions:**
@@ -223,7 +223,7 @@ The user creates automation rules in our dashboard → ContentIQ sends DMs only 
 2. User connects their Instagram account via OAuth (Instagram Login)
 3. User goes to Automation → DM Automation → New Rule
 4. User types: Rule Name = "Send guide on link comment", Trigger = "comment keyword: link", Action = "DM message: Here's your guide → [link]"
-5. When a follower comments "link" on any post, ContentIQ sends them the guide via DM
+5. When a follower comments "link" on any post, Content Engineer sends them the guide via DM
 6. The DM includes: "Reply STOP to unsubscribe"
 ```
 
@@ -233,7 +233,7 @@ The user creates automation rules in our dashboard → ContentIQ sends DMs only 
 
 **How will your app use this permission?**
 ```
-ContentIQ uses instagram_manage_comments to:
+Content Engineer uses instagram_manage_comments to:
 1. Read comments on the user's Instagram posts in real-time via webhooks
 2. Auto-reply to comments that match keyword triggers (e.g., reply "Thanks! DM sent 🙌" when someone comments "link")
 3. Hide spam comments that contain user-defined spam keywords
@@ -247,7 +247,7 @@ The user controls all comment automation rules. No comment is hidden or replied 
 1. User logs into contentengineer.techaasvik.in and connects Instagram
 2. User goes to Automation → Comment Automation → New Rule
 3. User sets: Trigger keyword = "interested", Reply = "Thanks for your interest! DM sent 🙌"
-4. When a follower comments "I'm interested" on the user's post → ContentIQ auto-replies
+4. When a follower comments "I'm interested" on the user's post → Content Engineer auto-replies
 5. User can see all triggered rules in their Automation History
 ```
 
@@ -257,7 +257,7 @@ The user controls all comment automation rules. No comment is hidden or replied 
 
 **How will your app use this permission?**
 ```
-ContentIQ uses pages_messaging to:
+Content Engineer uses pages_messaging to:
 1. Read messages sent to the user's Facebook Page via Messenger
 2. Send automated replies to Messenger messages based on keyword triggers
 3. Set up welcome messages for new conversations
@@ -271,7 +271,7 @@ This feature helps small business owners and content creators respond to custome
 1. User logs into contentengineer.techaasvik.in and connects their Facebook Page
 2. User goes to Automation → DM Automation → New Rule
 3. User selects Trigger = "Messenger keyword: price" and Action = "Reply: Our pricing starts at ₹999/month. Visit contentengineer.techaasvik.in/pricing"
-4. When a customer messages the Page with "price", ContentIQ auto-replies
+4. When a customer messages the Page with "price", Content Engineer auto-replies
 5. Message ends with: "Reply STOP to opt out of automated messages"
 ```
 
@@ -281,7 +281,7 @@ This feature helps small business owners and content creators respond to custome
 
 **How will your app use this permission?**
 ```
-ContentIQ uses pages_manage_posts to:
+Content Engineer uses pages_manage_posts to:
 1. Schedule and publish posts to the user's Facebook Page at user-defined times
 2. Allow users to plan their content calendar and post automatically
 3. The user creates, edits, and schedules all posts in our dashboard — we never post without explicit user action
@@ -292,7 +292,7 @@ ContentIQ uses pages_manage_posts to:
 1. User logs into contentengineer.techaasvik.in and connects Facebook Page
 2. User goes to Schedule → New Post
 3. User types post content, adds image, sets publish date/time
-4. ContentIQ publishes the post at the scheduled time via Pages API
+4. Content Engineer publishes the post at the scheduled time via Pages API
 5. User can see published posts in their History tab
 ```
 
@@ -315,7 +315,7 @@ Video mein yeh dikhao (1-3 minutes):
 ---
 
 # ═══════════════════════════════════════════
-# APP 2 — `ContentIQ - Login`
+# APP 2 — `Content Engineer - Login`
 # App ID: 2169224913932416
 # ═══════════════════════════════════════════
 
@@ -324,7 +324,7 @@ Video mein yeh dikhao (1-3 minutes):
 **App Dashboard → Settings → Basic**
 
 ```
-App Name:            ContentIQ - Login
+App Name:            Content Engineer - Login
 App ID:              2169224913932416
 App Secret:          95f6342307516e2ee5a4b81e9d04b944
 App Contact Email:   contact@techaasvik.com
@@ -450,12 +450,12 @@ Agar koi aur advanced permissions chahiye to tabhi submit karo.
 ## Vercel Dashboard → Settings → Environment Variables
 
 ```env
-# ── App 1: ContentIQ - Business ──────────────────────────────
+# ── App 1: Content Engineer - Business ──────────────────────────────
 META_APP_ID=1502207694092231
 META_APP_SECRET=0c9a1f963ec483d87cc7070d9f290921
-META_WEBHOOK_VERIFY_TOKEN=contentiq_webhook_verify_2025
+META_WEBHOOK_VERIFY_TOKEN=Content Engineer_webhook_verify_2025
 
-# ── App 2: ContentIQ - Login ──────────────────────────────────
+# ── App 2: Content Engineer - Login ──────────────────────────────────
 META_LOGIN_APP_ID=2169224913932416
 META_LOGIN_APP_SECRET=95f6342307516e2ee5a4b81e9d04b944
 
@@ -517,7 +517,7 @@ NEXT_PUBLIC_APP_URL=https://contentengineer.techaasvik.in
 |---|---|---|
 | `redirect_uri_mismatch` | Redirect URI not in whitelist | App 2 → Facebook Login → Settings → Add exact URL |
 | `#10 Permission denied` | App in Dev mode, user not a tester | App Dashboard → Roles → Add user as Tester |
-| `Invalid verify token` | Webhook token mismatch | Check `META_WEBHOOK_VERIFY_TOKEN` = `contentiq_webhook_verify_2025` |
+| `Invalid verify token` | Webhook token mismatch | Check `META_WEBHOOK_VERIFY_TOKEN` = `Content Engineer_webhook_verify_2025` |
 | `Insufficient permission` | Permission not approved by App Review | Wait for review approval |
 | `Error validating access token` | Token expired | Re-authenticate user |
 | `(#200) Requires business verification` | Business not verified | business.facebook.com → Security Center → Verify |
@@ -529,7 +529,7 @@ NEXT_PUBLIC_APP_URL=https://contentengineer.techaasvik.in
 # PERMISSIONS CHECKLIST
 # ═══════════════════════════════════════════
 
-## App 1 — ContentIQ Business Permissions
+## App 1 — Content Engineer Business Permissions
 
 ```
 Instagram (via use case: Manage messaging & content):
@@ -549,7 +549,7 @@ Messenger (via use case: Engage with customers on Messenger):
   ☑ pages_messaging                  — ⚠️ App Review required (2-4 weeks)
 ```
 
-## App 2 — ContentIQ Login Permissions
+## App 2 — Content Engineer Login Permissions
 
 ```
   ☑ public_profile                   — No review needed (auto-approved)

@@ -17,6 +17,9 @@ interface FBInsightsData {
   postsCount: number;
   topPosts: { id: string; message: string; type: string; likes: number; comments: number; shares: number; created: string }[];
   fanGrowthChart: { date: string; fans: number }[] | null;
+  accountType?: string;
+  connectedAt?: string;
+  availableAccounts?: { id: string; name: string; handle: string }[];
 }
 interface Task {
   id: string; title: string; description: string;
@@ -150,13 +153,19 @@ export default function FacebookInsightsPage() {
   const [notConnected, setNotConnected] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks">("overview");
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async (isRefresh = false) => {
+  const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setError(null);
     try {
+      let url = "/api/insights/facebook";
+      const params = new URLSearchParams();
+      if (accId) params.append("accountId", accId);
+      if (params.toString()) url += "?" + params.toString();
+
       const [insRes, taskRes, histRes] = await Promise.all([
-        fetch("/api/insights/facebook"),
+        fetch(url),
         fetch("/api/insights/tasks?platform=facebook"),
         fetch("/api/insights/tasks/history?platform=facebook"),
       ]);
@@ -171,15 +180,15 @@ export default function FacebookInsightsPage() {
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
   const handleTaskToggle = async (id: string, newStatus: Task["status"]) => {
     await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: newStatus }) });
-    fetchAll(true);
+    fetchAll(true, selectedAccountId);
   };
   const handleAddTask = async (taskData: any) => {
     await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskData) });
-    fetchAll(true);
+    fetchAll(true, selectedAccountId);
   };
 
   if (loading) return (
@@ -206,9 +215,9 @@ export default function FacebookInsightsPage() {
   if (error || !data) return (
     <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[60vh]">
       <div className="text-center space-y-4">
-        <AlertCircle className="w-12 h-12 mx-auto text-blue-500/50" />
-        <p className="text-muted-foreground text-sm">{error}</p>
-        <button onClick={() => fetchAll(true)} className="px-5 py-2.5 rounded-xl bg-blue-500 text-white text-sm font-bold inline-flex items-center gap-2">
+        <h2 className="font-heading text-lg font-bold">Load Failed</h2>
+        <p className="text-muted-foreground text-sm max-w-sm">{error}</p>
+        <button onClick={() => fetchAll(true, selectedAccountId)} className="btn-amber px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center gap-2">
           <RefreshCw className="w-4 h-4" /> Retry
         </button>
       </div>
@@ -243,12 +252,29 @@ export default function FacebookInsightsPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-heading text-xl font-bold">{data.pageName}</h1>
-          <p className="text-muted-foreground text-xs">{data.category} · {data.postsCount} posts analyzed</p>
+          <p className="text-muted-foreground text-xs">{data.category || "Page"} · {data.postsCount} posts</p>
         </div>
-        <button onClick={() => fetchAll(true)} disabled={refreshing}
+
+        {data.availableAccounts && data.availableAccounts.length > 1 && (
+          <div className="ml-4 flex items-center">
+            <select
+              value={selectedAccountId || data.availableAccounts[0].id}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="bg-muted/40 border border-border text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 max-w-[200px] truncate"
+            >
+              {data.availableAccounts.map(acc => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <button onClick={() => fetchAll(true, selectedAccountId)} disabled={refreshing}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60 transition">
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "..." : "Refresh"}
+          {refreshing ? "Fetching..." : "Refresh"}
         </button>
       </div>
 

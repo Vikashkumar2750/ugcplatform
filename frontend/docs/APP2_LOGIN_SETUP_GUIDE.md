@@ -1,5 +1,5 @@
 # Meta App 2 — Setup & App Review Guide
-## App: `ContentIQ - Login` | App ID: `2169224913932416`
+## App: `Content Engineer - Login` | App ID: `2169224913932416`
 ## Kaam: User Facebook/Instagram OAuth Login
 
 > **Yeh app sirf user login ke liye hai — DM/comment automation isme nahi hoga.**
@@ -14,7 +14,7 @@
 **Path:** developers.facebook.com → App 2 → **App settings → Basic**
 
 ```
-App Name:            ContentIQ - Login
+App Name:            Content Engineer - Login
 App ID:              2169224913932416
 App Secret:          95f6342307516e2ee5a4b81e9d04b944
 App Contact Email:   contact@techaasvik.com

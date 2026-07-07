@@ -37,6 +37,7 @@ interface InsightsData {
     reach: number; er: string;
   }[];
   accountType: string; connectedAt: string;
+  availableAccounts?: { id: string; name: string; handle: string }[];
 }
 
 interface Task {
@@ -273,15 +274,21 @@ export default function InstagramInsightsPage() {
   const [notConnected, setNotConnected] = useState(false);
   const [addingTask, setAddingTask] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "tasks" | "audience">("overview");
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async (isRefresh = false) => {
+  const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const url = isRefresh ? "/api/insights/instagram?force=true" : "/api/insights/instagram";
+      let url = "/api/insights/instagram";
+      const params = new URLSearchParams();
+      if (isRefresh) params.append("force", "true");
+      if (accId) params.append("accountId", accId);
+      if (params.toString()) url += "?" + params.toString();
+
       const [insRes, taskRes, histRes] = await Promise.all([
         fetch(url),
         fetch("/api/insights/tasks?platform=instagram"),
@@ -300,16 +307,16 @@ export default function InstagramInsightsPage() {
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
   const handleTaskToggle = async (id: string, newStatus: Task["status"]) => {
     await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: newStatus }) });
-    fetchAll(true);
+    fetchAll(true, selectedAccountId);
   };
 
   const handleAddTask = async (taskData: any) => {
     await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskData) });
-    fetchAll(true);
+    fetchAll(true, selectedAccountId);
   };
 
   if (loading) return (
@@ -341,7 +348,7 @@ export default function InstagramInsightsPage() {
         <AlertCircle className="w-12 h-12 mx-auto text-amber-500/50" />
         <h2 className="font-heading text-lg font-bold">Load Failed</h2>
         <p className="text-muted-foreground text-sm max-w-sm">{error}</p>
-        <button onClick={() => fetchAll(true)} className="btn-amber px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center gap-2">
+        <button onClick={() => fetchAll(true, selectedAccountId)} className="btn-amber px-5 py-2.5 rounded-xl text-sm font-bold inline-flex items-center gap-2">
           <RefreshCw className="w-4 h-4" /> Retry
         </button>
       </div>
@@ -373,8 +380,24 @@ export default function InstagramInsightsPage() {
             <p className="text-muted-foreground text-xs">{data.accountType} · {data.postsAnalyzed} posts analyzed</p>
           </div>
           <ScoreBadge data={data} />
+          
+          {data.availableAccounts && data.availableAccounts.length > 1 && (
+            <div className="ml-4 flex items-center">
+              <select
+                value={selectedAccountId || data.availableAccounts[0].id}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className="bg-muted/40 border border-border text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 max-w-[200px] truncate"
+              >
+                {data.availableAccounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.handle})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
-        <button onClick={() => fetchAll(true)} disabled={refreshing}
+        <button onClick={() => fetchAll(true, selectedAccountId)} disabled={refreshing}
           className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border text-sm hover:bg-muted/60 transition">
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
           {refreshing ? "Fetching..." : "Refresh"}
