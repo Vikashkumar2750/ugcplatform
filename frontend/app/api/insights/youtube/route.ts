@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getDailyCache, setDailyCache } from "@/lib/insights-cache";
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+
 export async function GET(request: NextRequest) {
   const force = request.nextUrl.searchParams.get("force") === "true";
   try {
@@ -36,8 +39,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ...cached.data, _fromCache: true });
     }
 
-    const token = account.access_token;
+    let token = account.access_token;
     if (!token) return NextResponse.json({ error: "No access token" }, { status: 401 });
+
+    // Check if token is expired (or close to expiring in next 5 mins)
+    const expiresAt = new Date(account.token_expires_at).getTime();
+    const isExpired = !account.token_expires_at || expiresAt < Date.now() + 5 * 60 * 1000;
+
+    if (isExpired && account.refresh_token) {
+      console.log("[YT Insights] Token expired, refreshing...");
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          refresh_token: account.refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (tokenData.access_token) {
+        token = tokenData.access_token;
+        const newExpiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+        
+        // Update in database
+        await supabase.from("connected_accounts").update({
+          access_token: token,
+          token_expires_at: newExpiresAt,
+        }).eq("id", account.id);
+        
+        console.log("[YT Insights] Token refreshed successfully");
+      } else {
+        console.error("[YT Insights] Failed to refresh token:", tokenData);
+        // If refresh fails (e.g. revoked), we should still try the old token or just fail
+        if (tokenData.error === "invalid_grant") {
+          return NextResponse.json({ error: "YouTube access revoked or expired. Please reconnect your account." }, { status: 401 });
+        }
+      }
+    }
 
     // Helper for YouTube API calls
     const fetchYT = async (url: string) => {
