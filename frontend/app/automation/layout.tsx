@@ -69,6 +69,7 @@ export default function AutomationLayout({ children }: { children: React.ReactNo
               <Link
                 key={item.href}
                 href={targetHref}
+                prefetch={true}
                 className={`flex items-center gap-1.5 px-3.5 py-3.5 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
                   active
                     ? "border-amber-400 text-amber-600 dark:text-amber-400"
