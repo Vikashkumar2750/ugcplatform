@@ -263,6 +263,9 @@ function ScoreBadge({ data }: { data: InsightsData }) {
   );
 }
 
+// ── Client-Side Memory Cache ───────────────────────────────────────
+const memoryCache: Record<string, { data: InsightsData; fetchedAt: number }> = {};
+
 // ── Main Page ──────────────────────────────────────────────────────
 export default function InstagramInsightsPage() {
   const [data, setData] = useState<InsightsData | null>(null);
@@ -279,14 +282,27 @@ export default function InstagramInsightsPage() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
 
   const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
-    if (isRefresh) setRefreshing(true);
+    const targetAccountId = accId || selectedAccountId;
+    
+    // Check client-side memory cache first if not refreshing
+    if (!isRefresh && targetAccountId && memoryCache[targetAccountId]) {
+      const cached = memoryCache[targetAccountId];
+      // Valid for 5 minutes in memory to feel instantaneous but still fresh enough
+      if (Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
+        setData(cached.data);
+        return;
+      }
+    }
+
+    if (isRefresh || data !== null) setRefreshing(true);
     else setLoading(true);
+    
     setError(null);
     try {
       let url = "/api/insights/instagram";
       const params = new URLSearchParams();
       if (isRefresh) params.append("force", "true");
-      if (accId) params.append("accountId", accId);
+      if (targetAccountId) params.append("accountId", targetAccountId);
       if (params.toString()) url += "?" + params.toString();
 
       const [insRes, taskRes, histRes] = await Promise.all([
@@ -301,11 +317,18 @@ export default function InstagramInsightsPage() {
       setData(insJson);
       setFromCache(insJson._fromCache === true);
       setFetchedAt(insJson._fetchedAt || null);
+      
+      // Save to memory cache
+      if (targetAccountId || insJson.availableAccounts?.[0]?.id) {
+        const id = targetAccountId || insJson.availableAccounts[0].id;
+        memoryCache[id] = { data: insJson, fetchedAt: Date.now() };
+      }
+
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
     } catch { setError("Network error — please retry"); }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [data, selectedAccountId]);
 
   useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 

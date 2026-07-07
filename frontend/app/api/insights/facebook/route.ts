@@ -31,9 +31,9 @@ export async function GET(request: NextRequest) {
     }));
 
     // ── Daily cache (skip Meta API if already fetched today IST) ──
-    const cached = await getDailyCache(supabase, user.id, "facebook", force);
+    const cached = await getDailyCache(supabase, user.id, `facebook_${account.id}`, force);
     if (cached) {
-      console.log("[FB Insights] Serving daily cache");
+      console.log("[FB Insights] Serving daily cache from Supabase");
       return NextResponse.json({ ...cached.data, _fromCache: true });
     }
 
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
       connectedAt: account.connected_at,
       availableAccounts,
     };
-    await setDailyCache(supabase, user.id, "facebook", responseData);
+    await setDailyCache(supabase, user.id, `facebook_${account.id}`, responseData);
     return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });
 
   } catch (err: any) {

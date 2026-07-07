@@ -1,14 +1,10 @@
 /**
  * insights-cache.ts
- * Daily cache for Meta insights data stored in Supabase.
- * Prevents hitting Meta API rate limits by caching responses once per day (IST).
+ * Cache for Meta insights data stored in Supabase.
+ * Prevents hitting Meta API rate limits by caching responses per account for 24 hours.
  */
 
 import { SupabaseClient } from "@supabase/supabase-js";
-
-function getTodayIST(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // YYYY-MM-DD
-}
 
 export async function getDailyCache(
   supabase: SupabaseClient,
@@ -18,16 +14,23 @@ export async function getDailyCache(
 ): Promise<{ data: any } | null> {
   if (force) return null;
 
-  const today = getTodayIST();
   const { data } = await supabase
-    .from("insights_daily_cache")
-    .select("data")
+    .from("insights_cache")
+    .select("data, fetched_at")
     .eq("user_id", userId)
     .eq("platform", platform)
-    .eq("cache_date", today)
     .maybeSingle();
 
-  return data || null;
+  if (data && data.fetched_at) {
+    const fetchTime = new Date(data.fetched_at).getTime();
+    const now = Date.now();
+    // Cache is valid for 24 hours (86400000 ms)
+    if (now - fetchTime < 86400000) {
+      return { data: data.data };
+    }
+  }
+
+  return null;
 }
 
 export async function setDailyCache(
@@ -36,12 +39,10 @@ export async function setDailyCache(
   platform: string,
   responseData: any
 ): Promise<void> {
-  const today = getTodayIST();
-  await supabase.from("insights_daily_cache").upsert({
+  await supabase.from("insights_cache").upsert({
     user_id: userId,
     platform,
-    cache_date: today,
     data: responseData,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "user_id,platform,cache_date" });
+    fetched_at: new Date().toISOString(),
+  }, { onConflict: "user_id,platform" });
 }

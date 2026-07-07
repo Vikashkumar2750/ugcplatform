@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     }));
 
     // ── Daily cache check (skip Meta API if already fetched today IST) ──
-    const cached = await getDailyCache(supabase, user.id, "instagram", force);
+    const cached = await getDailyCache(supabase, user.id, `instagram_${account.id}`, force);
     if (cached) {
       console.log("[IG Insights] Serving daily cache from Supabase");
       return NextResponse.json({ ...cached.data, _fromCache: true });
@@ -289,7 +289,7 @@ export async function GET(request: NextRequest) {
       connectedAt: account.connected_at,
       availableAccounts,
     };
-    await setDailyCache(supabase, user.id, "instagram", responseData);
+    await setDailyCache(supabase, user.id, `instagram_${account.id}`, responseData);
     return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });
 
   } catch (err: any) {

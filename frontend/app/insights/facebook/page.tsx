@@ -142,6 +142,9 @@ function AddTaskModal({ onAdd, onClose }: { onAdd: (t: any) => void; onClose: ()
   );
 }
 
+// ── Client-Side Memory Cache ───────────────────────────────────────
+const fbMemoryCache: Record<string, { data: FBInsightsData; fetchedAt: number }> = {};
+
 // ── Main Page ──────────────────────────────────────────────────────
 export default function FacebookInsightsPage() {
   const [data, setData] = useState<FBInsightsData | null>(null);
@@ -156,12 +159,26 @@ export default function FacebookInsightsPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
-    if (isRefresh) setRefreshing(true); else setLoading(true);
+    const targetAccountId = accId || selectedAccountId;
+
+    // Check client-side memory cache first if not refreshing
+    if (!isRefresh && targetAccountId && fbMemoryCache[targetAccountId]) {
+      const cached = fbMemoryCache[targetAccountId];
+      // Valid for 5 minutes in memory
+      if (Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
+        setData(cached.data);
+        return;
+      }
+    }
+
+    if (isRefresh || data !== null) setRefreshing(true);
+    else setLoading(true);
+
     setError(null);
     try {
       let url = "/api/insights/facebook";
       const params = new URLSearchParams();
-      if (accId) params.append("accountId", accId);
+      if (targetAccountId) params.append("accountId", targetAccountId);
       if (params.toString()) url += "?" + params.toString();
 
       const [insRes, taskRes, histRes] = await Promise.all([
@@ -174,11 +191,18 @@ export default function FacebookInsightsPage() {
       if (insRes.status === 429) { setError(`Rate limited: ${insJson.error}`); return; }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
       setData(insJson);
+
+      // Save to memory cache
+      if (targetAccountId || insJson.availableAccounts?.[0]?.id) {
+        const id = targetAccountId || insJson.availableAccounts[0].id;
+        fbMemoryCache[id] = { data: insJson, fetchedAt: Date.now() };
+      }
+
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
     } catch { setError("Network error"); }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [data, selectedAccountId]);
 
   useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
