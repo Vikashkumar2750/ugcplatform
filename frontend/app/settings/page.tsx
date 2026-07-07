@@ -241,7 +241,7 @@ export default function SettingsPage() {
 
   const TABS = [
     { id: "llm",         label: "AI Models",   icon: Zap },
-    { id: "scraper",     label: "Scraping",    icon: RefreshCw },
+    { id: "scraper",     label: "Data Integration",    icon: RefreshCw },
     { id: "preferences", label: "Preferences", icon: Globe },
     { id: "account",     label: "Account",     icon: User },
   ] as const;
@@ -338,7 +338,7 @@ export default function SettingsPage() {
       {activeTab === "scraper" && (
         <div className="space-y-5">
           <div className="p-5 rounded-2xl border border-border bg-card space-y-5">
-            <h2 className="font-heading font-semibold">Scraping API Keys</h2>
+            <h2 className="font-heading font-semibold">Data Integration APIs</h2>
             <p className="text-xs text-muted-foreground">Competitor analysis ke liye. Platform ke default keys already set hain — apni keys add karo to override karein.</p>
             {SCRAPER_PROVIDERS.map(p => (
               <div key={p.id}>
@@ -364,7 +364,7 @@ export default function SettingsPage() {
 
           <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
             <div>
-              <h2 className="font-heading font-semibold">Scraping Priority Order</h2>
+              <h2 className="font-heading font-semibold">API Priority Order</h2>
               <p className="text-xs text-muted-foreground mt-1">Apify credits khatam hone par auto RapidAPI par switch hoga.</p>
             </div>
             <div className="space-y-2">

@@ -22,7 +22,7 @@
     },
     "step2": {
       "title": "API keys add karo",
-      "desc": "Anthropic + Apify — free tier se bhi kaam chalta hai"
+      "desc": "Anthropic + Web API — free tier se bhi kaam chalta hai"
     },
     "step3": {
       "title": "Analyze karo",
@@ -217,9 +217,10 @@
   "error": {
     "apikey": "API key galat hai. Settings mein check karo.",
     "private": "Yeh profile private hai. Public profile ka URL daalo.",
-    "apify_fail": "Profile scrape nahi hua. Dobara try karo.",
+    "apify_fail": "Profile data analyze nahi hua. Dobara try karo.",
     "rate_limit": "Thoda ruko — API limit aa gayi. 1 minute mein retry hoga.",
     "network": "Internet check karo aur dobara try karo.",
-    "apify_key": "Apify key galat hai. Settings mein check karo."
+    "analysis_error": "Analyze karne mein error aayi. Dobara koshish karein.",
+    "apify_key": "Data Integration key galat hai. Settings mein check karo."
   }
 }

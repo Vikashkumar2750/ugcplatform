@@ -21,8 +21,8 @@
       "desc": "Instagram, YouTube, or Facebook — any platform"
     },
     "step2": {
-      "title": "Add your API keys",
-      "desc": "Anthropic + Apify — free tier works fine"
+      "title": "Add API keys",
+      "desc": "Anthropic + Web API — free tier works fine"
     },
     "step3": {
       "title": "Run analysis",
@@ -217,9 +217,10 @@
   "error": {
     "apikey": "Invalid API key. Check in Settings.",
     "private": "This profile is private. Enter a public profile URL.",
-    "apify_fail": "Profile scrape failed. Please try again.",
+    "apify_fail": "Profile data analysis failed. Please try again.",
+    "analysis_error": "An error occurred while analyzing. Please try again.",
     "rate_limit": "API rate limit hit. Auto-retrying in 1 minute.",
     "network": "Check your internet connection and try again.",
-    "apify_key": "Invalid Apify key. Check in Settings."
+    "apify_key": "Invalid Data Integration key. Check in Settings."
   }
 }

@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import { PublicHeader, PublicFooter } from "@/components/public-layout";
 
 export const metadata: Metadata = {
@@ -59,7 +59,7 @@ export default function TermsPage() {
                 <li>Send spam, unsolicited messages, or misleading content</li>
                 <li>Violate Meta&apos;s, Google&apos;s, or any platform&apos;s Terms of Service</li>
                 <li>Automate actions on accounts you do not own</li>
-                <li>Scrape data beyond what official APIs provide</li>
+                <li>Extract data beyond what official APIs provide</li>
                 <li>Harass, deceive, or harm other users</li>
               </ul>
             </section>
