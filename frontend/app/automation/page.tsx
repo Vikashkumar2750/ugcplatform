@@ -124,7 +124,7 @@ export default function AutomationPage() {
               </button>
             ))}
           </div>
-          <button onClick={load} className="p-2 rounded-xl border border-border hover:bg-muted/60 transition">
+          <button onClick={() => mutateRules()} className="p-2 rounded-xl border border-border hover:bg-muted/60 transition">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
@@ -309,7 +309,7 @@ export default function AutomationPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {rules.map(rule => {
+                  {rules.map((rule: ActiveRule) => {
                     const RuleIcon = getTypeIcon(rule.type);
                     return (
                       <div key={rule.id} className={`flex items-center gap-3 p-3 rounded-xl border transition ${

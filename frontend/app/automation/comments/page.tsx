@@ -771,9 +771,9 @@ export default function CommentsAutomationPage() {
         <div className="space-y-3">
           <div className="flex gap-4 text-xs text-muted-foreground">
             <span>Total: <span className="text-foreground font-medium">{rules.length}</span></span>
-            <span>Active: <span className="text-green-400 font-medium">{rules.filter(r => r.is_active).length}</span></span>
+            <span>Active: <span className="text-green-400 font-medium">{rules.filter((r: CommentRule) => r.is_active).length}</span></span>
           </div>
-          {rules.map(rule => (
+          {rules.map((rule: CommentRule) => (
             <RuleCard key={rule.id} rule={rule}
               onToggle={() => handleToggle(rule)}
               onDelete={() => handleDelete(rule.id)} />
@@ -781,7 +781,7 @@ export default function CommentsAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} platform={platform} accounts={accounts} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={accounts} />}
     </div>
   );
 }

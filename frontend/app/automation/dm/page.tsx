@@ -469,7 +469,7 @@ export default function DmAutomationPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchRules} disabled={loading} className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground transition disabled:opacity-50">
+          <button onClick={() => mutateRules()} disabled={loading} className="p-2 rounded-xl border border-border text-muted-foreground hover:text-foreground transition disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button onClick={() => setShowModal(true)} className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2">
@@ -501,7 +501,7 @@ export default function DmAutomationPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {rules.map(rule => (
+          {rules.map((rule: DmRule) => (
             <RuleCard key={rule.id} rule={rule}
               onToggle={() => handleToggle(rule)}
               onDelete={() => handleDelete(rule.id)} />
@@ -509,7 +509,7 @@ export default function DmAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={fetchRules} platform={platform} accounts={accounts} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={accounts} />}
     </div>
   );
 }

@@ -765,7 +765,7 @@ export default function FlowsPage() {
 
   const filteredRules = categoryFilter === "all"
     ? rules
-    : rules.filter(r => {
+    : rules.filter((r: FlowRule) => {
         const info = ALL_TRIGGER_TYPES.find(t => t.value === r.type);
         return info?.category === categoryFilter;
       });
@@ -787,7 +787,7 @@ export default function FlowsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchRules} disabled={loading}
+          <button onClick={() => mutateRules()} disabled={loading}
             className="p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground transition">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
@@ -818,7 +818,7 @@ export default function FlowsPage() {
       <div className="flex items-center gap-1 flex-wrap">
         {CATEGORIES.map(c => {
           const count = activeTab === "automations"
-            ? (c.value === "all" ? rules.length : rules.filter(r => ALL_TRIGGER_TYPES.find(t => t.value === r.type)?.category === c.value).length)
+            ? (c.value === "all" ? rules.length : rules.filter((r: FlowRule) => ALL_TRIGGER_TYPES.find(t => t.value === r.type)?.category === c.value).length)
             : (c.value === "all" ? TEMPLATES.length : TEMPLATES.filter(t => t.category === c.value).length);
           return (
             <button key={c.value} onClick={() => setCategoryFilter(c.value)}
@@ -868,7 +868,7 @@ export default function FlowsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredRules.map(rule => (
+          {filteredRules.map((rule: FlowRule) => (
             <FlowCard key={rule.id} rule={rule}
               onToggle={() => handleToggle(rule)}
               onDelete={() => handleDelete(rule.id)}
@@ -882,7 +882,7 @@ export default function FlowsPage() {
       {showBuilder && (
         <FlowBuilderModal
           onClose={() => { setShowBuilder(false); setSelectedTemplate(null); }}
-          onSaved={fetchRules}
+          onSaved={() => mutateRules()}
           template={selectedTemplate}
         />
       )}
