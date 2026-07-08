@@ -262,6 +262,50 @@ export async function GET(request: NextRequest) {
       timestamp: p.timestamp,
     }));
 
+    // Fetch AI recommendations from backend
+    let aiData = null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
+        const aiRes = await fetch(`${BACKEND_URL}/api/insights/generate-ai`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            platform: "instagram",
+            handle: `@${profile.username || account.platform_username}`,
+            name: profile.name || account.platform_name,
+            statsData: {
+              followers,
+              mediaCount: profile.media_count || 0,
+              engagementRate: er30d,
+              avgLikes: avgLikes30d,
+              avgComments: avgComments30d,
+              avgSaves,
+              avgReach,
+              profileVisits: profileViews,
+              websiteClicks,
+              postsAnalyzed: posts.length,
+              posts30dCount: posts30d.length,
+              posts7dCount: posts7d.length,
+              comparison7d,
+              topPosts: topPosts.slice(0, 5)
+            }
+          })
+        });
+        if (aiRes.ok) {
+          const aiJson = await aiRes.json();
+          aiData = aiJson.aiData;
+        }
+      }
+    } catch (aiErr: any) {
+      console.error("[Next.js Instagram API] AI Generation failed:", aiErr.message);
+    }
+
     const responseData = {
       connected: true,
       accountId: account.id,
@@ -289,6 +333,7 @@ export async function GET(request: NextRequest) {
       accountType: account.account_type,
       connectedAt: account.connected_at,
       availableAccounts,
+      aiData,
     };
     await setDailyCache(supabase, user.id, `instagram_${account.id}`, responseData);
     return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });

@@ -132,18 +132,89 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const subscribers = parseInt(stats.subscriberCount || "0", 10);
+    const totalViewsCount = parseInt(stats.viewCount || "0", 10);
+    const videoCountVal = parseInt(stats.videoCount || "0", 10);
+
+    const avgLikes = recentVideos.length ? Math.round(recentVideos.reduce((s: number, v: any) => s + v.likes, 0) / recentVideos.length) : 0;
+    const avgComments = recentVideos.length ? Math.round(recentVideos.reduce((s: number, v: any) => s + v.comments, 0) / recentVideos.length) : 0;
+    const avgViews = recentVideos.length ? Math.round(recentVideos.reduce((s: number, v: any) => s + v.views, 0) / recentVideos.length) : 0;
+
+    const formattedTopPosts = recentVideos.slice(0, 5).map((v: any, idx: number) => ({
+      id: idx + 1,
+      postId: v.id,
+      type: "Video",
+      er: subscribers > 0 ? (((v.likes + v.comments) / subscribers) * 100).toFixed(1) : "0.0",
+      likes: v.likes,
+      comments: v.comments,
+      saves: 0,
+      reach: v.views,
+      caption: v.title
+    }));
+
+    // Fetch AI recommendations from backend
+    let aiData = null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
+        const aiRes = await fetch(`${BACKEND_URL}/api/insights/generate-ai`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            platform: "youtube",
+            handle: channel.snippet.title,
+            name: channel.snippet.title,
+            statsData: {
+              followers: subscribers,
+              mediaCount: videoCountVal,
+              engagementRate: subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0,
+              avgLikes,
+              avgComments,
+              avgReach: avgViews,
+              profileVisits: 0,
+              websiteClicks: 0,
+              postsAnalyzed: recentVideos.length,
+              posts30dCount: recentVideos.length, // approximation
+              posts7dCount: recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 7 * 86400 * 1000).length,
+              comparison7d: {
+                reach: { current: avgViews, previous: 0, pct: null },
+                impressions: { current: totalViewsCount, previous: 0, pct: null },
+                likes: { current: avgLikes, previous: 0, pct: null },
+                comments: { current: avgComments, previous: 0, pct: null },
+                posts: { current: recentVideos.length, previous: 0, pct: null },
+                er: { current: subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0, previous: 0, pct: null }
+              },
+              topPosts: formattedTopPosts
+            }
+          })
+        });
+        if (aiRes.ok) {
+          const aiJson = await aiRes.json();
+          aiData = aiJson.aiData;
+        }
+      }
+    } catch (aiErr: any) {
+      console.error("[Next.js YouTube API] AI Generation failed:", aiErr.message);
+    }
+
     const responseData = {
       connected: true,
       accountId: account.id,
       channelId: channel.id,
       channelName: channel.snippet.title,
       avatar: channel.snippet.thumbnails?.high?.url || channel.snippet.thumbnails?.default?.url,
-      subscribers: parseInt(stats.subscriberCount || "0", 10),
-      totalViews: parseInt(stats.viewCount || "0", 10),
-      videoCount: parseInt(stats.videoCount || "0", 10),
+      subscribers,
+      totalViews: totalViewsCount,
+      videoCount: videoCountVal,
       recentVideos,
       connectedAt: account.connected_at,
       availableAccounts,
+      aiData,
     };
 
     await setDailyCache(supabase, user.id, `youtube_${account.id}`, responseData);
