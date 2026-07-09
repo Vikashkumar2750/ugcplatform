@@ -220,7 +220,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   // Find connected account for this page/IG account
   const { data: account } = await supabase
     .from("connected_accounts")
-    .select("id, user_id, access_token, platform_user_id")
+    .select("id, user_id, access_token, platform_user_id, platform_username")
     .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
     .eq("is_active", true)
     .single();
@@ -315,7 +315,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         recipientId: senderId,
         messagePayload: {
           text: dmText,
-          link: rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined),
+          link: rule.action_config?.require_follow ? (account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined) : (rule.action_config?.link || undefined),
         },
         messageType: "dm",
         automationRuleId: rule.id,
@@ -325,6 +325,69 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         last_triggered: new Date().toISOString(),
       }).eq("id", rule.id);
       return; // Don't also trigger keyword rules on first message
+    }
+  }
+
+  // ── 1.5. Follow requirement check ("DONE") ──────────────────────
+  if (messageText.includes("done")) {
+    const { data: recentLog } = await supabase
+      .from("dm_trigger_log")
+      .select("automation_id, id")
+      .eq("sender_id", senderId)
+      .eq("page_id", pageId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentLog) {
+      const { data: rule } = await supabase
+        .from("automation_rules")
+        .select("*")
+        .eq("id", recentLog.automation_id)
+        .single();
+
+      if (rule && rule.action_config?.require_follow) {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
+        if (dmText && !dmText.includes("STOP")) dmText += "\n\n[Reply STOP to opt-out]";
+
+        try {
+          // Send Main DM
+          await enqueueViaBackend({
+            accountId: rule.account_id || account.id,
+            userId: rule.user_id,
+            recipientId: senderId,
+            messagePayload: { text: dmText, link: rule.action_config?.link || undefined },
+            messageType: "dm",
+            automationRuleId: rule.id,
+          });
+
+          // Schedule Follow-up DM if enabled
+          if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+            const followMsgs = rule.action_config?.follow_up_messages || [];
+            const randomFollow = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+            let followupText = parseSpintax(randomFollow || "Did you check it out?");
+            if (followupText && !followupText.includes("STOP")) followupText += "\n\n[Reply STOP to opt-out]";
+            
+            const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+            await enqueueViaBackend({
+              accountId: rule.account_id || account.id,
+              userId: rule.user_id,
+              recipientId: senderId,
+              messagePayload: { text: followupText },
+              messageType: "dm",
+              automationRuleId: rule.id,
+              scheduledSendAt: scheduledAt,
+            });
+          }
+
+          // Stop processing keywords since we handled a "DONE" flow
+          return;
+        } catch (e: any) {
+          console.error(`[Webhook] DONE handling failed: ${e.message}`);
+        }
+      }
     }
   }
 
@@ -367,7 +430,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         recipientId: senderId,
         messagePayload: {
           text: dmText,
-          link: rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined),
+          link: rule.action_config?.require_follow ? (account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined) : (rule.action_config?.link || undefined),
         },
         messageType: "dm",
         automationRuleId: rule.id,
@@ -408,7 +471,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   // This is the MASTER token lookup — used as fallback for any rule without account_id
   const { data: pageAccount } = await supabase
     .from("connected_accounts")
-    .select("id, user_id, access_token, platform_user_id, page_id")
+    .select("id, user_id, access_token, platform_user_id, page_id, platform_username")
     .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
     .eq("is_active", true)
     .maybeSingle();
@@ -621,7 +684,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         dmText += "\n\n[Reply STOP to opt-out]";
       }
       
-      const dmLink = rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined);
+      const dmLink = rule.action_config?.require_follow ? (pageAccount?.platform_username ? `https://instagram.com/${pageAccount.platform_username}` : undefined) : (rule.action_config?.link || undefined);
 
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
