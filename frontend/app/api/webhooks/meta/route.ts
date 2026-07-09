@@ -331,11 +331,10 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   // ── 1.5. Follow requirement check ("DONE") ──────────────────────
   if (messageText.includes("done")) {
     const { data: recentLog } = await supabase
-      .from("dm_trigger_log")
-      .select("automation_id, id")
-      .eq("sender_id", senderId)
-      .eq("page_id", pageId)
-      .order("created_at", { ascending: false })
+      .from("processed_comments")
+      .select("rule_id, id")
+      .eq("commentor_id", senderId)
+      .order("processed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -343,7 +342,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       const { data: rule } = await supabase
         .from("automation_rules")
         .select("*")
-        .eq("id", recentLog.automation_id)
+        .eq("id", recentLog.rule_id)
         .single();
 
       if (rule && rule.action_config?.require_follow) {
@@ -711,17 +710,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       // This mimics: person sees comment → writes reply → then sends DM
       const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs();
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
-
-      // Log to dm_trigger_log so the "DONE" keyword flow can find which rule this was for
-      const { error: logError } = await supabase.from("dm_trigger_log").insert({
-        automation_id: rule.id,
-        comment_id: commentId,
-        sender_id: commentorId,
-        page_id: pageId,
-        triggered_at: new Date().toISOString(),
-        status: "queued",
-      });
-      if (logError) console.warn(`[Webhook] Failed to insert dm_trigger_log:`, logError.message);
 
       const enqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
