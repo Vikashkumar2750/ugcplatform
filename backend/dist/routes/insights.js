@@ -252,8 +252,12 @@ router.post("/generate-ai", async (req, res) => {
         return res.status(400).json({ error: "platform and statsData are required" });
     }
     try {
-        const sysPrompt = `You are an expert AI social media growth engineer, Product Manager, and UX Designer.
-Analyze the user's social media performance data and output a detailed, actionable analysis in raw JSON format.
+        const sysPrompt = `You are a world-class social media strategist and data analyst.
+Analyze the following ${platform} insights data for a creator. 
+Crucially, pay attention to the TYPE of content (e.g. Video/Reel vs Carousel vs Static Image on Instagram, or Shorts vs Long-form on YouTube).
+Tailor your hook and body analysis strictly to the specific format of each top-performing post.
+
+Account Information:.
 You must strictly follow the JSON schema provided. Do not return any markdown code fences, backticks, or text before/after the JSON.
 Do not use placeholder text like "[Your Name]" or "[CTA]". Use actual concrete examples matching their niche or standard templates.
 All text must be engaging, brief, and highly practical. Make the suggested actions extremely tactical and ready to copy.`;
@@ -285,8 +289,8 @@ Format the response strictly as a single JSON object with these keys:
   "topPostsAnalysis": [
     { 
       "postId": "string", 
-      "hookAnalysis": "Specific breakdown of why the hook worked or failed, including a better example hook",
-      "bodyAnalysis": "Specific breakdown of why the body retained attention or failed",
+      "hookAnalysis": "Specific breakdown of why the hook worked or failed (considering if it's a Reel, Carousel, Short, or Image)",
+      "bodyAnalysis": "Specific breakdown of why the body retained attention or failed, keeping the content format in mind",
       "ctaAnalysis": "Specific breakdown of the Call-To-Action used, and a better alternative CTA example"
     }
   ],

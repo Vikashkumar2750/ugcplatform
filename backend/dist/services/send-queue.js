@@ -102,16 +102,25 @@ async function enqueueMessage(input) {
 }
 // ─── Process message queue (called by cron every 5 seconds) ──────────────────
 async function processMessageQueue() {
-    // Fetch ready messages, oldest first, limited batch
-    const { data: messages, error } = await supabase_1.supabase
+    // First, fetch messages that are explicitly "ready" (no rate limit delay)
+    const { data: readyMessages, error: readyError } = await supabase_1.supabase
         .from("message_queue")
         .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
-        .in("status", ["ready", "queued"])
+        .eq("status", "ready")
+        .order("priority", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(10);
+    // Then fetch "queued" messages that have reached their scheduled time
+    const { data: queuedMessages, error: queuedError } = await supabase_1.supabase
+        .from("message_queue")
+        .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
+        .eq("status", "queued")
         .lte("scheduled_send_at", new Date().toISOString())
         .order("priority", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(10);
-    if (error || !messages?.length)
+    const messages = [...(readyMessages || []), ...(queuedMessages || [])].slice(0, 10);
+    if (!messages.length)
         return 0;
     let sentCount = 0;
     for (const msg of messages) {

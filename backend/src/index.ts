@@ -886,6 +886,10 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
         }).eq("id", rule.id);
       }
 
+      // Successfully processed a rule for this comment.
+      // Stop evaluating other rules to prevent multiple DMs for the same comment.
+      break;
+
     } catch (err: any) {
       console.error(`[DM] Enqueue failed:`, err.message);
       await supabase.from("dm_trigger_log").update({
@@ -1041,6 +1045,10 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
         trigger_count: (rule.trigger_count || 0) + 1,
         last_triggered: new Date().toISOString(),
       }).eq("id", rule.id);
+
+      // Successfully processed a rule for this comment.
+      // Stop evaluating other rules to prevent multiple DMs for the same comment.
+      break;
 
     } catch (err: any) {
       console.error(`[DM Keyword] Failed: ${err.message}`);
