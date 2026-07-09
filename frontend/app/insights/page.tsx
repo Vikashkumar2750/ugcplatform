@@ -312,6 +312,11 @@ export default function InstagramInsightsPage() {
         setSessionCache("ig_insights_default", insJson);
       }
 
+      const [taskRes, histRes] = await Promise.all([
+        fetch("/api/insights/tasks?platform=instagram"),
+        fetch("/api/insights/tasks/history?platform=instagram"),
+      ]);
+
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
     } catch { setError("Network error — please retry"); }
