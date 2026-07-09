@@ -615,6 +615,22 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
+    // ── Check Follower Status ────────────────────────────────────────────
+    let isFollowing = false;
+    if (shouldDM && rule.action_config?.require_follow && commentorId && token) {
+      try {
+        const url = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.is_user_follow_business === true) {
+           isFollowing = true;
+           console.log(`[Webhook] User ${commentorId} is already following! Bypassing follow prompt.`);
+        }
+      } catch (err: any) {
+        console.warn(`[Webhook] Follower check failed:`, err.message);
+      }
+    }
+
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     const replyTexts = rule.action_config?.reply_texts || [];
     const randomReply = replyTexts.length > 0 ? replyTexts[Math.floor(Math.random() * replyTexts.length)] : undefined;
@@ -669,22 +685,27 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // Only ONE private reply is allowed per comment (Meta enforced).
     if (shouldDM && commentorId && commentId) {
       let dmText = "";
-      if (rule.action_config?.require_follow) {
+      let dmLink = undefined;
+
+      // If require_follow is true BUT they are already following, act like it's a standard rule
+      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
+
+      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        dmLink = pageAccount?.platform_username ? `https://instagram.com/${pageAccount.platform_username}` : undefined;
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+        dmLink = rule.action_config?.link || undefined;
       }
       
       // Append Opt-Out for compliance if it's the actual DM
       if (dmText && !dmText.includes("STOP")) {
         dmText += "\n\n[Reply STOP to opt-out]";
       }
-      
-      const dmLink = rule.action_config?.require_follow ? (pageAccount?.platform_username ? `https://instagram.com/${pageAccount.platform_username}` : undefined) : (rule.action_config?.link || undefined);
 
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
