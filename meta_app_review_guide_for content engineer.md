@@ -21,7 +21,8 @@ Here's what to show per permission:
 | `pages_manage_metadata` | OAuth → Page connected → Webhook subscription working |
 | `pages_messaging` | OAuth → Page connected → Messenger automation → Auto-reply sent |
 | `business_management` | OAuth → Business accounts listed → User connects business page/IG |
-| `instagram_business_basic` | OAuth → Profile data shown on Insights dashboard |
+| `instagram_basic` | OAuth → Profile data shown on Insights dashboard |
+| `instagram_business_basic` | Same as above (Required by Meta for DM automation) |
 | `public_profile` | No screencast needed — just agree to comply |
 
 > [!TIP]
@@ -145,10 +146,10 @@ Here's what to show per permission:
 
 ---
 
-### 8. `instagram_business_basic` (Required dependency)
+### 8. `instagram_basic` & `instagram_business_basic` (Required dependencies)
 
-**Description:**
-> Content Engineer uses `instagram_business_basic` to access the connected Instagram Business/Creator account's profile information and media:
+**Description (Use the same description for both if asked):**
+> Content Engineer uses this permission to access the connected Instagram Business/Creator account's profile information and media:
 >
 > 1. **Profile Data**: Username, follower count, following count, media count, profile picture — displayed on our Insights dashboard.
 >
@@ -296,8 +297,8 @@ Meta reviewers need to see a **real, working demonstration** of how your app use
 
 | Permission | Status | Action Required |
 |---|---|---|
-| `instagram_business_manage_insights` | ⚠️ 0 of 1 API calls required | **Make at least 1 test call** — visit your Insights page |
-| `instagram_business_content_publish` | ⚠️ 0 of 1 API calls required | **Make at least 1 test call** — schedule a test post |
+| `instagram_manage_insights` | ⚠️ 0 of 1 API calls required | **Make at least 1 test call** — visit your Insights page |
+| `instagram_content_publish` | ⚠️ 0 of 1 API calls required | **Make at least 1 test call** — schedule a test post |
 | `instagram_business_manage_messages` | ✅ 84 API test calls | Done |
 | `instagram_business_manage_comments` | ✅ Completed | Done |
 | `instagram_business_basic` | ⚠️ 92 API test calls | Verify it shows "Completed" |
@@ -310,10 +311,9 @@ Meta reviewers need to see a **real, working demonstration** of how your app use
 | `instagram_basic` | ✅ Completed | Done |
 | `business_management` | ✅ Completed | Done |
 | `instagram_manage_comments` | ✅ Completed | Done |
-| `instagram_manage_insights` | ✅ Completed | Done |
 
 > [!WARNING]
-> You need to **complete the required API test calls** for `instagram_business_manage_insights` and `instagram_business_content_publish` before submitting. Visit your Insights page and schedule a test post to trigger these calls.
+> You need to **complete the required API test calls** for `instagram_manage_insights` and `instagram_content_publish` before submitting. Visit your Insights page and schedule a test post to trigger these calls.
 
 ### Required Dependencies
 - ✅ `instagram_business_basic` is included (required by `instagram_business_manage_messages`)
@@ -348,7 +348,7 @@ Meta reviewers need to see a **real, working demonstration** of how your app use
 - **Landing page** (marketing, not functional)
 
 ### ⚠️ Show If Relevant
-- **Post Scheduling** (if you're requesting `instagram_content_publish` / `instagram_business_content_publish`)
+- **Post Scheduling** (if you're requesting `instagram_content_publish`)
 - **Facebook Insights** (if you're requesting Facebook-specific insights permissions)
 
 ---
