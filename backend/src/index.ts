@@ -746,7 +746,7 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
     .from("automation_rules")
     .select("*")
     .eq("account_id", account.id)
-    .in("type", ["comment_to_dm"])
+    .in("type", ["comment_to_dm", "comment_automation", "comment_reply"])
     .eq("is_active", true);
 
   if (!rules?.length) return;
@@ -903,28 +903,6 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
   const pageId: string = payload.recipient?.id || payload.recipient_id;
 
   if (!messageText || !senderId || !pageId) return;
-  if (!messageText.includes("done")) return; // Only process 'DONE' replies
-
-  // Find if this user was recently prompted to follow
-  const { data: recentLog } = await supabase
-    .from("dm_trigger_log")
-    .select("automation_id, id")
-    .eq("sender_id", senderId)
-    .eq("page_id", pageId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!recentLog) return;
-
-  // Get the associated rule to verify require_follow is true
-  const { data: rule } = await supabase
-    .from("automation_rules")
-    .select("*")
-    .eq("id", recentLog.automation_id)
-    .single();
-
-  if (!rule || !rule.action_config?.require_follow) return;
 
   const pickRandom = (arr: string[] | string | undefined) => {
     if (Array.isArray(arr) && arr.length > 0) return arr[Math.floor(Math.random() * arr.length)];
@@ -932,46 +910,141 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
     return "";
   };
 
-  let dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Here is your link!";
-  if (dmText && !dmText.includes("STOP")) {
-    dmText += "\n\n[Reply STOP to opt-out]";
+  // 1. Check for 2-step follower workaround ("DONE" reply)
+  if (messageText.includes("done")) {
+    const { data: recentLog } = await supabase
+      .from("dm_trigger_log")
+      .select("automation_id, id")
+      .eq("sender_id", senderId)
+      .eq("page_id", pageId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentLog) {
+      const { data: rule } = await supabase
+        .from("automation_rules")
+        .select("*")
+        .eq("id", recentLog.automation_id)
+        .single();
+
+      if (rule && rule.action_config?.require_follow) {
+        let dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Here is your link!";
+        if (dmText && !dmText.includes("STOP")) dmText += "\n\n[Reply STOP to opt-out]";
+
+        try {
+          // Send Main DM
+          await enqueueMessage({
+            accountId: rule.account_id,
+            userId: rule.user_id,
+            recipientId: senderId,
+            messagePayload: { text: dmText, link: rule.action_config?.link || undefined },
+            messageType: "dm",
+            automationRuleId: rule.id,
+          });
+
+          // Schedule Follow-up DM if enabled
+          if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+            let followupText = pickRandom(rule.action_config?.follow_up_messages) || "Did you check it out?";
+            if (followupText && !followupText.includes("STOP")) followupText += "\n\n[Reply STOP to opt-out]";
+            
+            const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+            await enqueueMessage({
+              accountId: rule.account_id,
+              userId: rule.user_id,
+              recipientId: senderId,
+              messagePayload: { text: followupText },
+              messageType: "dm",
+              automationRuleId: rule.id,
+              scheduledSendAt: scheduledAt,
+            });
+          }
+        } catch (err: any) {
+          console.error(`[DM Follower Workaround] Failed: ${err.message}`);
+        }
+        return; // Workaround successfully executed, skip standard DM rules
+      }
+    }
   }
 
-  try {
-    // Send Main DM
-    await enqueueMessage({
-      accountId: rule.account_id,
-      userId: rule.user_id,
-      recipientId: senderId, // This is a standard DM using the sender's IGID
-      messagePayload: {
-        text: dmText,
-        link: rule.action_config?.link || undefined,
-      },
-      messageType: "dm",
-      automationRuleId: rule.id,
-    });
+  // 2. Standard DM Keyword Automation
+  const { data: account } = await supabase
+    .from("connected_accounts")
+    .select("id, user_id")
+    .eq("platform_user_id", pageId)
+    .eq("is_active", true)
+    .maybeSingle();
 
-    // Schedule Follow-up DM if enabled
-    if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
-      let followupText = pickRandom(rule.action_config?.follow_up_messages) || "Did you check it out?";
-      if (followupText && !followupText.includes("STOP")) {
-        followupText += "\n\n[Reply STOP to opt-out]";
-      }
-      
-      const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
-      await enqueueMessage({
-        accountId: rule.account_id,
-        userId: rule.user_id,
-        recipientId: senderId,
-        messagePayload: { text: followupText },
-        messageType: "dm",
-        automationRuleId: rule.id,
-        scheduledSendAt: scheduledAt,
-      });
+  if (!account) return;
+
+  const { data: rules } = await supabase
+    .from("automation_rules")
+    .select("*")
+    .eq("account_id", account.id)
+    .in("type", ["dm_keyword", "story_reply"])
+    .eq("is_active", true);
+
+  if (!rules?.length) return;
+
+  for (const rule of rules) {
+    const keywords: string[] = (rule.trigger_config?.keywords || []).map((k: string) => k.toLowerCase());
+    const matchType: string = rule.trigger_config?.match_type || "any";
+    const matched = keywords.length === 0
+      || (matchType === "all"
+        ? keywords.every(kw => keywordMatch(messageText, kw))
+        : keywords.some(kw => keywordMatch(messageText, kw)));
+    if (!matched) continue;
+
+    // Standard DEDUP check (prevent spamming if user spams keyword)
+    const { data: existing } = await supabase
+      .from("dm_trigger_log")
+      .select("id")
+      .eq("automation_id", rule.id)
+      .eq("sender_id", senderId)
+      .gt("created_at", new Date(Date.now() - 3600 * 1000).toISOString()) // Only trigger once per hour per user
+      .limit(1)
+      .maybeSingle();
+
+    if (existing) {
+      console.log(`[DM Keyword] Skipping duplicate trigger within 1h: rule=${rule.id} sender=${senderId}`);
+      continue;
     }
 
-  } catch (err: any) {
-    console.error(`[DM Follower Workaround] Failed: ${err.message}`);
+    const { error: logError } = await supabase.from("dm_trigger_log").insert({
+      automation_id: rule.id,
+      comment_id: `dm_${event.id}`,
+      sender_id: senderId,
+      page_id: pageId,
+      triggered_at: new Date().toISOString(),
+      status: "queued",
+    });
+
+    if (logError) continue;
+
+    let dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Thanks for your message!";
+    if (dmText && !dmText.includes("STOP")) dmText += "\n\n[Reply STOP to opt-out]";
+
+    try {
+      await enqueueMessage({
+        accountId: account.id,
+        userId: account.user_id,
+        recipientId: senderId,
+        messagePayload: {
+          text: dmText,
+          link: rule.action_config?.link || undefined,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+      });
+
+      await supabase.from("automation_rules").update({
+        trigger_count: (rule.trigger_count || 0) + 1,
+        last_triggered: new Date().toISOString(),
+      }).eq("id", rule.id);
+
+    } catch (err: any) {
+      console.error(`[DM Keyword] Failed: ${err.message}`);
+    }
   }
 }
 
