@@ -282,6 +282,13 @@ export default function InstagramInsightsPage() {
       if (res.ok) {
         const json = await res.json();
         setAiData(json.aiData);
+        
+        // Update session cache with AI data
+        const idToCache = insJson.accountId || insJson.availableAccounts?.[0]?.id;
+        if (idToCache) {
+          setSessionCache(`ig_insights_v2_${idToCache}`, { ...insJson, aiData: json.aiData });
+          setSessionCache("ig_insights_v2_default", { ...insJson, aiData: json.aiData });
+        }
       }
     } catch (err) {
       console.error("AI fetch err", err);
@@ -295,16 +302,21 @@ export default function InstagramInsightsPage() {
     
     // Check client-side sessionStorage cache first if not refreshing
     if (!isRefresh) {
-      const cacheKey = targetAccountId ? `ig_insights_${targetAccountId}` : "ig_insights_default";
+      const cacheKey = targetAccountId ? `ig_insights_v2_${targetAccountId}` : "ig_insights_v2_default";
       const cached = getSessionCache(cacheKey);
       if (cached && cached.accountId) {
         setData(cached);
+        if (!cached.aiData) {
+          fetchAiData(cached);
+        } else {
+          setAiData(cached.aiData);
+        }
         if (loading) setLoading(false);
         return; // Skip network request entirely if we have a valid 24h cache!
       }
     }
 
-    if (isRefresh || data !== null) setRefreshing(true);
+    if (isRefresh) setRefreshing(true);
     else setLoading(true);
     
     setError(null);
@@ -318,8 +330,8 @@ export default function InstagramInsightsPage() {
       const insRes = await fetch(url);
       const insJson = await insRes.json();
       if (insRes.status === 404 && insJson.error === "not_connected") { 
-        sessionStorage.removeItem("ig_insights_default");
-        if (targetAccountId) sessionStorage.removeItem(`ig_insights_${targetAccountId}`);
+        sessionStorage.removeItem("ig_insights_v2_default");
+        if (targetAccountId) sessionStorage.removeItem(`ig_insights_v2_${targetAccountId}`);
         setNotConnected(true); 
         return; 
       }
@@ -332,8 +344,8 @@ export default function InstagramInsightsPage() {
       // Save to sessionStorage
       const idToCache = targetAccountId || insJson.availableAccounts?.[0]?.id;
       if (idToCache) {
-        setSessionCache(`ig_insights_${idToCache}`, insJson);
-        setSessionCache("ig_insights_default", insJson);
+        setSessionCache(`ig_insights_v2_${idToCache}`, insJson);
+        setSessionCache("ig_insights_v2_default", insJson);
       }
 
       const [taskRes, histRes] = await Promise.all([
@@ -352,7 +364,7 @@ export default function InstagramInsightsPage() {
       }
     } catch { setError("Network error — please retry"); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selectedAccountId, loading, data, fetchAiData]);
+  }, [selectedAccountId, fetchAiData]);
 
   useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
