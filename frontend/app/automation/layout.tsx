@@ -39,7 +39,7 @@ export default function AutomationLayout({ children }: { children: React.ReactNo
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       <DashboardSidebar currentPath={pathname} />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Platform Selector */}

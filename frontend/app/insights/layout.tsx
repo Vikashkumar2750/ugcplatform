@@ -14,7 +14,7 @@ const PLATFORM_TABS = [
 export default function InsightsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen bg-background overflow-hidden">
       <DashboardSidebar currentPath={pathname} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b border-border bg-card px-6 flex items-center gap-1">

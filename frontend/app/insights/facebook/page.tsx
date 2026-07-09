@@ -104,7 +104,7 @@ function ScoreCard({ label, score, desc, icon: Icon }: { label: string; score: n
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className={`p-4 rounded-2xl border bg-card flex items-center gap-3.5 hover:shadow-sm transition-all border-border/60`}>
+    <div className={`p-4 rounded-2xl border bg-card flex flex-col items-center justify-center text-center gap-3 hover:shadow-sm transition-all border-border/60`}>
       <div className="relative flex-shrink-0 w-14 h-14 flex items-center justify-center">
         <svg className="w-full h-full transform -rotate-90">
           <circle cx="28" cy="28" r={radius} stroke="rgba(255,255,255,0.05)" strokeWidth="4" fill="transparent" />
@@ -113,12 +113,12 @@ function ScoreCard({ label, score, desc, icon: Icon }: { label: string; score: n
         </svg>
         <span className="absolute text-sm font-bold tracking-tight text-foreground">{score}</span>
       </div>
-      <div className="min-w-0">
-        <div className="flex items-center gap-1">
+      <div className="w-full min-w-0">
+        <div className="flex items-center justify-center gap-1.5 mb-1">
           <Icon className="w-3.5 h-3.5 text-muted-foreground/60" />
-          <p className="text-xs font-semibold text-foreground uppercase tracking-wider">{label}</p>
+          <p className="text-[11px] font-bold text-foreground uppercase tracking-wider truncate">{label}</p>
         </div>
-        <p className="text-[11px] text-muted-foreground truncate mt-0.5" title={desc}>{desc}</p>
+        <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2" title={desc}>{desc}</p>
       </div>
     </div>
   );
@@ -256,11 +256,7 @@ export default function FacebookInsightsPage() {
       if (targetAccountId) params.append("accountId", targetAccountId);
       if (params.toString()) url += "?" + params.toString();
 
-      const [insRes, taskRes, histRes] = await Promise.all([
-        fetch(url),
-        fetch("/api/insights/tasks?platform=facebook"),
-        fetch("/api/insights/tasks/history?platform=facebook"),
-      ]);
+      const insRes = await fetch(url);
       const insJson = await insRes.json();
       
       if (insRes.status === 404 && insJson.error === "not_connected") { 
@@ -270,6 +266,7 @@ export default function FacebookInsightsPage() {
         return; 
       }
       if (!insRes.ok) { setError(insJson.error || "Failed to load"); return; }
+      
       setData(insJson);
       setFromCache(insJson._fromCache === true);
       setFetchedAt(insJson._fetchedAt || null);
@@ -280,6 +277,11 @@ export default function FacebookInsightsPage() {
         setSessionCache(`fb_insights_${idToCache}`, insJson);
         setSessionCache("fb_insights_default", insJson);
       }
+
+      const [taskRes, histRes] = await Promise.all([
+        fetch("/api/insights/tasks?platform=facebook"),
+        fetch("/api/insights/tasks/history?platform=facebook"),
+      ]);
 
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
