@@ -690,6 +690,8 @@ async function processUnhandledWebhookEvents(): Promise<void> {
       // Handle comment events for DM automation
       if (event.event_type === "instagram_comment" || event.event_type === "facebook_comment") {
         await handleCommentDMTrigger(event);
+      } else if (event.event_type === "instagram_message" || event.event_type === "facebook_message") {
+        await handleMessageDMTrigger(event);
       }
 
       await supabase.from("webhook_events").update({
@@ -790,24 +792,62 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
     try {
       // ── ENQUEUE via compliance pipeline (replaces direct Meta API call) ──
       const actions = rule.action_config?.actions_enabled || { dm: true, reply: false };
-      const messageText = rule.action_config?.message || "Namaste! 🙏";
-      const replyText = rule.action_config?.reply_text || "Check your DM!";
+      
+      const pickRandom = (arr: string[] | string | undefined) => {
+        if (Array.isArray(arr) && arr.length > 0) return arr[Math.floor(Math.random() * arr.length)];
+        if (typeof arr === "string" && arr) return arr;
+        return "";
+      };
+
+      let dmText = "";
+      if (actions.dm) {
+        if (rule.action_config?.require_follow) {
+          dmText = pickRandom(rule.action_config?.follow_prompt_messages) || "Please follow me and reply 'DONE' to get the link!";
+        } else {
+          dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Namaste! 🙏";
+        }
+        
+        // Append Opt-Out for compliance if it's the actual DM
+        if (dmText && !dmText.includes("STOP")) {
+          dmText += "\n\n[Reply STOP to opt-out]";
+        }
+      }
+
+      const replyText = pickRandom(rule.action_config?.reply_texts) || rule.action_config?.reply_text || "Check your DM!";
       
       let dmResult = null;
       let replyResult = null;
       
-      if (actions.dm) {
+      if (actions.dm && dmText) {
         dmResult = await enqueueMessage({
           accountId: account.id,
           userId: account.user_id,
           recipientId: commentId,          // comment_id — NOT sender IG ID
           messagePayload: {
-            text: messageText,
-            link: rule.action_config?.link || undefined,
+            text: dmText,
+            link: rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined),
           },
           messageType: "private_reply",    // Uses recipient: { comment_id } — works without App Review
           automationRuleId: rule.id,
         });
+
+        // Schedule Follow-up DM if enabled and no follow-requirement
+        if (!rule.action_config?.require_follow && rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+          let followupText = pickRandom(rule.action_config?.follow_up_messages) || "Did you check it out?";
+          if (followupText && !followupText.includes("STOP")) {
+            followupText += "\n\n[Reply STOP to opt-out]";
+          }
+          const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+          await enqueueMessage({
+            accountId: account.id,
+            userId: account.user_id,
+            recipientId: senderId, // Note: Follow up needs to go to senderId, but standard 24h window must be open!
+            messagePayload: { text: followupText },
+            messageType: "dm",
+            automationRuleId: rule.id,
+            scheduledSendAt: scheduledAt,
+          });
+        }
       }
       
       if (actions.reply) {
@@ -853,6 +893,85 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
         error: err.message.substring(0, 500),
       }).eq("automation_id", rule.id).eq("comment_id", commentId);
     }
+  }
+}
+
+async function handleMessageDMTrigger(event: any): Promise<void> {
+  const payload = event.event_data || {};
+  const messageText: string = (payload.text || payload.message || "").toLowerCase();
+  const senderId: string = payload.sender?.id || payload.sender_id;
+  const pageId: string = payload.recipient?.id || payload.recipient_id;
+
+  if (!messageText || !senderId || !pageId) return;
+  if (!messageText.includes("done")) return; // Only process 'DONE' replies
+
+  // Find if this user was recently prompted to follow
+  const { data: recentLog } = await supabase
+    .from("dm_trigger_log")
+    .select("automation_id, id")
+    .eq("sender_id", senderId)
+    .eq("page_id", pageId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!recentLog) return;
+
+  // Get the associated rule to verify require_follow is true
+  const { data: rule } = await supabase
+    .from("automation_rules")
+    .select("*")
+    .eq("id", recentLog.automation_id)
+    .single();
+
+  if (!rule || !rule.action_config?.require_follow) return;
+
+  const pickRandom = (arr: string[] | string | undefined) => {
+    if (Array.isArray(arr) && arr.length > 0) return arr[Math.floor(Math.random() * arr.length)];
+    if (typeof arr === "string" && arr) return arr;
+    return "";
+  };
+
+  let dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Here is your link!";
+  if (dmText && !dmText.includes("STOP")) {
+    dmText += "\n\n[Reply STOP to opt-out]";
+  }
+
+  try {
+    // Send Main DM
+    await enqueueMessage({
+      accountId: rule.account_id,
+      userId: rule.user_id,
+      recipientId: senderId, // This is a standard DM using the sender's IGID
+      messagePayload: {
+        text: dmText,
+        link: rule.action_config?.link || undefined,
+      },
+      messageType: "dm",
+      automationRuleId: rule.id,
+    });
+
+    // Schedule Follow-up DM if enabled
+    if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+      let followupText = pickRandom(rule.action_config?.follow_up_messages) || "Did you check it out?";
+      if (followupText && !followupText.includes("STOP")) {
+        followupText += "\n\n[Reply STOP to opt-out]";
+      }
+      
+      const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+      await enqueueMessage({
+        accountId: rule.account_id,
+        userId: rule.user_id,
+        recipientId: senderId,
+        messagePayload: { text: followupText },
+        messageType: "dm",
+        automationRuleId: rule.id,
+        scheduledSendAt: scheduledAt,
+      });
+    }
+
+  } catch (err: any) {
+    console.error(`[DM Follower Workaround] Failed: ${err.message}`);
   }
 }
 

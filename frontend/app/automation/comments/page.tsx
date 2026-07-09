@@ -141,9 +141,16 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   const [enableHide, setEnableHide] = useState(false);
 
   // Action content
-  const [replyText, setReplyText] = useState("");
-  const [dmMessage, setDmMessage] = useState("");
+  const [replyTexts, setReplyTexts] = useState<string[]>([""]);
+  const [dmMessages, setDmMessages] = useState<string[]>([""]);
   const [dmLink, setDmLink] = useState("");
+
+  // Advanced Flow
+  const [requireFollow, setRequireFollow] = useState(false);
+  const [followPromptMessages, setFollowPromptMessages] = useState<string[]>([""]);
+  const [followUpEnabled, setFollowUpEnabled] = useState(false);
+  const [followUpDelay, setFollowUpDelay] = useState<number>(30);
+  const [followUpMessages, setFollowUpMessages] = useState<string[]>([""]);
 
   // Scope
   const [scope, setScope] = useState<"global" | "specific">("global");
@@ -165,8 +172,9 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   const handleSave = async () => {
     if (!name) { setError("Rule name is required"); return; }
     if (!enableReply && !enableDM && !enableHide) { setError("Enable at least one action"); return; }
-    if (enableReply && !replyText.trim()) { setError("Reply text is required"); return; }
-    if (enableDM && !dmMessage.trim()) { setError("DM message is required"); return; }
+    if (enableReply && !replyTexts.some(t => t.trim())) { setError("At least one reply text is required"); return; }
+    if (enableDM && !dmMessages.some(t => t.trim())) { setError("At least one DM message is required"); return; }
+    if (enableDM && requireFollow && !followPromptMessages.some(t => t.trim())) { setError("Follow prompt message is required"); return; }
     if (scope === "specific" && !selectedPost) { setError("Please select a post"); return; }
 
     // Auto-add any pending keyword before saving
@@ -194,9 +202,14 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             account_id: accId || null,
             keywords: finalKeywords,
             matchType,
-            replyText: enableReply ? replyText : "",
-            dmMessage: enableDM ? dmMessage : "",
+            replyTexts: enableReply ? replyTexts.filter(t => t.trim()) : [],
+            dmMessages: enableDM ? dmMessages.filter(t => t.trim()) : [],
             dmLink: enableDM ? dmLink : "",
+            requireFollow: enableDM ? requireFollow : false,
+            followPromptMessages: (enableDM && requireFollow) ? followPromptMessages.filter(t => t.trim()) : [],
+            followUpEnabled: enableDM ? followUpEnabled : false,
+            followUpDelay: (enableDM && followUpEnabled) ? followUpDelay : 0,
+            followUpMessages: (enableDM && followUpEnabled) ? followUpMessages.filter(t => t.trim()) : [],
             hide: enableHide,
             actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
             mediaId: scope === "specific" ? selectedPost?.id : null,
@@ -251,7 +264,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             {step === 1 && (
               <>
                 {/* Account selector */}
-                {accounts.length > 1 && (
+                {accounts.length > 0 && (
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to account</label>
                     <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
@@ -369,32 +382,143 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                 {enableReply && (
                   <div className="space-y-1.5 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
                     <label className="text-sm font-medium flex items-center gap-2">
-                      <MessageCircle className="w-3.5 h-3.5 text-blue-500" /> Public reply text
+                      <MessageCircle className="w-3.5 h-3.5 text-blue-500" /> Public reply text (Spintax)
                     </label>
-                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={3}
-                      placeholder="Thanks for commenting! Check your DM 📩🙌"
-                      className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                    <p className="text-[10px] text-muted-foreground">This reply will appear publicly under their comment</p>
+                    {replyTexts.map((val, idx) => (
+                      <div key={idx} className="flex gap-2 mb-2">
+                        <textarea value={val} onChange={e => { const n = [...replyTexts]; n[idx] = e.target.value; setReplyTexts(n); }} rows={2}
+                          placeholder="Thanks for commenting! Check your DM 📩🙌"
+                          className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                        {replyTexts.length > 1 && (
+                          <button onClick={() => setReplyTexts(replyTexts.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    ))}
+                    {replyTexts.length < 5 && (
+                      <button onClick={() => setReplyTexts([...replyTexts, ""])} className="text-xs text-blue-500 hover:text-blue-600 font-medium flex items-center gap-1 mt-1">
+                        <Plus className="w-3 h-3" /> Add random variation
+                      </button>
+                    )}
+                    <p className="text-[10px] text-muted-foreground mt-1">These will be picked randomly to prevent spam filters.</p>
                   </div>
                 )}
 
                 {/* DM message */}
                 {enableDM && (
-                  <div className="space-y-2 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
+                  <div className="space-y-3 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
+                    
+                    {/* 1. Require Follow Flow */}
+                    <div className="flex items-center justify-between p-3 bg-background rounded-xl border border-border">
+                      <div>
+                        <p className="text-sm font-medium">Require Follower</p>
+                        <p className="text-[10px] text-muted-foreground">Only send link if they follow you</p>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {requireFollow ? (
+                          <button onClick={() => setRequireFollow(false)} className="text-violet-500"><ToggleRight className="w-7 h-7" /></button>
+                        ) : (
+                          <button onClick={() => setRequireFollow(true)} className="text-muted-foreground"><ToggleLeft className="w-7 h-7" /></button>
+                        )}
+                      </div>
+                    </div>
+                    {requireFollow && (
+                      <div className="space-y-1.5 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                        <label className="text-sm font-medium text-amber-600 dark:text-amber-400">Step 1: Follow Prompt</label>
+                        <p className="text-[10px] text-muted-foreground mb-2">Since we can't check follows instantly, we ask them to reply 'DONE' once followed.</p>
+                        {followPromptMessages.map((val, idx) => (
+                          <div key={idx} className="flex gap-2 mb-2">
+                            <textarea value={val} onChange={e => { const n = [...followPromptMessages]; n[idx] = e.target.value; setFollowPromptMessages(n); }} rows={2}
+                              placeholder="Hey! 🎁 Please follow me and reply 'DONE' to receive the link!"
+                              className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                            {followPromptMessages.length > 1 && (
+                              <button onClick={() => setFollowPromptMessages(followPromptMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        ))}
+                        {followPromptMessages.length < 5 && (
+                          <button onClick={() => setFollowPromptMessages([...followPromptMessages, ""])} className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
+                            <Plus className="w-3 h-3" /> Add variation
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-violet-500/10" />
+
+                    {/* 2. Main DM Message */}
                     <label className="text-sm font-medium flex items-center gap-2">
-                      <Send className="w-3.5 h-3.5 text-violet-500" /> DM message to send
+                      <Send className="w-3.5 h-3.5 text-violet-500" /> {requireFollow ? "Step 2: Main DM Message (After 'DONE')" : "Main DM message to send"}
                     </label>
-                    <textarea value={dmMessage} onChange={e => setDmMessage(e.target.value)} rows={4}
-                      placeholder="Namaste! 🙏 Tumne comment kiya tha — yeh raha tumhara guide 👇"
-                      className="w-full px-4 py-3 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                    <div className="space-y-1.5">
+                    {dmMessages.map((val, idx) => (
+                      <div key={idx} className="flex gap-2 mb-2">
+                        <textarea value={val} onChange={e => { const n = [...dmMessages]; n[idx] = e.target.value; setDmMessages(n); }} rows={3}
+                          placeholder="Here is the link you requested 👇"
+                          className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                        {dmMessages.length > 1 && (
+                          <button onClick={() => setDmMessages(dmMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                        )}
+                      </div>
+                    ))}
+                    {dmMessages.length < 5 && (
+                      <button onClick={() => setDmMessages([...dmMessages, ""])} className="text-xs text-violet-500 hover:text-violet-600 font-medium flex items-center gap-1">
+                        <Plus className="w-3 h-3" /> Add random variation
+                      </button>
+                    )}
+
+                    <div className="space-y-1.5 mt-2">
                       <label className="text-xs font-medium flex items-center gap-1.5">
                         <LinkIcon className="w-3 h-3" /> Link (optional)
                       </label>
                       <input value={dmLink} onChange={e => setDmLink(e.target.value)} placeholder="https://your-link.com"
                         className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
                     </div>
-                    <p className="text-[10px] text-muted-foreground">💡 Include opt-out: &ldquo;Reply STOP to unsubscribe&rdquo;</p>
+                    
+                    <div className="pt-2 border-t border-violet-500/10" />
+
+                    {/* 3. Follow-up DM */}
+                    <div className="flex items-center justify-between p-3 bg-background rounded-xl border border-border mt-2">
+                      <div>
+                        <p className="text-sm font-medium">Follow-up DM</p>
+                        <p className="text-[10px] text-muted-foreground">Send a follow-up if they engage</p>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {followUpEnabled ? (
+                          <button onClick={() => setFollowUpEnabled(false)} className="text-violet-500"><ToggleRight className="w-7 h-7" /></button>
+                        ) : (
+                          <button onClick={() => setFollowUpEnabled(true)} className="text-muted-foreground"><ToggleLeft className="w-7 h-7" /></button>
+                        )}
+                      </div>
+                    </div>
+                    {followUpEnabled && (
+                      <div className="space-y-2 p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium">Wait before sending:</label>
+                          <select value={followUpDelay} onChange={e => setFollowUpDelay(Number(e.target.value))} className="px-2 py-1 rounded bg-background border text-xs">
+                            <option value={15}>15 minutes</option>
+                            <option value={30}>30 minutes</option>
+                            <option value={60}>1 hour</option>
+                            <option value={1440}>24 hours</option>
+                          </select>
+                        </div>
+                        {followUpMessages.map((val, idx) => (
+                          <div key={idx} className="flex gap-2 mb-2">
+                            <textarea value={val} onChange={e => { const n = [...followUpMessages]; n[idx] = e.target.value; setFollowUpMessages(n); }} rows={2}
+                              placeholder="Did you check it out? Let me know!"
+                              className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                            {followUpMessages.length > 1 && (
+                              <button onClick={() => setFollowUpMessages(followUpMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        ))}
+                        {followUpMessages.length < 5 && (
+                          <button onClick={() => setFollowUpMessages([...followUpMessages, ""])} className="text-xs text-blue-500 hover:text-blue-600 font-medium flex items-center gap-1">
+                            <Plus className="w-3 h-3" /> Add variation
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <p className="text-[10px] text-muted-foreground mt-2">💡 Note: A mandatory opt-out ("Reply STOP to unsubscribe") is automatically added to all DMs.</p>
                   </div>
                 )}
 

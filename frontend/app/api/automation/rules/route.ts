@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, platform = "instagram", keywords, replyText, dmMessage, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide, account_id } = body;
+  const { name, type, platform = "instagram", keywords, replyTexts, dmMessages, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide, account_id, requireFollow, followPromptMessages, followUpEnabled, followUpDelay, followUpMessages } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
@@ -88,12 +88,17 @@ export async function POST(req: NextRequest) {
   };
 
   const action_config: any = {
-    message: dmMessage || "",
-    reply_text: replyText || "",
+    messages: dmMessages || [],
+    reply_texts: replyTexts || [],
     link: dmLink || "",
     delay_seconds: delay || 0,
     hide: hide || false,
     actions_enabled: actionsEnabled || null,
+    require_follow: requireFollow || false,
+    follow_prompt_messages: followPromptMessages || [],
+    follow_up_enabled: followUpEnabled || false,
+    follow_up_delay: followUpDelay || 0,
+    follow_up_messages: followUpMessages || []
   };
 
   const { data, error } = await supabase
