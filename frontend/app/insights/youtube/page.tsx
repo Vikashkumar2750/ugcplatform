@@ -209,8 +209,8 @@ export default function YouTubeInsightsPage() {
         // Update session cache with AI data
         const idToCache = insJson.accountId || insJson.availableAccounts?.[0]?.id;
         if (idToCache) {
-          setSessionCache(`yt_insights_v2_${idToCache}`, { ...insJson, aiData: json.aiData });
-          setSessionCache("yt_insights_v2_default", { ...insJson, aiData: json.aiData });
+          setSessionCache(`yt_insights_v3_${idToCache}`, { ...insJson, aiData: json.aiData });
+          setSessionCache("yt_insights_v3_default", { ...insJson, aiData: json.aiData });
         }
       }
     } catch (err) {
@@ -225,7 +225,7 @@ export default function YouTubeInsightsPage() {
 
     // Check client-side sessionStorage cache first if not refreshing
     if (!isRefresh) {
-      const cacheKey = targetAccountId ? `yt_insights_v2_${targetAccountId}` : "yt_insights_v2_default";
+      const cacheKey = targetAccountId ? `yt_insights_v3_${targetAccountId}` : "yt_insights_v3_default";
       const cached = getSessionCache(cacheKey);
       if (cached && cached.accountId) {
         setData(cached);
@@ -254,8 +254,8 @@ export default function YouTubeInsightsPage() {
       const insJson = await insRes.json();
       
       if (insRes.status === 404 && insJson.error === "not_connected") { 
-        sessionStorage.removeItem("yt_insights_v2_default");
-        if (targetAccountId) sessionStorage.removeItem(`yt_insights_v2_${targetAccountId}`);
+        sessionStorage.removeItem("yt_insights_v3_default");
+        if (targetAccountId) sessionStorage.removeItem(`yt_insights_v3_${targetAccountId}`);
         setNotConnected(true); 
         return; 
       }

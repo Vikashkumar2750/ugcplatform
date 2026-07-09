@@ -263,25 +263,28 @@ export async function GET(request: NextRequest) {
     }));
 
     // ── 8. Calculate Deterministic Scores ────────────────────────
-    let consistencyScore = 40;
+    let consistencyScore = 0;
     if (posts30d.length >= 15) consistencyScore = 100;
     else if (posts30d.length >= 8) consistencyScore = 80;
     else if (posts30d.length >= 4) consistencyScore = 60;
+    else if (posts30d.length >= 1) consistencyScore = 20;
 
-    let engagementScore = 40;
+    let engagementScore = 0;
     if (er30d >= 5) engagementScore = 100;
     else if (er30d >= 3) engagementScore = 80;
     else if (er30d >= 1.5) engagementScore = 60;
+    else if (er30d > 0) engagementScore = 20;
 
-    let growthScore = 50;
+    let growthScore = 0;
     const reachPct = comparison7d.reach.pct || 0;
-    if (reachPct >= 20) growthScore = 100;
+    if (reach7d === 0 && reachPrev7d === 0) growthScore = 0;
+    else if (reachPct >= 20) growthScore = 100;
     else if (reachPct >= 5) growthScore = 80;
-    else if (reachPct >= -5) growthScore = 60;
-    else if (reachPct >= -20) growthScore = 40;
-    else growthScore = 20;
+    else if (reachPct >= -5) growthScore = 50;
+    else if (reachPct >= -20) growthScore = 30;
+    else growthScore = 10;
 
-    let contentScore = 50;
+    let contentScore = 0;
     if (topPosts.length > 0) {
       const topEr = parseFloat(topPosts[0].er);
       if (topEr >= 8) contentScore = 100;

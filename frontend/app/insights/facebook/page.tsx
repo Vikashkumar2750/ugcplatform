@@ -250,8 +250,8 @@ export default function FacebookInsightsPage() {
         // Update session cache with AI data
         const idToCache = insJson.accountId || insJson.availableAccounts?.[0]?.id;
         if (idToCache) {
-          setSessionCache(`fb_insights_v2_${idToCache}`, { ...insJson, aiData: json.aiData });
-          setSessionCache("fb_insights_v2_default", { ...insJson, aiData: json.aiData });
+          setSessionCache(`fb_insights_v3_${idToCache}`, { ...insJson, aiData: json.aiData });
+          setSessionCache("fb_insights_v3_default", { ...insJson, aiData: json.aiData });
         }
       }
     } catch (err) {
@@ -266,7 +266,7 @@ export default function FacebookInsightsPage() {
 
     // Check client-side sessionStorage cache first if not refreshing
     if (!isRefresh) {
-      const cacheKey = targetAccountId ? `fb_insights_v2_${targetAccountId}` : "fb_insights_v2_default";
+      const cacheKey = targetAccountId ? `fb_insights_v3_${targetAccountId}` : "fb_insights_v3_default";
       const cached = getSessionCache(cacheKey);
       if (cached && cached.accountId) {
         setData(cached);
@@ -295,8 +295,8 @@ export default function FacebookInsightsPage() {
       const insJson = await insRes.json();
       
       if (insRes.status === 404 && insJson.error === "not_connected") { 
-        sessionStorage.removeItem("fb_insights_v2_default");
-        if (targetAccountId) sessionStorage.removeItem(`fb_insights_v2_${targetAccountId}`);
+        sessionStorage.removeItem("fb_insights_v3_default");
+        if (targetAccountId) sessionStorage.removeItem(`fb_insights_v3_${targetAccountId}`);
         setNotConnected(true); 
         return; 
       }

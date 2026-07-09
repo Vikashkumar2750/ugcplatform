@@ -154,25 +154,28 @@ export async function GET(request: NextRequest) {
 
     // ── 8. Calculate Deterministic Scores ────────────────────────
     const posts7dCount = recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 7 * 86400 * 1000).length;
-    let consistencyScore = 40;
+    let consistencyScore = 0;
     if (recentVideos.length >= 8) consistencyScore = 100;
     else if (recentVideos.length >= 4) consistencyScore = 80;
     else if (recentVideos.length >= 2) consistencyScore = 60;
+    else if (recentVideos.length >= 1) consistencyScore = 20;
 
-    let engagementScore = 40;
-    const er = subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0;
+    let engagementScore = 0;
+    const er = subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(1)) : 0;
     if (er >= 5) engagementScore = 100;
     else if (er >= 3) engagementScore = 80;
     else if (er >= 1.5) engagementScore = 60;
+    else if (er > 0) engagementScore = 20;
 
-    let growthScore = 50; // hard to determine without historical API for youtube in this simple implementation, let's base it on recent video count
-    if (posts7dCount >= 3) growthScore = 100;
-    else if (posts7dCount >= 1) growthScore = 80;
-    else growthScore = 60;
+    let growthScore = 0;
+    if (avgViews >= 1000) growthScore = 100;
+    else if (avgViews >= 500) growthScore = 80;
+    else if (avgViews >= 100) growthScore = 60;
+    else if (avgViews > 0) growthScore = 20;
 
-    let contentScore = 50;
-    if (formattedTopPosts.length > 0 && typeof formattedTopPosts[0] === 'object' && 'er' in formattedTopPosts[0]) {
-      const topEr = parseFloat((formattedTopPosts[0] as any).er || "0");
+    let contentScore = 0;
+    if (formattedTopPosts.length > 0) {
+      const topEr = parseFloat(formattedTopPosts[0].er);
       if (topEr >= 8) contentScore = 100;
       else if (topEr >= 5) contentScore = 80;
       else if (topEr >= 3) contentScore = 60;

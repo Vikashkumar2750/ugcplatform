@@ -286,8 +286,8 @@ export default function InstagramInsightsPage() {
         // Update session cache with AI data
         const idToCache = insJson.accountId || insJson.availableAccounts?.[0]?.id;
         if (idToCache) {
-          setSessionCache(`ig_insights_v2_${idToCache}`, { ...insJson, aiData: json.aiData });
-          setSessionCache("ig_insights_v2_default", { ...insJson, aiData: json.aiData });
+          setSessionCache(`ig_insights_v3_${idToCache}`, { ...insJson, aiData: json.aiData });
+          setSessionCache("ig_insights_v3_default", { ...insJson, aiData: json.aiData });
         }
       }
     } catch (err) {
@@ -302,7 +302,7 @@ export default function InstagramInsightsPage() {
     
     // Check client-side sessionStorage cache first if not refreshing
     if (!isRefresh) {
-      const cacheKey = targetAccountId ? `ig_insights_v2_${targetAccountId}` : "ig_insights_v2_default";
+      const cacheKey = targetAccountId ? `ig_insights_v3_${targetAccountId}` : "ig_insights_v3_default";
       const cached = getSessionCache(cacheKey);
       if (cached && cached.accountId) {
         setData(cached);
@@ -330,8 +330,8 @@ export default function InstagramInsightsPage() {
       const insRes = await fetch(url);
       const insJson = await insRes.json();
       if (insRes.status === 404 && insJson.error === "not_connected") { 
-        sessionStorage.removeItem("ig_insights_v2_default");
-        if (targetAccountId) sessionStorage.removeItem(`ig_insights_v2_${targetAccountId}`);
+        sessionStorage.removeItem("ig_insights_v3_default");
+        if (targetAccountId) sessionStorage.removeItem(`ig_insights_v3_${targetAccountId}`);
         setNotConnected(true); 
         return; 
       }
@@ -344,8 +344,8 @@ export default function InstagramInsightsPage() {
       // Save to sessionStorage
       const idToCache = targetAccountId || insJson.availableAccounts?.[0]?.id;
       if (idToCache) {
-        setSessionCache(`ig_insights_v2_${idToCache}`, insJson);
-        setSessionCache("ig_insights_v2_default", insJson);
+        setSessionCache(`ig_insights_v3_${idToCache}`, insJson);
+        setSessionCache("ig_insights_v3_default", insJson);
       }
 
       const [taskRes, histRes] = await Promise.all([
