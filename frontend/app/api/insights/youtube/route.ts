@@ -154,11 +154,12 @@ export async function GET(request: NextRequest) {
 
     // ── 8. Calculate Deterministic Scores ────────────────────────
     const posts7dCount = recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 7 * 86400 * 1000).length;
+    const posts30dCount = recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 30 * 86400 * 1000).length;
     let consistencyScore = 0;
-    if (recentVideos.length >= 8) consistencyScore = 100;
-    else if (recentVideos.length >= 4) consistencyScore = 80;
-    else if (recentVideos.length >= 2) consistencyScore = 60;
-    else if (recentVideos.length >= 1) consistencyScore = 20;
+    if (posts30dCount >= 8) consistencyScore = 100;
+    else if (posts30dCount >= 4) consistencyScore = 80;
+    else if (posts30dCount >= 2) consistencyScore = 60;
+    else if (posts30dCount >= 1) consistencyScore = 20;
 
     let engagementScore = 0;
     const er = subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(1)) : 0;
