@@ -97,7 +97,7 @@ function ScoreCard({ label, score, desc, icon: Icon }: { label: string; score: n
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className={`p-4 rounded-2xl border bg-card/60 flex items-center gap-3.5 hover:shadow-sm transition-all ${colors.bg}`}>
+    <div className={`p-4 rounded-2xl border bg-card flex items-center gap-3.5 hover:shadow-sm transition-all border-border/60`}>
       <div className="relative flex-shrink-0 w-14 h-14 flex items-center justify-center">
         <svg className="w-full h-full transform -rotate-90">
           <circle cx="28" cy="28" r={radius} stroke="rgba(255,255,255,0.05)" strokeWidth="4" fill="transparent" />
@@ -364,7 +364,7 @@ export default function YouTubeInsightsPage() {
             <p className="text-muted-foreground text-xs">{fmt(data.videoCount)} uploads · channel analytics logs</p>
           </div>
 
-          {data.availableAccounts && data.availableAccounts.length > 1 && (
+          {data.availableAccounts && data.availableAccounts.length > 0 && (
             <div className="ml-4 flex items-center">
               <select
                 value={selectedAccountId || data.accountId || data.availableAccounts[0].id}
@@ -400,7 +400,7 @@ export default function YouTubeInsightsPage() {
       )}
 
       {/* Scorecards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         <ScoreCard label="Overall Health" score={ai.healthScore} desc="Composite performance rating" icon={Trophy} />
         <ScoreCard label="Growth Speed" score={ai.growthScore} desc="Subscribers & views growth rate" icon={TrendingUp} />
         <ScoreCard label="Engagement" score={ai.engagementScore} desc="Likes & comments ratios" icon={Heart} />
