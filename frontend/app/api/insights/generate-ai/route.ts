@@ -6,8 +6,9 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
+    const userId = session?.user?.id;
     
-    if (!token) {
+    if (!token || !userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -29,6 +30,19 @@ export async function POST(request: NextRequest) {
     }
 
     const aiJson = await aiRes.json();
+
+    if (body.platform && body.statsData && body.statsData.accountId) {
+      try {
+        const { setDailyCache } = await import("@/lib/insights-cache");
+        await setDailyCache(supabase, userId, `${body.platform}_${body.statsData.accountId}`, { 
+          ...body.statsData, 
+          aiData: aiJson.aiData 
+        });
+      } catch (cacheErr) {
+        console.error("Failed to update daily cache with AI data:", cacheErr);
+      }
+    }
+
     return NextResponse.json(aiJson);
   } catch (err: any) {
     console.error("[/api/insights/generate-ai proxy]", err.message);
