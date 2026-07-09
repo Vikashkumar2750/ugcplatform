@@ -297,13 +297,25 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     if (followerRules?.length > 0) {
       const rule = followerRules[0];
       console.log(`[Webhook] Triggering dm_new_follower rule: ${rule.name}`);
+      
+      let dmText = "";
+      if (rule.action_config?.require_follow) {
+        const followMsgs = rule.action_config?.follow_prompt_messages || [];
+        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+      } else {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+      }
+
       await enqueueViaBackend({
         accountId: account.id,
         userId: account.user_id,
         recipientId: senderId,
         messagePayload: {
-          text: rule.action_config?.message || "Namaste! 🙏",
-          link: rule.action_config?.link || undefined,
+          text: dmText,
+          link: rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined),
         },
         messageType: "dm",
         automationRuleId: rule.id,
@@ -338,13 +350,24 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
 
     if (matched) {
       console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
+      let dmText = "";
+      if (rule.action_config?.require_follow) {
+        const followMsgs = rule.action_config?.follow_prompt_messages || [];
+        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+      } else {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏");
+      }
+
       await enqueueViaBackend({
         accountId: account.id,
         userId: account.user_id,
         recipientId: senderId,
         messagePayload: {
-          text: rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏",
-          link: rule.action_config?.link || undefined,
+          text: dmText,
+          link: rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined),
         },
         messageType: "dm",
         automationRuleId: rule.id,
@@ -530,10 +553,14 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
-    if (shouldReply && rule.action_config?.reply_text) {
+    const replyTexts = rule.action_config?.reply_texts || [];
+    const randomReply = replyTexts.length > 0 ? replyTexts[Math.floor(Math.random() * replyTexts.length)] : undefined;
+    const finalReplyText = randomReply || rule.action_config?.reply_text;
+    
+    if (shouldReply && finalReplyText) {
       // Add a random 2-5 second delay to mimic human behavior without feeling broken
       const replyDelayMs = randomGaussianDelayMs(2, 5) + getSleepCycleDelayMs();
-      const spunReplyText = parseSpintax(rule.action_config.reply_text);
+      const spunReplyText = parseSpintax(finalReplyText);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
 
       // Enqueue via backend with delay (uses scheduled_send_at)
@@ -578,8 +605,23 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // as long as the account is an App Admin/Tester/Developer.
     // Only ONE private reply is allowed per comment (Meta enforced).
     if (shouldDM && commentorId && commentId) {
-      const dmText = parseSpintax(rule.action_config?.message || "Namaste! 🙏");
-      const dmLink = rule.action_config?.link || undefined;
+      let dmText = "";
+      if (rule.action_config?.require_follow) {
+        const followMsgs = rule.action_config?.follow_prompt_messages || [];
+        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+      } else {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+      }
+      
+      // Append Opt-Out for compliance if it's the actual DM
+      if (dmText && !dmText.includes("STOP")) {
+        dmText += "\n\n[Reply STOP to opt-out]";
+      }
+      
+      const dmLink = rule.action_config?.require_follow ? undefined : (rule.action_config?.link || undefined);
 
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
@@ -652,6 +694,10 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     }).eq("id", rule.id);
 
     console.log(`[Webhook] ✅ Rule "${rule.name}" executed. Trigger count: ${(rule.trigger_count || 0) + 1}`);
+    
+    // Successfully processed a rule for this comment.
+    // Stop evaluating other rules to prevent multiple DMs/replies for the same comment.
+    break;
   }
 }
 
