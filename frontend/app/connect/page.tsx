@@ -154,15 +154,16 @@ function PlatformCard({
       
       // Invalidate frontend sessionStorage cache for this platform
       try {
+        sessionStorage.removeItem("connect_accounts_v1");
         if (platformKey === "instagram") {
-          sessionStorage.removeItem("ig_insights_default");
-          if (accountId) sessionStorage.removeItem(`ig_insights_${accountId}`);
+          sessionStorage.removeItem("ig_insights_v3_default");
+          if (accountId) sessionStorage.removeItem(`ig_insights_v3_${accountId}`);
         } else if (platformKey === "facebook") {
-          sessionStorage.removeItem("fb_insights_default");
-          if (accountId) sessionStorage.removeItem(`fb_insights_${accountId}`);
+          sessionStorage.removeItem("fb_insights_v3_default");
+          if (accountId) sessionStorage.removeItem(`fb_insights_v3_${accountId}`);
         } else if (platformKey === "youtube") {
-          sessionStorage.removeItem("yt_insights_default");
-          if (accountId) sessionStorage.removeItem(`yt_insights_${accountId}`);
+          sessionStorage.removeItem("yt_insights_v3_default");
+          if (accountId) sessionStorage.removeItem(`yt_insights_v3_${accountId}`);
         }
       } catch (e) {}
 
@@ -276,15 +277,34 @@ function PlatformCard({
 
 function ConnectContent() {
   const searchParams = useSearchParams();
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>(() => {
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("connect_accounts_v1");
+      if (cached) return JSON.parse(cached);
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== "undefined") {
+      return !sessionStorage.getItem("connect_accounts_v1");
+    }
+    return true;
+  });
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const fetchAccounts = async () => {
+  const fetchAccounts = async (force = false) => {
+    if (!force && typeof window !== "undefined" && sessionStorage.getItem("connect_accounts_v1")) {
+      setLoading(false);
+      return;
+    }
+    if (force) setLoading(true);
     try {
       const res = await fetch("/api/connect/accounts");
       const data = await res.json();
       setAccounts(data.accounts || []);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("connect_accounts_v1", JSON.stringify(data.accounts || []));
+      }
     } catch {
       // Supabase not configured yet — show empty state
     } finally {
@@ -305,7 +325,7 @@ function ConnectContent() {
       };
       setToast({ message: `${platformNames[success] || success} connected successfully! ✓`, type: "success" });
       // Re-fetch after a short delay to ensure DB write is committed
-      setTimeout(() => fetchAccounts(), 1500);
+      setTimeout(() => fetchAccounts(true), 1500);
     } else if (error) {
       const errorMessages: Record<string, string> = {
         oauth_denied: "You declined the permission request.",
@@ -332,13 +352,13 @@ function ConnectContent() {
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-heading text-2xl font-bold flex items-center gap-2">
             Connect Accounts
-            {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />}
+            {loading && <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" style={{ animation: "fadeIn 0.5s ease-out 0.2s forwards", opacity: 0 }} />}
           </h1>
           <button
-            onClick={() => { setLoading(true); fetchAccounts(); }}
+            onClick={() => { fetchAccounts(true); }}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-1.5 transition hover:border-amber-400/50"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </button>
         </div>
