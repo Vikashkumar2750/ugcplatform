@@ -268,8 +268,8 @@ export default function YouTubeInsightsPage() {
       // Save to sessionStorage
       const idToCache = targetAccountId || insJson.availableAccounts?.[0]?.id;
       if (idToCache) {
-        setSessionCache(`yt_insights_v2_${idToCache}`, insJson);
-        setSessionCache("yt_insights_v2_default", insJson);
+        setSessionCache(`yt_insights_v3_${idToCache}`, insJson);
+        setSessionCache("yt_insights_v3_default", insJson);
       }
 
       const [taskRes, histRes] = await Promise.all([
