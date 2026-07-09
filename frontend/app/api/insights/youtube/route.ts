@@ -152,55 +152,38 @@ export async function GET(request: NextRequest) {
       caption: v.title
     }));
 
-    // Fetch AI recommendations from backend
-    let aiData = null;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (token) {
-        const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
-        const aiRes = await fetch(`${BACKEND_URL}/api/insights/generate-ai`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            platform: "youtube",
-            handle: channel.snippet.title,
-            name: channel.snippet.title,
-            statsData: {
-              followers: subscribers,
-              mediaCount: videoCountVal,
-              engagementRate: subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0,
-              avgLikes,
-              avgComments,
-              avgReach: avgViews,
-              profileVisits: 0,
-              websiteClicks: 0,
-              postsAnalyzed: recentVideos.length,
-              posts30dCount: recentVideos.length, // approximation
-              posts7dCount: recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 7 * 86400 * 1000).length,
-              comparison7d: {
-                reach: { current: avgViews, previous: 0, pct: null },
-                impressions: { current: totalViewsCount, previous: 0, pct: null },
-                likes: { current: avgLikes, previous: 0, pct: null },
-                comments: { current: avgComments, previous: 0, pct: null },
-                posts: { current: recentVideos.length, previous: 0, pct: null },
-                er: { current: subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0, previous: 0, pct: null }
-              },
-              topPosts: formattedTopPosts
-            }
-          })
-        });
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          aiData = aiJson.aiData;
-        }
-      }
-    } catch (aiErr: any) {
-      console.error("[Next.js YouTube API] AI Generation failed:", aiErr.message);
+    // ── 8. Calculate Deterministic Scores ────────────────────────
+    const posts7dCount = recentVideos.filter((v: any) => Date.now() - new Date(v.publishedAt).getTime() < 7 * 86400 * 1000).length;
+    let consistencyScore = 40;
+    if (recentVideos.length >= 8) consistencyScore = 100;
+    else if (recentVideos.length >= 4) consistencyScore = 80;
+    else if (recentVideos.length >= 2) consistencyScore = 60;
+
+    let engagementScore = 40;
+    const er = subscribers > 0 ? parseFloat((((avgLikes + avgComments) / subscribers) * 100).toFixed(2)) : 0;
+    if (er >= 5) engagementScore = 100;
+    else if (er >= 3) engagementScore = 80;
+    else if (er >= 1.5) engagementScore = 60;
+
+    let growthScore = 50; // hard to determine without historical API for youtube in this simple implementation, let's base it on recent video count
+    if (posts7dCount >= 3) growthScore = 100;
+    else if (posts7dCount >= 1) growthScore = 80;
+    else growthScore = 60;
+
+    let contentScore = 50;
+    if (formattedTopPosts.length > 0 && typeof formattedTopPosts[0] === 'object' && 'er' in formattedTopPosts[0]) {
+      const topEr = parseFloat((formattedTopPosts[0] as any).er || "0");
+      if (topEr >= 8) contentScore = 100;
+      else if (topEr >= 5) contentScore = 80;
+      else if (topEr >= 3) contentScore = 60;
+      else if (topEr >= 1) contentScore = 40;
+      else contentScore = 20;
     }
+
+    const healthScore = Math.round((consistencyScore + engagementScore + growthScore + contentScore) / 4);
+    const scores = { healthScore, growthScore, engagementScore, contentScore, consistencyScore };
+
+    let aiData = null;
 
     const responseData = {
       connected: true,
@@ -214,6 +197,7 @@ export async function GET(request: NextRequest) {
       recentVideos,
       connectedAt: account.connected_at,
       availableAccounts,
+      ...scores,
       aiData,
     };
 

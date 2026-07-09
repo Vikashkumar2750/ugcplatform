@@ -29,9 +29,13 @@ interface FBInsightsData {
   };
   topPosts: { id: string; message: string; type: string; likes: number; comments: number; shares: number; created: string }[];
   fanGrowthChart: { date: string; fans: number }[] | null;
-  accountType?: string;
-  connectedAt?: string;
+  accountType: string; connectedAt: string;
   availableAccounts?: { id: string; name: string; handle: string }[];
+  healthScore?: number;
+  growthScore?: number;
+  engagementScore?: number;
+  contentScore?: number;
+  consistencyScore?: number;
   aiData?: {
     healthScore: number;
     growthScore: number;
@@ -90,35 +94,27 @@ function StatCard({ label, value, sub, icon: Icon, up, highlight }: {
 }
 
 // ── Score Card Component ───────────────────────────────────────────
-function ScoreCard({ label, score, desc, icon: Icon }: { label: string; score: number; desc: string; icon: any }) {
-  const getColors = (s: number) => {
-    if (s >= 80) return { text: "text-green-500", stroke: "#22c55e", bg: "bg-green-500/10 border-green-500/20" };
-    if (s >= 60) return { text: "text-amber-500", stroke: "#f59e0b", bg: "bg-amber-500/10 border-amber-500/20" };
-    if (s >= 40) return { text: "text-orange-400", stroke: "#fb923c", bg: "bg-orange-500/10 border-orange-500/20" };
-    return { text: "text-red-400", stroke: "#f87171", bg: "bg-red-500/10 border-red-500/20" };
-  };
-
-  const colors = getColors(score);
-  const radius = 22;
+function ScoreCard({ label, score, desc, icon: Icon, platform }: { label: string; score: number; desc: string; icon: any; platform?: string }) {
+  const radius = 24;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (score / 100) * circumference;
 
   return (
-    <div className={`p-4 rounded-2xl border bg-card flex flex-col items-center justify-center text-center gap-3 hover:shadow-sm transition-all border-border/60`}>
-      <div className="relative flex-shrink-0 w-14 h-14 flex items-center justify-center">
+    <div className="p-4 rounded-3xl border bg-card/40 flex flex-col items-center justify-center text-center gap-4 hover:shadow-md hover:bg-card transition-all border-border/40 hover:border-blue-500/30 overflow-hidden w-full">
+      <div className="relative flex-shrink-0 w-16 h-16 flex items-center justify-center">
         <svg className="w-full h-full transform -rotate-90">
-          <circle cx="28" cy="28" r={radius} stroke="rgba(255,255,255,0.05)" strokeWidth="4" fill="transparent" />
-          <circle cx="28" cy="28" r={radius} stroke={colors.stroke} strokeWidth="4.5" fill="transparent"
+          <circle cx="32" cy="32" r={radius} stroke="currentColor" className="text-muted/20" strokeWidth="4" fill="transparent" />
+          <circle cx="32" cy="32" r={radius} className="text-blue-500 transition-all duration-1000 ease-out" stroke="currentColor" strokeWidth="4.5" fill="transparent"
             strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
         </svg>
-        <span className="absolute text-sm font-bold tracking-tight text-foreground">{score}</span>
+        <span className="absolute text-lg font-black tracking-tighter text-foreground">{score}</span>
       </div>
-      <div className="w-full min-w-0">
-        <div className="flex items-center justify-center gap-1.5 mb-1">
-          <Icon className="w-3.5 h-3.5 text-muted-foreground/60" />
-          <p className="text-[11px] font-bold text-foreground uppercase tracking-wider truncate">{label}</p>
+      <div className="w-full flex flex-col items-center gap-1.5">
+        <div className="flex items-center justify-center gap-1.5 w-full">
+          <Icon className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+          <p className="text-[10px] font-bold text-foreground uppercase tracking-widest truncate">{label}</p>
         </div>
-        <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2" title={desc}>{desc}</p>
+        <p className="text-[10px] text-muted-foreground/80 leading-snug line-clamp-2">{desc}</p>
       </div>
     </div>
   );
@@ -230,6 +226,33 @@ export default function FacebookInsightsPage() {
   const [activeAuditTab, setActiveAuditTab] = useState<"top" | "improvement">("top");
   const [expandedRecId, setExpandedRecId] = useState<number | null>(null);
   const [addedRecIndex, setAddedRecIndex] = useState<Record<number, boolean>>({});
+  const [aiData, setAiData] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const fetchAiData = useCallback(async (insJson: any) => {
+    if (!insJson || !insJson.followers) return;
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/insights/generate-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          platform: "facebook", 
+          handle: insJson.pageName, 
+          name: insJson.pageName, 
+          statsData: insJson 
+        })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setAiData(json.aiData);
+      }
+    } catch (err) {
+      console.error("AI fetch err", err);
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
 
   const fetchAll = useCallback(async (isRefresh = false, accId?: string | null) => {
     const targetAccountId = accId || selectedAccountId;
@@ -285,9 +308,16 @@ export default function FacebookInsightsPage() {
 
       if (taskRes.ok) setTasks(await taskRes.json());
       if (histRes.ok) { const h = await histRes.json(); setHistory(h.history || []); }
+      
+      // Async AI Fetch
+      if (!insJson.aiData) {
+        fetchAiData(insJson);
+      } else {
+        setAiData(insJson.aiData);
+      }
     } catch { setError("Network error — please retry"); }
     finally { setLoading(false); setRefreshing(false); }
-  }, [selectedAccountId, loading, data]);
+  }, [selectedAccountId, loading, data, fetchAiData]);
 
   useEffect(() => { fetchAll(false, selectedAccountId); }, [fetchAll, selectedAccountId]);
 
@@ -316,8 +346,8 @@ export default function FacebookInsightsPage() {
     <div className="p-6 max-w-5xl mx-auto flex items-center justify-center min-h-[60vh]">
       <div className="text-center space-y-3">
         <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-500" />
-        <p className="text-muted-foreground text-sm font-semibold">Running AI Analytics engine...</p>
-        <p className="text-xs text-muted-foreground/60">Fetching page metrics and generating audits</p>
+        <p className="text-muted-foreground text-sm font-semibold">Fetching Insights...</p>
+        <p className="text-xs text-muted-foreground/60">Retrieving Facebook metrics and building dashboard</p>
       </div>
     </div>
   );
@@ -379,16 +409,21 @@ export default function FacebookInsightsPage() {
   const allTasks = [...(tasks?.weekly || []), ...(tasks?.monthly || [])];
   const doneTasks = allTasks.filter(t => t.status === "done").length;
 
-  const ai = data.aiData || {
-    healthScore: 68,
-    growthScore: 60,
-    engagementScore: 70,
-    contentScore: 65,
-    consistencyScore: 55,
-    executiveSummary: "AI summary loading. Refresh if metrics do not generate automatically.",
+  const scores = {
+    healthScore: data.healthScore || 0,
+    growthScore: data.growthScore || 0,
+    engagementScore: data.engagementScore || 0,
+    contentScore: data.contentScore || 0,
+    consistencyScore: data.consistencyScore || 0,
+  };
+
+  const ai = aiData || {
+    executiveSummary: aiLoading ? "Generating AI summary..." : "AI summary unavailable.",
     recommendations: [],
-    bestPostingTime: { days: ["Monday", "Wednesday", "Friday"], hours: ["7:00 PM", "9:00 PM"], confidenceScore: 75 },
-    profileHealth: { bioOptimization: "N/A", ctaQuality: "N/A", completeness: "80%", seoOptimization: "N/A" }
+    topPostsAnalysis: [],
+    underperformingPostsAnalysis: [],
+    bestPostingTime: { days: [], hours: [], confidenceScore: 0 },
+    profileHealth: { bioOptimization: "N/A", ctaQuality: "N/A", completeness: "0%", seoOptimization: "N/A" }
   };
 
   return (
@@ -447,11 +482,11 @@ export default function FacebookInsightsPage() {
 
       {/* Scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-        <ScoreCard label="Overall Health" score={ai.healthScore} desc="Composite performance rating" icon={Trophy} />
-        <ScoreCard label="Growth Speed" score={ai.growthScore} desc="Followers & views trends" icon={TrendingUp} />
-        <ScoreCard label="Engagement" score={ai.engagementScore} desc="L/C/S metrics per follower" icon={Heart} />
-        <ScoreCard label="Content Quality" score={ai.contentScore} desc="Format conversion efficacy" icon={Star} />
-        <ScoreCard label="Consistency" score={ai.consistencyScore} desc="Posting schedule score" icon={Camera} />
+        <ScoreCard label="Overall Health" score={scores.healthScore} desc="Composite performance rating" icon={Trophy} platform="facebook" />
+        <ScoreCard label="Growth Speed" score={scores.growthScore} desc="Fans & followers trends" icon={TrendingUp} platform="facebook" />
+        <ScoreCard label="Engagement" score={scores.engagementScore} desc="Interaction per fan" icon={Heart} platform="facebook" />
+        <ScoreCard label="Content Quality" score={scores.contentScore} desc="Reach efficacy score" icon={Star} platform="facebook" />
+        <ScoreCard label="Consistency" score={scores.consistencyScore} desc="Publishing frequency score" icon={Camera} platform="facebook" />
       </div>
 
       {/* Tabs */}
@@ -477,8 +512,14 @@ export default function FacebookInsightsPage() {
               <Sparkles className="w-4 h-4 text-blue-500" />
               <h2 className="font-heading font-bold text-sm text-blue-600 dark:text-blue-400 uppercase tracking-widest">Executive AI Briefing</h2>
             </div>
-            <p className="text-sm leading-relaxed text-foreground/90 font-medium">
-              {ai.executiveSummary}
+            <p className="text-sm leading-relaxed text-foreground/90 font-medium min-h-[40px]">
+              {aiLoading ? (
+                <span className="animate-pulse flex items-center gap-2 text-muted-foreground">
+                  <RefreshCw className="w-4 h-4 animate-spin text-blue-500" /> Generating insights...
+                </span>
+              ) : (
+                ai.executiveSummary
+              )}
             </p>
           </div>
 
@@ -581,7 +622,18 @@ export default function FacebookInsightsPage() {
           </div>
 
           {/* AI Recommendations */}
-          {ai.recommendations && ai.recommendations.length > 0 && (
+          {aiLoading ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4.5 h-4.5 text-blue-500 animate-pulse" />
+                <h3 className="font-semibold text-base">Personalized AI Action Items</h3>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div className="h-16 bg-muted/10 animate-pulse rounded-2xl border border-border/40"></div>
+                <div className="h-16 bg-muted/10 animate-pulse rounded-2xl border border-border/40"></div>
+              </div>
+            </div>
+          ) : ai.recommendations && ai.recommendations.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4.5 h-4.5 text-blue-500 animate-pulse" />
@@ -668,10 +720,9 @@ export default function FacebookInsightsPage() {
               <div className="divide-y divide-border/50">
                 {data.topPosts.length > 0 ? (
                   data.topPosts.map((post, i) => {
-                    const aiReason = ai.topPostsAnalysis?.find(a => a.postId === post.id)?.reason || 
-                      "This post gained strong reach due to active share metrics in Facebook groups relative to your niche.";
+                    const aiAnalysis = ai.topPostsAnalysis?.find((a: any) => a.postId === post.id);
                     return (
-                      <div key={post.id} className="p-4 flex flex-col gap-3.5 hover:bg-muted/10 transition">
+                      <div key={post.id} className="p-4 flex flex-col hover:bg-muted/10 transition">
                         <div className="flex items-center gap-3.5">
                           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black ${i === 0 ? "bg-blue-500 text-white" : "bg-muted text-muted-foreground"}`}>{i + 1}</span>
                           <div className="flex-1 min-w-0">
@@ -686,11 +737,21 @@ export default function FacebookInsightsPage() {
                           </div>
                         </div>
 
-                        <div className="bg-green-500/[0.02] border border-green-500/10 p-3 rounded-xl flex items-start gap-2.5 ml-9">
-                          <ThumbsUp className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                          <p className="text-xs text-green-700 dark:text-green-400 leading-relaxed font-medium">
-                            <strong>AI Success Factor:</strong> {aiReason}
-                          </p>
+                        <div className="bg-blue-500/[0.02] border border-blue-500/10 p-4 rounded-xl flex items-start gap-3 ml-9 mt-4">
+                          <Sparkles className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <div className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed font-medium space-y-2 w-full">
+                            {aiLoading ? (
+                              <span className="animate-pulse">Analyzing post anatomy...</span>
+                            ) : aiAnalysis ? (
+                              <div className="space-y-3">
+                                {aiAnalysis.hookAnalysis && <div><strong className="text-blue-500">Hook:</strong> {aiAnalysis.hookAnalysis}</div>}
+                                {aiAnalysis.bodyAnalysis && <div><strong className="text-amber-500">Body:</strong> {aiAnalysis.bodyAnalysis}</div>}
+                                {aiAnalysis.ctaAnalysis && <div><strong className="text-purple-400">CTA:</strong> {aiAnalysis.ctaAnalysis}</div>}
+                              </div>
+                            ) : (
+                              <p><strong>AI Success Factor:</strong> This post gained strong reach due to active share metrics in Facebook groups relative to your niche.</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -702,7 +763,7 @@ export default function FacebookInsightsPage() {
             ) : (
               <div className="divide-y divide-border/50">
                 {ai.underperformingPostsAnalysis && ai.underperformingPostsAnalysis.length > 0 ? (
-                  ai.underperformingPostsAnalysis.map((under, idx) => {
+                  ai.underperformingPostsAnalysis.map((under: any, idx: number) => {
                     const matchingPost = data.topPosts.find(p => p.id === under.postId);
                     return (
                       <div key={idx} className="p-4 flex flex-col gap-3.5 hover:bg-muted/10 transition">
@@ -837,7 +898,7 @@ export default function FacebookInsightsPage() {
               
               <div className="space-y-2">
                 {ai.bestPostingTime?.days ? (
-                  ai.bestPostingTime.days.map((day, i) => {
+                  ai.bestPostingTime.days.map((day: string, i: number) => {
                     const time = ai.bestPostingTime?.hours[i] || "7:00 PM";
                     return (
                       <div key={day} className={`flex items-center gap-3 p-3.5 rounded-xl text-sm ${i === 0 ? "border border-blue-400/30 bg-blue-400/5" : "bg-muted/30"}`}>

@@ -262,49 +262,39 @@ export async function GET(request: NextRequest) {
       timestamp: p.timestamp,
     }));
 
-    // Fetch AI recommendations from backend
-    let aiData = null;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (token) {
-        const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
-        const aiRes = await fetch(`${BACKEND_URL}/api/insights/generate-ai`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            platform: "instagram",
-            handle: `@${profile.username || account.platform_username}`,
-            name: profile.name || account.platform_name,
-            statsData: {
-              followers,
-              mediaCount: profile.media_count || 0,
-              engagementRate: er30d,
-              avgLikes: avgLikes30d,
-              avgComments: avgComments30d,
-              avgSaves,
-              avgReach,
-              profileVisits: profileViews,
-              websiteClicks,
-              postsAnalyzed: posts.length,
-              posts30dCount: posts30d.length,
-              posts7dCount: posts7d.length,
-              comparison7d,
-              topPosts: topPosts.slice(0, 5)
-            }
-          })
-        });
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          aiData = aiJson.aiData;
-        }
-      }
-    } catch (aiErr: any) {
-      console.error("[Next.js Instagram API] AI Generation failed:", aiErr.message);
+    // ── 8. Calculate Deterministic Scores ────────────────────────
+    let consistencyScore = 40;
+    if (posts30d.length >= 15) consistencyScore = 100;
+    else if (posts30d.length >= 8) consistencyScore = 80;
+    else if (posts30d.length >= 4) consistencyScore = 60;
+
+    let engagementScore = 40;
+    if (er30d >= 5) engagementScore = 100;
+    else if (er30d >= 3) engagementScore = 80;
+    else if (er30d >= 1.5) engagementScore = 60;
+
+    let growthScore = 50;
+    const reachPct = comparison7d.reach.pct || 0;
+    if (reachPct >= 20) growthScore = 100;
+    else if (reachPct >= 5) growthScore = 80;
+    else if (reachPct >= -5) growthScore = 60;
+    else if (reachPct >= -20) growthScore = 40;
+    else growthScore = 20;
+
+    let contentScore = 50;
+    if (topPosts.length > 0) {
+      const topEr = parseFloat(topPosts[0].er);
+      if (topEr >= 8) contentScore = 100;
+      else if (topEr >= 5) contentScore = 80;
+      else if (topEr >= 3) contentScore = 60;
+      else if (topEr >= 1) contentScore = 40;
+      else contentScore = 20;
     }
+
+    const healthScore = Math.round((consistencyScore + engagementScore + growthScore + contentScore) / 4);
+    const scores = { healthScore, growthScore, engagementScore, contentScore, consistencyScore };
+
+    let aiData = null;
 
     const responseData = {
       connected: true,
@@ -323,6 +313,7 @@ export async function GET(request: NextRequest) {
       avgLikes: avgLikes30d,
       avgComments: avgComments30d,
       avgSaves,
+      ...scores,
       postsAnalyzed: posts.length,
       posts30dCount: posts30d.length,
       posts7dCount: posts7d.length,

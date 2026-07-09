@@ -281,14 +281,14 @@ ${(statsData.topPosts || []).map((p) => `* ID: ${p.postId || p.id} | Type: ${p.t
 
 Format the response strictly as a single JSON object with these keys:
 {
-  "healthScore": 1-100 (Overall performance rating),
-  "growthScore": 1-100 (Follower growth and profile visibility rating),
-  "engagementScore": 1-100 (User interaction level rating),
-  "contentScore": 1-100 (Top post performance score),
-  "consistencyScore": 1-100 (Frequency of posting score),
   "executiveSummary": "A concise paragraph answering: What happened, why it happened, and what to do next. Use active language.",
   "topPostsAnalysis": [
-    { "postId": "string", "reason": "Specific AI analysis of why this content succeeded (hooks, retention, structure)" }
+    { 
+      "postId": "string", 
+      "hookAnalysis": "Specific breakdown of why the hook worked or failed, including a better example hook",
+      "bodyAnalysis": "Specific breakdown of why the body retained attention or failed",
+      "ctaAnalysis": "Specific breakdown of the Call-To-Action used, and a better alternative CTA example"
+    }
   ],
   "underperformingPostsAnalysis": [
     { "postId": "string", "reason": "Specific reasons why this post did not hit reach targets", "suggestion": "Actionable visual or copywriting tweak to fix it" }

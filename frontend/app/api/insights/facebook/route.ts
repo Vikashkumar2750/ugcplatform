@@ -140,57 +140,40 @@ export async function GET(request: NextRequest) {
       er:          { current: er7d, previous: erPrev7d, pct: pct(er7d, erPrev7d) },
     };
 
-    // Fetch AI recommendations from backend
-    let aiData = null;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (token) {
-        const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
-        const aiRes = await fetch(`${BACKEND_URL}/api/insights/generate-ai`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            platform: "facebook",
-            handle: page.name || account.platform_name,
-            name: page.name || account.platform_name,
-            statsData: {
-              followers: page.followers_count || fans,
-              mediaCount: posts.length,
-              engagementRate: parseFloat(engagementRate),
-              avgLikes: posts.length ? Math.round(posts.reduce((s, p) => s + (p.likes?.summary?.total_count || 0), 0) / posts.length) : 0,
-              avgComments: posts.length ? Math.round(posts.reduce((s, p) => s + (p.comments?.summary?.total_count || 0), 0) / posts.length) : 0,
-              avgReach: totalReach > 0 ? Math.round(totalReach / 30) : 0,
-              profileVisits: totalViews,
-              websiteClicks: 0,
-              postsAnalyzed: posts.length,
-              posts30dCount: posts.length,
-              posts7dCount: posts7d.length,
-              comparison7d,
-              topPosts: topPosts.map(p => ({
-                postId: p.id,
-                type: p.type,
-                er: fans > 0 ? (((p.likes + p.comments + p.shares) / fans) * 100).toFixed(1) : "0.0",
-                likes: p.likes,
-                comments: p.comments,
-                saves: 0,
-                reach: 0,
-                caption: p.message
-              }))
-            }
-          })
-        });
-        if (aiRes.ok) {
-          const aiJson = await aiRes.json();
-          aiData = aiJson.aiData;
-        }
-      }
-    } catch (aiErr: any) {
-      console.error("[Next.js Facebook API] AI Generation failed:", aiErr.message);
+    // ── 8. Calculate Deterministic Scores ────────────────────────
+    let consistencyScore = 40;
+    if (posts.length >= 15) consistencyScore = 100;
+    else if (posts.length >= 8) consistencyScore = 80;
+    else if (posts.length >= 4) consistencyScore = 60;
+
+    let engagementScore = 40;
+    const er = parseFloat(engagementRate);
+    if (er >= 5) engagementScore = 100;
+    else if (er >= 3) engagementScore = 80;
+    else if (er >= 1.5) engagementScore = 60;
+
+    let growthScore = 50;
+    const reachPct = comparison7d.reach.pct || 0;
+    if (reachPct >= 20) growthScore = 100;
+    else if (reachPct >= 5) growthScore = 80;
+    else if (reachPct >= -5) growthScore = 60;
+    else if (reachPct >= -20) growthScore = 40;
+    else growthScore = 20;
+
+    let contentScore = 50;
+    if (topPosts.length > 0 && typeof topPosts[0] === 'object' && 'er' in topPosts[0]) {
+      const topEr = parseFloat((topPosts[0] as any).er || "0");
+      if (topEr >= 8) contentScore = 100;
+      else if (topEr >= 5) contentScore = 80;
+      else if (topEr >= 3) contentScore = 60;
+      else if (topEr >= 1) contentScore = 40;
+      else contentScore = 20;
     }
+
+    const healthScore = Math.round((consistencyScore + engagementScore + growthScore + contentScore) / 4);
+    const scores = { healthScore, growthScore, engagementScore, contentScore, consistencyScore };
+
+    let aiData = null;
 
     const responseData = {
       connected: true,
@@ -210,6 +193,7 @@ export async function GET(request: NextRequest) {
       posts30dCount: posts.length, // approximation for 30d
       avgLikes: posts.length ? Math.round(posts.reduce((s, p) => s + (p.likes?.summary?.total_count || 0), 0) / posts.length) : 0,
       avgComments: posts.length ? Math.round(posts.reduce((s, p) => s + (p.comments?.summary?.total_count || 0), 0) / posts.length) : 0,
+      ...scores,
       comparison7d,
       topPosts,
       fanGrowthChart: fanGrowthChart && fanGrowthChart.length > 1 ? fanGrowthChart : null,
