@@ -2,10 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { RefreshCw, ChevronDown, Globe } from "lucide-react";
-import OverviewTab from "./components/OverviewTab";
-import AudienceTab from "./components/AudienceTab";
-import ContentTab from "./components/ContentTab";
-import AIInsightsTab from "./components/AIInsightsTab";
+import OverviewTab from "../components/OverviewTab";
+import AudienceTab from "../components/AudienceTab";
+import ContentTab from "../components/ContentTab";
+import AIInsightsTab from "../components/AIInsightsTab";
 
 type TabType = "overview" | "audience" | "content" | "ai";
 type TimeRange = "7d" | "14d" | "28d" | "30d" | "90d";
