@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, Users, MapPin } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function AudienceTab({ accountId, platform = "instagram" }: { accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
@@ -14,12 +15,7 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/audience`);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to fetch audience data");
-        }
-        const json = await res.json();
+        const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/audience`);
         const metrics = json.data || [];
 
         const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || {};

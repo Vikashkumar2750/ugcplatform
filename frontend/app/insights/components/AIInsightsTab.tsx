@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Loader2, Sparkles, TrendingUp, AlertTriangle, Clock, Lightbulb } from "lucide-react";
+import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function AIInsightsTab({ accountId, platform = "instagram" }: { accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
@@ -15,22 +16,23 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
       setError(null);
       try {
         // Fetch basic stats to feed the AI
-        const overviewRes = await fetch(`/api/insights/proxy/${platform}/${accountId}/overview?days=28`);
-        const mediaRes = await fetch(`/api/insights/proxy/${platform}/${accountId}/media?limit=10`);
+        const overviewRes = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/overview?days=28`);
+        const mediaRes = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/media?limit=10`);
         
         let reach = 0, impressions = 0;
-        if (overviewRes.ok) {
-          const json = await overviewRes.json();
-          const metrics = json.data || [];
-          const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
+        if (overviewRes) {
+          const metrics = overviewRes.data || [];
+          const findMetric = (name: string) => {
+            const m = metrics.find((m: any) => m.name === name);
+            return m?.total_value?.value ?? m?.values?.[0]?.value ?? 0;
+          };
           reach = findMetric("reach") || findMetric("page_impressions_unique") || 0;
           impressions = findMetric("impressions") || findMetric("page_impressions") || 0;
         }
 
         let topPosts = [];
-        if (mediaRes.ok) {
-          const json = await mediaRes.json();
-          const posts = json.data || [];
+        if (mediaRes) {
+          const posts = mediaRes.data || [];
           topPosts = posts.slice(0, 3).map((p: any) => ({
             id: p.id,
             type: p.media_type,
@@ -48,17 +50,12 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
           topPosts
         };
 
-        const res = await fetch("/api/insights/generate-ai", {
+        const json = await fetchWithCache("/api/insights/generate-ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ platform, statsData })
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to generate AI insights");
-        }
-        const json = await res.json();
         if (json.aiData) {
           setData(json.aiData);
         } else {

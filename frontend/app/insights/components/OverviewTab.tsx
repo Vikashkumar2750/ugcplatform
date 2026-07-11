@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Info, Loader2 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function OverviewTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
@@ -15,13 +16,7 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
       setError(null);
       try {
         const daysInt = parseInt(timeRange.replace("d", ""), 10) || 28;
-        const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/overview?days=${daysInt}`);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to fetch overview data");
-        }
-        
-        const json = await res.json();
+        const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/overview?days=${daysInt}`);
         const metrics = json.data || [];
         
         // Find metrics

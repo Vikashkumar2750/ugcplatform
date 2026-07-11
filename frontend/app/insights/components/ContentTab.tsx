@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AlertCircle, PlayCircle, Image as ImageIcon, Loader2, X, AlertTriangle } from "lucide-react";
+import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function ContentTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
   const [data, setData] = useState<any[]>([]);
@@ -15,12 +16,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/media?limit=30`);
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to fetch media insights");
-        }
-        const json = await res.json();
+        const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/media?limit=30`);
         setData(json.data || []);
       } catch (err: any) {
         console.error(err);
@@ -76,7 +72,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
             <tr>
               <th className="px-5 py-4">Post</th>
               <th className="px-5 py-4 text-right">Reach</th>
-              <th className="px-5 py-4 text-right">Impressions</th>
+              <th className="px-5 py-4 text-right">Views</th>
               <th className="px-5 py-4 text-right">Likes</th>
               <th className="px-5 py-4 text-right">Comments</th>
               <th className="px-5 py-4 text-right">Saves</th>
