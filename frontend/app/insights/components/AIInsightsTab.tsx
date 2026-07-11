@@ -4,6 +4,7 @@ import { Loader2, Sparkles, TrendingUp, AlertTriangle, Clock, Lightbulb } from "
 export default function AIInsightsTab({ accountId, platform = "instagram" }: { accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
 
   useEffect(() => {
@@ -11,6 +12,7 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
     
     async function fetchData() {
       setLoading(true);
+      setError(null);
       try {
         // Fetch basic stats to feed the AI
         const overviewRes = await fetch(`/api/insights/proxy/${platform}/${accountId}/overview?days=28`);
@@ -59,8 +61,9 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
         } else {
           throw new Error("No AI data returned");
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        setError(err.message || "Failed to load data");
       } finally {
         setLoading(false);
       }
@@ -72,6 +75,14 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
     return (
       <div className="p-12 text-center border border-border rounded-2xl bg-card">
         <p className="text-muted-foreground">Please select an account to view AI insights.</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5">
+        <p className="text-red-500">Error: {error}</p>
       </div>
     );
   }

@@ -5,12 +5,14 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 export default function OverviewTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accountId) return;
     
     async function fetchData() {
       setLoading(true);
+      setError(null);
       try {
         const daysInt = parseInt(timeRange.replace("d", ""), 10) || 28;
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/overview?days=${daysInt}`);
@@ -48,8 +50,9 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
             { date: "N/A", reach: reach, impressions: impressions }
           ]
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        setError(err.message || "Failed to load data");
       } finally {
         setLoading(false);
       }
@@ -61,6 +64,14 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
     return (
       <div className="p-12 text-center border border-border rounded-2xl bg-card">
         <p className="text-muted-foreground">Please select an account to view insights.</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5">
+        <p className="text-red-500">Error: {error}</p>
       </div>
     );
   }

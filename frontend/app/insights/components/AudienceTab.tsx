@@ -5,12 +5,14 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 export default function AudienceTab({ accountId, platform = "instagram" }: { accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accountId) return;
     
     async function fetchData() {
       setLoading(true);
+      setError(null);
       try {
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/audience`);
         if (!res.ok) throw new Error("Failed to fetch audience data");
@@ -43,8 +45,9 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
           ageGender,
           topLocations: topLocations.length > 0 ? topLocations : [{ name: "No data", value: 1 }]
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        setError(err.message || "Failed to load data");
       } finally {
         setLoading(false);
       }
@@ -56,6 +59,14 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
     return (
       <div className="p-12 text-center border border-border rounded-2xl bg-card">
         <p className="text-muted-foreground">Please select an account to view insights.</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5">
+        <p className="text-red-500">Error: {error}</p>
       </div>
     );
   }

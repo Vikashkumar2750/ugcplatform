@@ -4,6 +4,7 @@ import { AlertCircle, PlayCircle, Image as ImageIcon, Loader2, X, AlertTriangle 
 export default function ContentTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [selectedPost, setSelectedPost] = useState<any>(null);
 
@@ -12,13 +13,15 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
     
     async function fetchData() {
       setLoading(true);
+      setError(null);
       try {
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/media?limit=30`);
         if (!res.ok) throw new Error("Failed to fetch media insights");
         const json = await res.json();
         setData(json.data || []);
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
+        setError(err.message || "Failed to load data");
       } finally {
         setLoading(false);
       }
@@ -30,6 +33,14 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
     return (
       <div className="p-12 text-center border border-border rounded-2xl bg-card">
         <p className="text-muted-foreground">Please select an account to view insights.</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5">
+        <p className="text-red-500">Error: {error}</p>
       </div>
     );
   }
