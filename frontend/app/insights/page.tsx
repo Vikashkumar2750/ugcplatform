@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { RefreshCw, ChevronDown, Instagram, Facebook } from "lucide-react";
+import { RefreshCw, ChevronDown, Globe } from "lucide-react";
 import OverviewTab from "./components/OverviewTab";
 import AudienceTab from "./components/AudienceTab";
 import ContentTab from "./components/ContentTab";
@@ -59,7 +59,7 @@ export default function InsightsDashboard() {
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800 transition-colors"
               >
-                {selectedAccount?.platform === "instagram" ? <Instagram className="w-4 h-4 text-pink-500" /> : <Facebook className="w-4 h-4 text-blue-500" />}
+                <Globe className="w-4 h-4 text-zinc-500" />
                 <span className="text-sm font-medium text-zinc-200">{selectedAccount?.platform_username || selectedAccount?.platform_name || "Select Account"}</span>
                 <ChevronDown className="w-4 h-4 text-zinc-500 ml-1" />
               </button>
@@ -72,7 +72,7 @@ export default function InsightsDashboard() {
                       onClick={() => { setSelectedAccountId(acc.id); setDropdownOpen(false); }}
                       className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-zinc-800 transition-colors ${selectedAccountId === acc.id ? 'bg-zinc-800/50' : ''}`}
                     >
-                      {acc.platform === "instagram" ? <Instagram className="w-4 h-4 text-pink-500" /> : <Facebook className="w-4 h-4 text-blue-500" />}
+                      <Globe className="w-4 h-4 text-zinc-500" />
                       <span className="text-sm font-medium text-zinc-200">{acc.platform_username || acc.platform_name}</span>
                     </button>
                   ))}
