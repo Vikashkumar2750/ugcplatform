@@ -62,19 +62,30 @@ export async function GET(request: NextRequest) {
     let totalReach = 0, totalImpressions = 0, totalViews = 0, totalEngaged = 0;
     let reach7d = 0, reachPrev7d = 0, impressions7d = 0, impressionsPrev7d = 0, engaged7d = 0, engagedPrev7d = 0;
     let fanGrowthChart: { date: string; fans: number }[] | null = null;
+    let insightsError = null;
 
     try {
-      const { data: insData } = await metaFetch(
-        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_impressions,page_reach,page_views_total,page_engaged_users,page_fans&period=day&since=${since}&until=${until}&access_token=${token}`,
-        { cacheKey: `${cachePrefix}:insights`, cacheTtlMs: 60 * 60 * 1000, tokenId }
+      // 1. Daily metrics (Impressions, Reach, Views, Engaged Users)
+      const { data: dailyData } = await metaFetch(
+        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_impressions,page_impressions_unique,page_views_total,page_engaged_users&period=day&since=${since}&until=${until}&access_token=${token}`,
+        { cacheKey: `${cachePrefix}:insights_daily`, cacheTtlMs: 60 * 60 * 1000, tokenId }
       );
-      for (const m of (insData?.data || [])) {
+
+      // 2. Lifetime metrics (Fans)
+      const { data: lifetimeData } = await metaFetch(
+        `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_fans&period=lifetime&since=${since}&until=${until}&access_token=${token}`,
+        { cacheKey: `${cachePrefix}:insights_lifetime`, cacheTtlMs: 60 * 60 * 1000, tokenId }
+      );
+
+      const allMetrics = [...(dailyData?.data || []), ...(lifetimeData?.data || [])];
+
+      for (const m of allMetrics) {
         const vals = m.values || [];
         const total = vals.reduce((s: number, v: any) => s + (v.value || 0), 0);
         const l7 = vals.slice(-7).reduce((s: number, v: any) => s + (v.value || 0), 0);
         const p7 = vals.slice(-14, -7).reduce((s: number, v: any) => s + (v.value || 0), 0);
 
-        if (m.name === "page_reach") { totalReach = total; reach7d = l7; reachPrev7d = p7; }
+        if (m.name === "page_impressions_unique") { totalReach = total; reach7d = l7; reachPrev7d = p7; }
         if (m.name === "page_impressions") { totalImpressions = total; impressions7d = l7; impressionsPrev7d = p7; }
         if (m.name === "page_views_total") totalViews = total;
         if (m.name === "page_engaged_users") { totalEngaged = total; engaged7d = l7; engagedPrev7d = p7; }
@@ -89,17 +100,22 @@ export async function GET(request: NextRequest) {
       }
     } catch (e: any) {
       console.warn("[FB Insights] insights failed:", e.message);
+      insightsError = e.message;
     }
 
     // ── 3. Recent Posts (cached 15min) ────────────────────────────
     let posts: any[] = [];
+    let postsError = null;
     try {
       const { data: postsData } = await metaFetch(
         `https://graph.facebook.com/v21.0/${pageId}/published_posts?fields=id,message,story,created_time,attachments{type},likes.summary(true),comments.summary(true),shares&limit=15&access_token=${token}`,
         { cacheKey: `${cachePrefix}:posts`, cacheTtlMs: 15 * 60 * 1000, tokenId }
       );
       posts = postsData?.data || [];
-    } catch {}
+      if (postsData?.error) postsError = postsData.error.message;
+    } catch (e: any) {
+      postsError = e.message;
+    }
 
     const topPosts = posts.slice(0, 5).map((post: any) => ({
       id: post.id,
@@ -204,6 +220,7 @@ export async function GET(request: NextRequest) {
       connectedAt: account.connected_at,
       availableAccounts,
       aiData,
+      debugErrors: { insightsError, postsError },
     };
     await setDailyCache(supabase, user.id, `facebook_${account.id}`, responseData);
     return NextResponse.json({ ...responseData, _fromCache: false, _fetchedAt: new Date().toISOString() });
