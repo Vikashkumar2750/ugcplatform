@@ -25,7 +25,10 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
         const metrics = json.data || [];
         
         // Find metrics
-        const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
+        const findMetric = (name: string) => {
+          const m = metrics.find((m: any) => m.name === name);
+          return m?.total_value?.value ?? m?.values?.[0]?.value ?? 0;
+        };
         
         const reach = findMetric("reach") || findMetric("page_impressions_unique") || 0;
         const impressions = findMetric("impressions") || findMetric("views") || findMetric("page_impressions") || 0;
