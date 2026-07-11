@@ -39,9 +39,28 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
   }
 
   if (error) {
+    const isPermissionError = error.includes("pages_read_engagement");
+    
     return (
-      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5">
-        <p className="text-red-500">Error: {error}</p>
+      <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5 flex flex-col items-center gap-4">
+        <div className="bg-red-500/10 p-3 rounded-full">
+          <AlertTriangle className="w-6 h-6 text-red-500" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-red-500 mb-2">
+            {isPermissionError ? "Missing Permissions" : "Failed to load content"}
+          </h3>
+          <p className="text-red-500/80 max-w-lg mx-auto text-sm">
+            {isPermissionError 
+              ? "Your Meta connection is missing the required 'pages_read_engagement' permission to view Facebook posts. You need to reconnect your account to grant this permission."
+              : error}
+          </p>
+        </div>
+        {isPermissionError && (
+          <a href="/connect" className="px-6 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors mt-2">
+            Reconnect Facebook
+          </a>
+        )}
       </div>
     );
   }
