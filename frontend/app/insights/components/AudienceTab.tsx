@@ -12,29 +12,40 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
     async function fetchData() {
       setLoading(true);
       try {
-        // Mock data for UI layout
-        setTimeout(() => {
-          setData({
-            ageGender: [
-              { age: "13-17", male: 2.5, female: 4.2 },
-              { age: "18-24", male: 15.1, female: 25.8 },
-              { age: "25-34", male: 12.3, female: 18.5 },
-              { age: "35-44", male: 5.2, female: 7.1 },
-              { age: "45-54", male: 2.1, female: 3.4 },
-              { age: "55+", male: 1.2, female: 2.6 },
-            ],
-            topLocations: [
-              { name: "New York, USA", value: 4500 },
-              { name: "London, UK", value: 3200 },
-              { name: "Los Angeles, USA", value: 2800 },
-              { name: "Toronto, CA", value: 1900 },
-              { name: "Sydney, AU", value: 1200 },
-            ]
-          });
-          setLoading(false);
-        }, 800);
+        const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/audience`);
+        if (!res.ok) throw new Error("Failed to fetch audience data");
+        const json = await res.json();
+        const metrics = json.data || [];
+
+        const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || {};
+        
+        // Age & Gender parsing
+        const genderAge = findMetric("audience_gender_age") || findMetric("page_fans_gender_age");
+        const ageGroups = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
+        
+        let totalGenderAge = 0;
+        Object.values(genderAge).forEach((v: any) => totalGenderAge += v);
+
+        const ageGender = ageGroups.map(age => {
+          const male = (genderAge[`M.${age}`] || 0) / (totalGenderAge || 1) * 100;
+          const female = (genderAge[`F.${age}`] || 0) / (totalGenderAge || 1) * 100;
+          return { age, male: parseFloat(male.toFixed(1)), female: parseFloat(female.toFixed(1)) };
+        });
+
+        // Top Locations (City)
+        const cityData = findMetric("audience_city") || findMetric("page_fans_city");
+        const topLocations = Object.entries(cityData)
+          .map(([name, value]: [string, any]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 5);
+
+        setData({
+          ageGender,
+          topLocations: topLocations.length > 0 ? topLocations : [{ name: "No data", value: 1 }]
+        });
       } catch (err) {
         console.error(err);
+      } finally {
         setLoading(false);
       }
     }
@@ -43,8 +54,8 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
 
   if (!accountId) {
     return (
-      <div className="p-12 text-center border border-zinc-800 rounded-2xl bg-zinc-900/50">
-        <p className="text-zinc-500">Please select an account to view insights.</p>
+      <div className="p-12 text-center border border-border rounded-2xl bg-card">
+        <p className="text-muted-foreground">Please select an account to view insights.</p>
       </div>
     );
   }
@@ -64,9 +75,9 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Age and Gender */}
-        <div className="p-6 rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm">
-          <h3 className="font-semibold text-sm text-zinc-100 flex items-center gap-2 mb-6">
-            <Users className="w-4 h-4 text-zinc-500" /> Age & Gender Distribution
+        <div className="p-6 rounded-2xl border border-border bg-card shadow-sm">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-6">
+            <Users className="w-4 h-4 text-muted-foreground" /> Age & Gender Distribution
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -87,9 +98,9 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
         </div>
 
         {/* Top Locations */}
-        <div className="p-6 rounded-2xl border border-zinc-800 bg-zinc-900 shadow-sm">
-          <h3 className="font-semibold text-sm text-zinc-100 flex items-center gap-2 mb-6">
-            <MapPin className="w-4 h-4 text-zinc-500" /> Top Locations (Cities)
+        <div className="p-6 rounded-2xl border border-border bg-card shadow-sm">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-6">
+            <MapPin className="w-4 h-4 text-muted-foreground" /> Top Locations (Cities)
           </h3>
           <div className="h-[300px] w-full flex">
             <ResponsiveContainer width="100%" height="100%">
