@@ -69,7 +69,10 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
   try {
     const response = await fetch(apiUrl);
     const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
+    if (data.error) {
+      console.error("[Meta API Error - Overview]", data.error);
+      return res.status(400).json({ error: data.error.message });
+    }
     return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -111,7 +114,10 @@ router.get("/:platform/:accountId/audience", async (req: Request, res: Response)
   try {
     const response = await fetch(apiUrl);
     const data = await response.json();
-    if (data.error) return res.status(400).json({ error: data.error.message });
+    if (data.error) {
+      console.error("[Meta API Error - Audience]", data.error);
+      return res.status(400).json({ error: data.error.message });
+    }
     return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -146,6 +152,7 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
     const mediaData = await mediaRes.json();
 
     if (mediaData.error) {
+      console.error("[Meta API Error - Media]", mediaData.error);
       return res.status(400).json({ error: mediaData.error.message });
     }
 

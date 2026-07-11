@@ -54,7 +54,10 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
           body: JSON.stringify({ platform, statsData })
         });
 
-        if (!res.ok) throw new Error("Failed to generate AI insights");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to generate AI insights");
+        }
         const json = await res.json();
         if (json.aiData) {
           setData(json.aiData);

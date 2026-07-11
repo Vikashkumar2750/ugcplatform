@@ -16,7 +16,10 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
       setError(null);
       try {
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/media?limit=30`);
-        if (!res.ok) throw new Error("Failed to fetch media insights");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to fetch media insights");
+        }
         const json = await res.json();
         setData(json.data || []);
       } catch (err: any) {

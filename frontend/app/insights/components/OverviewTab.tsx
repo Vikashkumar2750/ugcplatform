@@ -16,7 +16,10 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
       try {
         const daysInt = parseInt(timeRange.replace("d", ""), 10) || 28;
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/overview?days=${daysInt}`);
-        if (!res.ok) throw new Error("Failed to fetch overview data");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to fetch overview data");
+        }
         
         const json = await res.json();
         const metrics = json.data || [];

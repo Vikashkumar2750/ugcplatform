@@ -15,7 +15,10 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
       setError(null);
       try {
         const res = await fetch(`/api/insights/proxy/${platform}/${accountId}/audience`);
-        if (!res.ok) throw new Error("Failed to fetch audience data");
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to fetch audience data");
+        }
         const json = await res.json();
         const metrics = json.data || [];
 
