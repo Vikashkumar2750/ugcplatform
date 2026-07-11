@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 
 /**
  * Utility for making batch requests to Meta Graph API.

@@ -1,5 +1,4 @@
 import { supabase } from "../lib/supabase";
-import fetch from "node-fetch";
 import { executeMetaBatch, MetaBatchRequest } from "../lib/meta-batch";
 
 export async function snapshotDailyMetrics() {

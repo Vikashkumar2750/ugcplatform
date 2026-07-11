@@ -77,7 +77,7 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', fontSize: '12px' }}
                   itemStyle={{ color: '#e4e4e7' }}
-                  formatter={(value: number) => [`${value}%`]}
+                  formatter={(value: any, name: any) => [`${value}%`, name]}
                 />
                 <Bar dataKey="female" name="Female" fill="#ec4899" radius={[0, 4, 4, 0]} stackId="a" />
                 <Bar dataKey="male" name="Male" fill="#3b82f6" radius={[0, 4, 4, 0]} stackId="a" />
