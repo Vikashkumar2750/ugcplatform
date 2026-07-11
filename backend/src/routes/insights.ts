@@ -57,17 +57,34 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
     if (platform === "facebook") {
       const apiUrl =
         `https://graph.facebook.com/v21.0/${accountId}/insights` +
-        `?metric=page_impressions,page_post_engagements,page_views_total` +
+        `?metric=page_impressions,page_impressions_unique,page_engaged_users` +
         `&period=day` +
         `&since=${since}&until=${until}` +
         `&access_token=${account.access_token}`;
-      const response = await fetch(apiUrl);
+        
+      const fansUrl =
+        `https://graph.facebook.com/v21.0/${accountId}/insights` +
+        `?metric=page_fans` +
+        `&period=lifetime` +
+        `&since=${since}&until=${until}` +
+        `&access_token=${account.access_token}`;
+
+      const [response, fansResponse] = await Promise.all([
+        fetch(apiUrl),
+        fetch(fansUrl)
+      ]);
+
       const data = await response.json();
-      if (data.error) {
-        console.error("[Meta API Error - Overview FB]", data.error);
-        return res.status(400).json({ error: data.error.message });
+      const fansData = await fansResponse.json();
+
+      if (data.error || fansData.error) {
+        const err = data.error || fansData.error;
+        console.error("[Meta API Error - Overview FB]", err);
+        return res.status(400).json({ error: err.message });
       }
-      return res.json(data);
+
+      const combinedData = [...(data.data || []), ...(fansData.data || [])];
+      return res.json({ data: combinedData });
     } else {
       // Instagram: reach supports time_series (default), but views/profile_views require metric_type=total_value
       const reachUrl = 
