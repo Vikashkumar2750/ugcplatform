@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   try {
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
@@ -13,6 +13,7 @@ export async function GET(request: NextRequest, { params }: { params: { path: st
 
     const BACKEND_URL = process.env.RENDER_WORKER_URL || "http://localhost:3001";
     const searchParams = request.nextUrl.search;
+    const params = await context.params;
     
     // Ensure params.path exists
     if (!params || !params.path || params.path.length === 0) {

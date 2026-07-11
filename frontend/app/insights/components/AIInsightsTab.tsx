@@ -5,9 +5,7 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!accountId) return;
-    
+
   useEffect(() => {
     if (!accountId) return;
     
