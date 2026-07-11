@@ -53,10 +53,10 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
   const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  // Impressions, Reach, Profile Views
   let metrics = "impressions,reach,profile_views";
   if (platform === "facebook") {
-    metrics = "page_impressions_unique,page_impressions,page_views_total";
+    // page_impressions_unique is deprecated in v21.0
+    metrics = "page_impressions,page_post_engagements,page_views_total";
   }
 
   const apiUrl =
@@ -100,10 +100,13 @@ router.get("/:platform/:accountId/audience", async (req: Request, res: Response)
     return res.status(404).json({ error: "Connected account not found" });
   }
 
-  let metrics = "audience_gender_age,audience_country,audience_city";
   if (platform === "facebook") {
-    metrics = "page_fans_gender_age,page_fans_country,page_fans_city";
+    // Demographic page insights (page_fans_gender_age, etc) are DEPRECATED in Facebook Graph API v21.0
+    // The API will throw "invalid metric" error, so we must return empty data for Facebook.
+    return res.json({ data: [] });
   }
+
+  let metrics = "audience_gender_age,audience_country,audience_city";
 
   const apiUrl =
     `https://graph.facebook.com/v21.0/${accountId}/insights` +

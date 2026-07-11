@@ -4,6 +4,7 @@ const express_1 = require("express");
 const supabase_1 = require("../lib/supabase");
 const auth_1 = require("../middleware/auth");
 const llm_1 = require("../services/llm");
+const meta_batch_1 = require("../lib/meta-batch");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
 // Helper: extract JSON from LLM response
@@ -36,183 +37,151 @@ function extractJSON(text) {
     }
     return null;
 }
-// Rule-based insights generator fallback (if LLM fails / is unconfigured)
-function generateRuleBasedInsights(platform, data) {
-    const er = Number(data.engagementRate) || 0;
-    const followers = Number(data.followers || data.fans || data.subscribers) || 0;
-    const mediaCount = Number(data.mediaCount || data.postsCount || data.videoCount) || 0;
-    const posts30dCount = Number(data.posts30dCount || data.postsCount || 0);
-    // Engagement Score
-    let engagementScore = 50;
-    if (platform === "instagram") {
-        if (er >= 6)
-            engagementScore = 90;
-        else if (er >= 3)
-            engagementScore = 75;
-        else if (er >= 1.5)
-            engagementScore = 55;
-        else
-            engagementScore = 35;
+// (Fabricated rule-based insights generator removed in compliance with strict actual-data guidelines)
+// GET /api/insights/:platform/:accountId/overview
+// Fetches time-series data for Reach, Impressions, Profile Views
+router.get("/:platform/:accountId/overview", async (req, res) => {
+    const { platform, accountId } = req.params;
+    const { userId } = req;
+    const { days = "28" } = req.query;
+    if (platform !== "instagram" && platform !== "facebook") {
+        return res.status(400).json({ error: "Unsupported platform" });
     }
-    else if (platform === "facebook") {
-        if (er >= 3)
-            engagementScore = 85;
-        else if (er >= 1.5)
-            engagementScore = 65;
-        else
-            engagementScore = 40;
+    const { data: account, error: accountError } = await supabase_1.supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("platform_user_id", accountId)
+        .eq("user_id", userId)
+        .single();
+    if (accountError || !account) {
+        return res.status(404).json({ error: "Connected account not found" });
     }
-    else { // youtube
-        const avgViews = mediaCount > 0 ? (Number(data.totalViews) || 0) / mediaCount : 0;
-        const viewToSubRatio = followers > 0 ? avgViews / followers : 0;
-        if (viewToSubRatio >= 0.2)
-            engagementScore = 90;
-        else if (viewToSubRatio >= 0.08)
-            engagementScore = 75;
-        else
-            engagementScore = 45;
+    const daysInt = parseInt(days, 10) || 28;
+    const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
+    const until = Math.floor(Date.now() / 1000);
+    let metrics = "impressions,reach,profile_views";
+    if (platform === "facebook") {
+        // page_impressions_unique is deprecated in v21.0
+        metrics = "page_impressions,page_post_engagements,page_views_total";
     }
-    // Consistency Score
-    let consistencyScore = 40;
-    if (platform === "youtube") {
-        if (posts30dCount >= 4)
-            consistencyScore = 85;
-        else if (posts30dCount >= 2)
-            consistencyScore = 65;
-        else
-            consistencyScore = 45;
-    }
-    else {
-        if (posts30dCount >= 12)
-            consistencyScore = 90;
-        else if (posts30dCount >= 6)
-            consistencyScore = 70;
-        else
-            consistencyScore = 45;
-    }
-    // Growth Score
-    let growthScore = 60;
-    const reachPct = data.comparison7d?.reach?.pct;
-    if (reachPct !== undefined && reachPct !== null) {
-        if (reachPct >= 20)
-            growthScore = 85;
-        else if (reachPct >= 0)
-            growthScore = 70;
-        else if (reachPct >= -15)
-            growthScore = 50;
-        else
-            growthScore = 35;
-    }
-    // Content Score
-    const contentScore = er > 4 ? 80 : 65;
-    const healthScore = Math.round((engagementScore + consistencyScore + growthScore + contentScore) / 4);
-    // Executive Summary
-    let executiveSummary = "";
-    if (platform === "instagram") {
-        executiveSummary = `Your account is showing a healthy engagement rate of ${er.toFixed(1)}%. ${reachPct && reachPct < 0
-            ? `However, reach dropped by ${Math.abs(reachPct)}% this week, likely due to posting only ${data.comparison7d?.posts?.current || 0} times. Focus on Reels to boost reach.`
-            : "Consistency is good. Focus on adding strong CTAs to direct followers to your link in bio."}`;
-    }
-    else if (platform === "facebook") {
-        executiveSummary = `Your Facebook Page has an engagement rate of ${er.toFixed(1)}%. ${mediaCount < 3 ? "Consistency needs improvement. Aim to post at least 3 times a week." : "Keep up the consistent scheduling to boost organic page reach."}`;
-    }
-    else {
-        executiveSummary = `Your channel with ${followers.toLocaleString()} subscribers has published ${mediaCount} videos. Focus on engaging thumbnails and strong hooks in the first 10 seconds.`;
-    }
-    // AI recommendations
-    const recommendations = [];
-    if (platform === "instagram") {
-        if (consistencyScore < 60) {
-            recommendations.push({
-                title: "Increase Reel frequency",
-                expectedImpact: "High",
-                priority: "High",
-                reasoning: "Algorithm prioritizes accounts that publish 3+ times weekly, especially in Reels format.",
-                suggestedAction: "Schedule 3 Reels next week using trending audio hooks."
-            });
+    const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
+        `?metric=${metrics}` +
+        `&period=day` +
+        `&since=${since}&until=${until}` +
+        `&access_token=${account.access_token}`;
+    try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        if (data.error) {
+            console.error("[Meta API Error - Overview]", data.error);
+            return res.status(400).json({ error: data.error.message });
         }
-        if (engagementScore < 60) {
-            recommendations.push({
-                title: "Use shorter hooks in Reels",
-                expectedImpact: "High",
-                priority: "High",
-                reasoning: "Retention drops off after 3 seconds. A text hook on screen improves watch time.",
-                suggestedAction: "Place a bold, 3-word title hook on screen for the first 2 seconds of your next video."
-            });
+        return res.json(data);
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// GET /api/insights/:platform/:accountId/audience
+// Fetches demographic data (Age, Gender, City, Country)
+router.get("/:platform/:accountId/audience", async (req, res) => {
+    const { platform, accountId } = req.params;
+    const { userId } = req;
+    if (platform !== "instagram" && platform !== "facebook") {
+        return res.status(400).json({ error: "Unsupported platform" });
+    }
+    const { data: account, error: accountError } = await supabase_1.supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("platform_user_id", accountId)
+        .eq("user_id", userId)
+        .single();
+    if (accountError || !account) {
+        return res.status(404).json({ error: "Connected account not found" });
+    }
+    if (platform === "facebook") {
+        // Demographic page insights (page_fans_gender_age, etc) are DEPRECATED in Facebook Graph API v21.0
+        // The API will throw "invalid metric" error, so we must return empty data for Facebook.
+        return res.json({ data: [] });
+    }
+    let metrics = "audience_gender_age,audience_country,audience_city";
+    const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
+        `?metric=${metrics}` +
+        `&period=lifetime` +
+        `&access_token=${account.access_token}`;
+    try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        if (data.error) {
+            console.error("[Meta API Error - Audience]", data.error);
+            return res.status(400).json({ error: data.error.message });
         }
-        else {
-            recommendations.push({
-                title: "Reply faster to comments",
-                expectedImpact: "Medium",
-                priority: "Medium",
-                reasoning: "Responding to comments in the first hour signal high engagement to the algorithm.",
-                suggestedAction: "Set aside 15 minutes after publishing a post to answer all immediate comments."
-            });
+        return res.json(data);
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+// GET /api/insights/:platform/:accountId/media
+// Fetches recent media items and their insights using batch API
+router.get("/:platform/:accountId/media", async (req, res) => {
+    const { platform, accountId } = req.params;
+    const { userId } = req;
+    const { limit = "30" } = req.query;
+    if (platform !== "instagram") {
+        return res.status(400).json({ error: "Unsupported platform for media insights" });
+    }
+    const { data: account, error: accountError } = await supabase_1.supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("platform_user_id", accountId)
+        .eq("user_id", userId)
+        .single();
+    if (accountError || !account) {
+        return res.status(404).json({ error: "Connected account not found" });
+    }
+    try {
+        const mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+        const mediaRes = await fetch(mediaUrl);
+        const mediaData = await mediaRes.json();
+        if (mediaData.error) {
+            console.error("[Meta API Error - Media]", mediaData.error);
+            return res.status(400).json({ error: mediaData.error.message });
         }
-        recommendations.push({
-            title: "Add 'Save for later' CTA",
-            expectedImpact: "Medium",
-            priority: "Medium",
-            reasoning: "Saves have a higher weighting in the current feed ranking system than likes.",
-            suggestedAction: "End your next caption with: 'Save this post 🔖 so you can find it later!'"
+        const posts = mediaData.data || [];
+        if (posts.length === 0) {
+            return res.json({ data: [] });
+        }
+        const batchRequests = posts.map((post) => ({
+            method: "GET",
+            relative_url: `${post.id}/insights?metric=reach,saved,impressions,shares`
+        }));
+        const batchResults = await (0, meta_batch_1.executeMetaBatch)(account.access_token, batchRequests);
+        const enrichedPosts = posts.map((post, index) => {
+            const result = batchResults[index];
+            let reach = 0, saved = 0, impressions = 0, shares = 0;
+            if (result.code === 200) {
+                const body = JSON.parse(result.body);
+                if (body.data) {
+                    const findMetric = (name) => body.data.find((m) => m.name === name)?.values?.[0]?.value || 0;
+                    reach = findMetric("reach");
+                    saved = findMetric("saved");
+                    impressions = findMetric("impressions");
+                    shares = findMetric("shares");
+                }
+            }
+            return {
+                ...post,
+                insights: { reach, saved, impressions, shares }
+            };
         });
+        return res.json({ data: enrichedPosts });
     }
-    else if (platform === "facebook") {
-        recommendations.push({
-            title: "Create interactive polls",
-            expectedImpact: "Medium",
-            priority: "High",
-            reasoning: "Facebook algorithms heavily boost comments and votes on interactive formats.",
-            suggestedAction: "Publish a simple two-choice comparison poll relative to your niche."
-        });
+    catch (err) {
+        return res.status(500).json({ error: err.message });
     }
-    else { // youtube
-        recommendations.push({
-            title: "Optimize video titles for search",
-            expectedImpact: "High",
-            priority: "High",
-            reasoning: "Search accounts for 40%+ of traffic for new educational content creators.",
-            suggestedAction: "Include high-volume search keywords in the first 50 characters of your titles."
-        });
-    }
-    // Best Times
-    const bestPostingTime = {
-        days: platform === "youtube" ? ["Thursday", "Saturday", "Sunday"] : ["Monday", "Wednesday", "Friday"],
-        hours: platform === "youtube" ? ["3:00 PM", "6:00 PM"] : ["7:00 PM", "9:00 PM"],
-        confidenceScore: 78
-    };
-    // Profile Health
-    const profileHealth = {
-        bioOptimization: "Include clear keywords indicating your target audience.",
-        ctaQuality: "Add a direct action verb pointing to your website link.",
-        completeness: "85%",
-        seoOptimization: "Make sure your display name has your niche search keyword included."
-    };
-    const topPostsAnalysis = (data.topPosts || []).map((p) => ({
-        postId: p.postId || p.id,
-        reason: `This post performed well due to high initial save and share ratios. The caption length was ideal for retention.`
-    }));
-    const underperformingPostsAnalysis = (data.topPosts || []).slice(-2).map((p) => ({
-        postId: p.postId || p.id,
-        reason: `Lower reach suggests the visual thumbnail failed to capture user attention in the feed.`,
-        suggestion: `Republish this topic as a Reel with a clearer title overlay.`
-    }));
-    return {
-        healthScore,
-        growthScore,
-        engagementScore,
-        contentScore,
-        consistencyScore,
-        executiveSummary,
-        topPostsAnalysis,
-        underperformingPostsAnalysis,
-        bestPostingTime,
-        profileHealth,
-        recommendations
-    };
-}
+});
 // GET /api/insights/:platform/:accountId
-// Proxy for Meta Graph API insights — keeps access tokens server-side
 router.get("/:platform/:accountId", async (req, res) => {
     const { platform, accountId } = req.params;
     const { userId } = req;
@@ -332,10 +301,8 @@ Format the response strictly as a single JSON object with these keys:
         return res.json({ aiData: parsedJson });
     }
     catch (err) {
-        console.error("[insights generate-ai error]:", err.message);
-        // Silent failover to Rule-Based insights to keep service online
-        const fallback = generateRuleBasedInsights(platform, statsData);
-        return res.json({ aiData: fallback, _fallback: true });
+        // Silent failover to empty object
+        return res.json({ aiData: {}, _fallback: true, error: err.message });
     }
 });
 exports.default = router;

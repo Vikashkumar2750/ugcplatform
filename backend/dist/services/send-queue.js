@@ -62,6 +62,7 @@ async function enqueueMessage(input) {
     const rateCheck = await (0, rate_limiter_1.checkRateLimit)(accountId, recipientId);
     let initialStatus = "queued";
     let rateLimitStatus = "pending";
+    const isFuture = scheduledSendAt && new Date(scheduledSendAt) > new Date();
     if (!rateCheck.allowed) {
         // Don't block — delay instead. The queue processor will retry.
         rateLimitStatus = "delayed";
@@ -69,7 +70,8 @@ async function enqueueMessage(input) {
     }
     else {
         rateLimitStatus = "approved";
-        initialStatus = "ready"; // Ready for immediate processing
+        // If it's scheduled for the future, it MUST be queued. Otherwise it bypasses the scheduled time.
+        initialStatus = isFuture ? "queued" : "ready";
     }
     // ── Step 3: Insert into queue ────────────────────────────────────────────
     const { data, error } = await supabase_1.supabase.from("message_queue").insert({

@@ -24,8 +24,11 @@ export default function InsightsDashboard() {
         const res = await fetch("/api/connect/accounts");
         const data = await res.json();
         if (data.accounts && data.accounts.length > 0) {
-          setAccounts(data.accounts);
-          setSelectedAccountId(data.accounts[0].id);
+          const igAccounts = data.accounts.filter((a: any) => a.platform === "instagram");
+          setAccounts(igAccounts);
+          if (igAccounts.length > 0) {
+            setSelectedAccountId(igAccounts[0].id);
+          }
         }
       } catch (err) {
         console.error("Failed to load accounts", err);
