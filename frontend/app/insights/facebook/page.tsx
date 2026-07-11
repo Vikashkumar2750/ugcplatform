@@ -460,6 +460,15 @@ export default function FacebookInsightsPage() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto pb-16 space-y-6 animate-in fade-in duration-300">
 
+      {/* Debug Errors Box */}
+      {(data as any).debugErrors && ((data as any).debugErrors.insightsError || (data as any).debugErrors.postsError) && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl mb-6">
+          <h3 className="text-red-500 font-bold mb-2">Meta API Errors (Debug)</h3>
+          {(data as any).debugErrors.insightsError && <p className="text-sm text-red-400">Insights: {(data as any).debugErrors.insightsError}</p>}
+          {(data as any).debugErrors.postsError && <p className="text-sm text-red-400">Posts: {(data as any).debugErrors.postsError}</p>}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap bg-card border border-border/50 p-6 rounded-3xl shadow-sm">
         <div className="flex items-center gap-3">
