@@ -121,9 +121,9 @@ export default function InsightsDashboard() {
       {/* Tab Content Areas */}
       <div className="mt-6">
         {activeTab === "overview" && <OverviewTab timeRange={timeRange} accountId={selectedAccount?.platform_user_id} platform="facebook" />}
-        {activeTab === "audience" && <AudienceTab timeRange={timeRange} accountId={selectedAccount?.platform_user_id} platform="facebook" />}
+        {activeTab === "audience" && <AudienceTab accountId={selectedAccount?.platform_user_id} platform="facebook" />}
         {activeTab === "content" && <ContentTab timeRange={timeRange} accountId={selectedAccount?.platform_user_id} platform="facebook" />}
-        {activeTab === "ai" && <AIInsightsTab timeRange={timeRange} accountId={selectedAccount?.platform_user_id} platform="facebook" />}
+        {activeTab === "ai" && <AIInsightsTab accountId={selectedAccount?.platform_user_id} platform="facebook" />}
       </div>
     </div>
   );
