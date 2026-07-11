@@ -197,6 +197,7 @@ function StatCard({ title, value, trend, isUp }: { title: string, value: string,
       <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${isUp ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400'}`}>
         {isUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
         <span>{trend} vs prev period</span>
+      </div>
     </div>
   );
 }
