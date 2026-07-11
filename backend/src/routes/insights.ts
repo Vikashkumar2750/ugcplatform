@@ -73,17 +73,15 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
       if (reachData.error) console.error("[Meta API Error - FB Reach]", reachData.error);
       if (fansData.error) console.error("[Meta API Error - FB Fans]", fansData.error);
 
-      // If all of them failed with an OAuth error, we might want to return an error, 
-      // but otherwise we just combine what succeeded.
+      // If all of them failed, we log it, but we return an empty array 
+      // instead of a 400 error, because many modern Facebook Pages (New Pages Experience)
+      // simply don't support these legacy page_* metrics and throw 100 errors.
+      // We don't want to crash the UI for this.
       const combinedData = [
         ...(impData.data || []),
         ...(reachData.data || []),
         ...(fansData.data || [])
       ];
-
-      if (combinedData.length === 0 && (impData.error || fansData.error)) {
-         return res.status(400).json({ error: (impData.error || fansData.error).message });
-      }
 
       return res.json({ data: combinedData });
     } else {
