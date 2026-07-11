@@ -46,3 +46,8 @@ Meta aggressively bans accounts that send bulk messages or spam. We bypass this 
 - **Queue Enqueue Endpoint**: `backend/src/routes/messaging.ts`
 - **Queue Cron Processor**: `backend/src/services/send-queue.ts`
 - **Supabase DB Client Setup**: Used globally across both frontend and backend utilizing service role keys for admin inserts.
+
+
+
+
+Please read PROJECT_CONTEXT.md in the root folder to understand this project, how it's built, the tech stack, the database schema, and all the Meta API logic.

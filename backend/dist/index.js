@@ -814,6 +814,9 @@ async function handleCommentDMTrigger(event) {
                     last_triggered: new Date().toISOString(),
                 }).eq("id", rule.id);
             }
+            // Successfully processed a rule for this comment.
+            // Stop evaluating other rules to prevent multiple DMs for the same comment.
+            break;
         }
         catch (err) {
             console.error(`[DM] Enqueue failed:`, err.message);
@@ -960,6 +963,9 @@ async function handleMessageDMTrigger(event) {
                 trigger_count: (rule.trigger_count || 0) + 1,
                 last_triggered: new Date().toISOString(),
             }).eq("id", rule.id);
+            // Successfully processed a rule for this comment.
+            // Stop evaluating other rules to prevent multiple DMs for the same comment.
+            break;
         }
         catch (err) {
             console.error(`[DM Keyword] Failed: ${err.message}`);
