@@ -193,7 +193,7 @@ function ActionMenu({ user, onAction, busy }: {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 bottom-10 z-20 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl min-w-44 overflow-hidden">
+          <div className="absolute right-0 top-full mt-1 z-20 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl min-w-44 overflow-hidden">
             <div className="px-3 py-1.5 text-[10px] text-zinc-600 font-medium uppercase tracking-wider border-b border-zinc-800">Plan</div>
             {PLANS.map(a => (
               <button key={a.label}
