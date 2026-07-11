@@ -55,35 +55,36 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
 
   try {
     if (platform === "facebook") {
-      const apiUrl =
-        `https://graph.facebook.com/v21.0/${accountId}/insights` +
-        `?metric=page_impressions,page_impressions_unique,page_engaged_users` +
-        `&period=day` +
-        `&since=${since}&until=${until}` +
-        `&access_token=${account.access_token}`;
-        
-      const fansUrl =
-        `https://graph.facebook.com/v21.0/${accountId}/insights` +
-        `?metric=page_fans` +
-        `&period=lifetime` +
-        `&since=${since}&until=${until}` +
-        `&access_token=${account.access_token}`;
+      const impUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions,page_engaged_users&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
+      const reachUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions_unique&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
+      const fansUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_fans&period=lifetime&since=${since}&until=${until}&access_token=${account.access_token}`;
 
-      const [response, fansResponse] = await Promise.all([
-        fetch(apiUrl),
+      const [impRes, reachRes, fansRes] = await Promise.all([
+        fetch(impUrl),
+        fetch(reachUrl),
         fetch(fansUrl)
       ]);
 
-      const data = await response.json();
-      const fansData = await fansResponse.json();
+      const impData = await impRes.json();
+      const reachData = await reachRes.json();
+      const fansData = await fansRes.json();
 
-      if (data.error || fansData.error) {
-        const err = data.error || fansData.error;
-        console.error("[Meta API Error - Overview FB]", err);
-        return res.status(400).json({ error: err.message });
+      if (impData.error) console.error("[Meta API Error - FB Impressions]", impData.error);
+      if (reachData.error) console.error("[Meta API Error - FB Reach]", reachData.error);
+      if (fansData.error) console.error("[Meta API Error - FB Fans]", fansData.error);
+
+      // If all of them failed with an OAuth error, we might want to return an error, 
+      // but otherwise we just combine what succeeded.
+      const combinedData = [
+        ...(impData.data || []),
+        ...(reachData.data || []),
+        ...(fansData.data || [])
+      ];
+
+      if (combinedData.length === 0 && (impData.error || fansData.error)) {
+         return res.status(400).json({ error: (impData.error || fansData.error).message });
       }
 
-      const combinedData = [...(data.data || []), ...(fansData.data || [])];
       return res.json({ data: combinedData });
     } else {
       // Instagram: reach supports time_series (default), but views/profile_views require metric_type=total_value
