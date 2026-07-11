@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { supabase } from "../lib/supabase";
 import { requireAuth, AuthenticatedRequest } from "../middleware/auth";
 import { callLLM } from "../services/llm";
+import { executeMetaBatch, MetaBatchRequest } from "../lib/meta-batch";
 
 const router = Router();
 router.use(requireAuth);
@@ -112,6 +113,76 @@ router.get("/:platform/:accountId/audience", async (req: Request, res: Response)
     const data = await response.json();
     if (data.error) return res.status(400).json({ error: data.error.message });
     return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/insights/:platform/:accountId/media
+// Fetches recent media items and their insights using batch API
+router.get("/:platform/:accountId/media", async (req: Request, res: Response) => {
+  const { platform, accountId } = req.params;
+  const { userId } = req as AuthenticatedRequest;
+  const { limit = "30" } = req.query;
+
+  if (platform !== "instagram") {
+    return res.status(400).json({ error: "Unsupported platform for media insights" });
+  }
+
+  const { data: account, error: accountError } = await supabase
+    .from("connected_accounts")
+    .select("access_token")
+    .eq("platform_user_id", accountId)
+    .eq("user_id", userId)
+    .single();
+
+  if (accountError || !account) {
+    return res.status(404).json({ error: "Connected account not found" });
+  }
+
+  try {
+    const mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+    const mediaRes = await fetch(mediaUrl);
+    const mediaData = await mediaRes.json();
+
+    if (mediaData.error) {
+      return res.status(400).json({ error: mediaData.error.message });
+    }
+
+    const posts = mediaData.data || [];
+    if (posts.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const batchRequests: MetaBatchRequest[] = posts.map((post: any) => ({
+      method: "GET",
+      relative_url: `${post.id}/insights?metric=reach,saved,impressions,shares`
+    }));
+
+    const batchResults = await executeMetaBatch(account.access_token, batchRequests);
+
+    const enrichedPosts = posts.map((post: any, index: number) => {
+      const result = batchResults[index];
+      let reach = 0, saved = 0, impressions = 0, shares = 0;
+      
+      if (result.code === 200) {
+        const body = JSON.parse(result.body);
+        if (body.data) {
+          const findMetric = (name: string) => body.data.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
+          reach = findMetric("reach");
+          saved = findMetric("saved");
+          impressions = findMetric("impressions");
+          shares = findMetric("shares");
+        }
+      }
+      
+      return {
+        ...post,
+        insights: { reach, saved, impressions, shares }
+      };
+    });
+
+    return res.json({ data: enrichedPosts });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
