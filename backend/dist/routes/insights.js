@@ -59,7 +59,7 @@ router.get("/:platform/:accountId/overview", async (req, res) => {
     const daysInt = parseInt(days, 10) || 28;
     const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
     const until = Math.floor(Date.now() / 1000);
-    let metrics = "impressions,reach,profile_views";
+    let metrics = "views,reach,profile_views";
     if (platform === "facebook") {
         // page_impressions_unique is deprecated in v21.0
         metrics = "page_impressions,page_post_engagements,page_views_total";
@@ -104,7 +104,7 @@ router.get("/:platform/:accountId/audience", async (req, res) => {
         // The API will throw "invalid metric" error, so we must return empty data for Facebook.
         return res.json({ data: [] });
     }
-    let metrics = "audience_gender_age,audience_country,audience_city";
+    let metrics = "follower_demographics";
     const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
         `?metric=${metrics}` +
         `&period=lifetime` +
@@ -198,7 +198,7 @@ router.get("/:platform/:accountId", async (req, res) => {
     if (accountError || !account) {
         return res.status(404).json({ error: "Connected account not found" });
     }
-    const fields = metric || "impressions,reach,profile_views,follower_count";
+    const fields = metric || "views,reach,profile_views,follower_count";
     const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
     const until = Math.floor(Date.now() / 1000);
     const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +

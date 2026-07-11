@@ -28,12 +28,12 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
         const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
         
         const reach = findMetric("reach") || findMetric("page_impressions_unique") || 0;
-        const impressions = findMetric("impressions") || findMetric("page_impressions") || 0;
+        const impressions = findMetric("impressions") || findMetric("views") || findMetric("page_impressions") || 0;
         const profileViews = findMetric("profile_views") || findMetric("page_views_total") || 0;
         
         // Chart data - we take the timeline values
         const reachData = metrics.find((m: any) => m.name === "reach" || m.name === "page_impressions_unique")?.values || [];
-        const impData = metrics.find((m: any) => m.name === "impressions" || m.name === "page_impressions")?.values || [];
+        const impData = metrics.find((m: any) => m.name === "impressions" || m.name === "views" || m.name === "page_impressions")?.values || [];
         
         const chartData = reachData.map((r: any, i: number) => {
           const date = new Date(r.end_time).toLocaleDateString("en-US", { month: "short", day: "numeric" });

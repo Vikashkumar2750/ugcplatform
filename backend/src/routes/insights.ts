@@ -53,7 +53,7 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
   const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 
-  let metrics = "impressions,reach,profile_views";
+  let metrics = "views,reach,profile_views";
   if (platform === "facebook") {
     // page_impressions_unique is deprecated in v21.0
     metrics = "page_impressions,page_post_engagements,page_views_total";
@@ -106,7 +106,7 @@ router.get("/:platform/:accountId/audience", async (req: Request, res: Response)
     return res.json({ data: [] });
   }
 
-  let metrics = "audience_gender_age,audience_country,audience_city";
+  let metrics = "follower_demographics";
 
   const apiUrl =
     `https://graph.facebook.com/v21.0/${accountId}/insights` +
@@ -166,14 +166,14 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
 
     const batchRequests: MetaBatchRequest[] = posts.map((post: any) => ({
       method: "GET",
-      relative_url: `${post.id}/insights?metric=reach,saved,impressions,shares`
+      relative_url: `${post.id}/insights?metric=reach,saved,views,shares`
     }));
 
     const batchResults = await executeMetaBatch(account.access_token, batchRequests);
 
     const enrichedPosts = posts.map((post: any, index: number) => {
       const result = batchResults[index];
-      let reach = 0, saved = 0, impressions = 0, shares = 0;
+      let reach = 0, saved = 0, views = 0, shares = 0;
       
       if (result.code === 200) {
         const body = JSON.parse(result.body);
@@ -181,14 +181,14 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
           const findMetric = (name: string) => body.data.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
           reach = findMetric("reach");
           saved = findMetric("saved");
-          impressions = findMetric("impressions");
+          views = findMetric("views");
           shares = findMetric("shares");
         }
       }
       
       return {
         ...post,
-        insights: { reach, saved, impressions, shares }
+        insights: { reach, saved, impressions: views, shares }
       };
     });
 
@@ -219,7 +219,7 @@ router.get("/:platform/:accountId", async (req: Request, res: Response) => {
     return res.status(404).json({ error: "Connected account not found" });
   }
 
-  const fields = metric || "impressions,reach,profile_views,follower_count";
+  const fields = metric || "views,reach,profile_views,follower_count";
   const since = Math.floor((Date.now() - 30 * 24 * 60 * 60 * 1000) / 1000);
   const until = Math.floor(Date.now() / 1000);
 

@@ -25,7 +25,7 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
         const findMetric = (name: string) => metrics.find((m: any) => m.name === name)?.values?.[0]?.value || {};
         
         // Age & Gender parsing
-        const genderAge = findMetric("audience_gender_age") || findMetric("page_fans_gender_age");
+        const genderAge = findMetric("audience_gender_age") || findMetric("page_fans_gender_age") || {};
         const ageGroups = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
         
         let totalGenderAge = 0;
@@ -38,7 +38,7 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
         });
 
         // Top Locations (City)
-        const cityData = findMetric("audience_city") || findMetric("page_fans_city");
+        const cityData = findMetric("audience_city") || findMetric("page_fans_city") || {};
         const topLocations = Object.entries(cityData)
           .map(([name, value]: [string, any]) => ({ name, value }))
           .sort((a, b) => b.value - a.value)
