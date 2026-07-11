@@ -200,7 +200,7 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
   const { userId } = req as AuthenticatedRequest;
   const { limit = "30" } = req.query;
 
-  if (platform !== "instagram") {
+  if (platform !== "instagram" && platform !== "facebook") {
     return res.status(400).json({ error: "Unsupported platform for media insights" });
   }
 
@@ -216,7 +216,13 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
   }
 
   try {
-    const mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+    let mediaUrl = "";
+    if (platform === "facebook") {
+      mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/published_posts?fields=id,message,story,created_time,attachments{type,media},likes.summary(true),comments.summary(true),shares,permalink_url&limit=${limit}&access_token=${account.access_token}`;
+    } else {
+      mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+    }
+
     const mediaRes = await fetch(mediaUrl);
     const mediaData = await mediaRes.json();
 
@@ -225,36 +231,59 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
       return res.status(400).json({ error: mediaData.error.message });
     }
 
-    const posts = mediaData.data || [];
-    if (posts.length === 0) {
+    const rawPosts = mediaData.data || [];
+    if (rawPosts.length === 0) {
       return res.json({ data: [] });
     }
 
+    // Format Facebook posts to match Instagram structure
+    const posts = platform === "facebook" ? rawPosts.map((post: any) => ({
+      id: post.id,
+      timestamp: post.created_time,
+      media_type: post.attachments?.data?.[0]?.type?.toUpperCase() || "STATUS",
+      media_url: post.attachments?.data?.[0]?.media?.image?.src || "",
+      thumbnail_url: post.attachments?.data?.[0]?.media?.image?.src || "",
+      caption: post.message || post.story || "",
+      like_count: post.likes?.summary?.total_count || 0,
+      comments_count: post.comments?.summary?.total_count || 0,
+      permalink: post.permalink_url || `https://facebook.com/${post.id}`
+    })) : rawPosts;
+
     const batchRequests: MetaBatchRequest[] = posts.map((post: any) => ({
       method: "GET",
-      relative_url: `${post.id}/insights?metric=reach,saved,views,shares`
+      relative_url: platform === "facebook" 
+        ? `${post.id}/insights?metric=post_impressions,post_engaged_users`
+        : `${post.id}/insights?metric=reach,saved,views,shares`
     }));
 
     const batchResults = await executeMetaBatch(account.access_token, batchRequests);
 
     const enrichedPosts = posts.map((post: any, index: number) => {
       const result = batchResults[index];
-      let reach = 0, saved = 0, views = 0, shares = 0;
+      let reach = 0, saved = 0, views = 0, shares = 0, engagement = 0;
       
       if (result.code === 200) {
         const body = JSON.parse(result.body);
         if (body.data) {
           const findMetric = (name: string) => body.data.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
-          reach = findMetric("reach");
-          saved = findMetric("saved");
-          views = findMetric("views");
-          shares = findMetric("shares");
+          
+          if (platform === "facebook") {
+            views = findMetric("post_impressions");
+            reach = views; // Facebook post reach isn't standard, use impressions
+            engagement = findMetric("post_engaged_users");
+            shares = rawPosts[index].shares?.count || 0;
+          } else {
+            reach = findMetric("reach");
+            saved = findMetric("saved");
+            views = findMetric("views");
+            shares = findMetric("shares");
+          }
         }
       }
       
       return {
         ...post,
-        insights: { reach, saved, impressions: views, shares }
+        insights: { reach, saved, impressions: views, shares, engagement }
       };
     });
 

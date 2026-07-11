@@ -56,7 +56,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
 
   const filteredData = data.filter(p => {
     if (filter === "reels") return p.media_type === "VIDEO";
-    if (filter === "posts") return p.media_type === "IMAGE" || p.media_type === "CAROUSEL_ALBUM";
+    if (filter === "posts") return p.media_type === "IMAGE" || p.media_type === "CAROUSEL_ALBUM" || p.media_type === "STATUS";
     return true;
   });
 
@@ -80,7 +80,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
               <th className="px-5 py-4 text-right">Views</th>
               <th className="px-5 py-4 text-right">Likes</th>
               <th className="px-5 py-4 text-right">Comments</th>
-              <th className="px-5 py-4 text-right">Saves</th>
+              <th className="px-5 py-4 text-right">{platform === "facebook" ? "Shares" : "Saves"}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
@@ -88,8 +88,12 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
               <tr key={post.id} className="hover:bg-muted/30 transition-colors cursor-pointer group" onClick={() => setSelectedPost(post)}>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-muted overflow-hidden relative flex-shrink-0 border border-border group-hover:border-primary/50 transition-colors">
-                      <img src={post.thumbnail_url || post.media_url} alt="thumbnail" className="w-full h-full object-cover" />
+                    <div className="w-12 h-12 rounded-lg bg-muted overflow-hidden relative flex-shrink-0 border border-border group-hover:border-primary/50 transition-colors flex items-center justify-center">
+                      {post.thumbnail_url || post.media_url ? (
+                        <img src={post.thumbnail_url || post.media_url} alt="thumbnail" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-[10px] text-muted-foreground font-medium">TEXT</div>
+                      )}
                       <div className="absolute top-1 right-1 bg-black/60 rounded p-0.5 backdrop-blur-sm">
                         {post.media_type === "VIDEO" ? <PlayCircle className="w-3 h-3 text-white" /> : <ImageIcon className="w-3 h-3 text-white" />}
                       </div>
@@ -200,12 +204,12 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
                   <p className="text-xl font-bold text-foreground">{((selectedPost.like_count || 0) + (selectedPost.comments_count || 0)).toLocaleString()}</p>
                 </div>
                 <div className="p-4 bg-muted/30 rounded-2xl border border-border">
-                  <p className="text-[10px] uppercase text-muted-foreground font-bold mb-1">Saves</p>
-                  <p className="text-xl font-bold text-foreground">{selectedPost.insights?.saved?.toLocaleString()}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-bold mb-1">{platform === "facebook" ? "Shares" : "Saves"}</p>
+                  <p className="text-xl font-bold text-foreground">{selectedPost.insights?.shares?.toLocaleString() || selectedPost.insights?.saved?.toLocaleString() || "0"}</p>
                 </div>
                 <div className="p-4 bg-muted/30 rounded-2xl border border-border">
-                  <p className="text-[10px] uppercase text-muted-foreground font-bold mb-1">Shares</p>
-                  <p className="text-xl font-bold text-foreground">{selectedPost.insights?.shares?.toLocaleString()}</p>
+                  <p className="text-[10px] uppercase text-muted-foreground font-bold mb-1">{platform === "facebook" ? "Engagement" : "Shares"}</p>
+                  <p className="text-xl font-bold text-foreground">{platform === "facebook" ? (selectedPost.insights?.engagement?.toLocaleString() || "0") : (selectedPost.insights?.shares?.toLocaleString() || "0")}</p>
                 </div>
               </div>
 
