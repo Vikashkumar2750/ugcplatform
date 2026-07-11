@@ -1,12 +1,15 @@
 import { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Info, Loader2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { ClipboardList, CheckCircle2, Circle, SkipForward, Zap, Trophy, Plus, X } from "lucide-react";
 import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function OverviewTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
   const [data, setData] = useState<any>(null);
+  const [tasks, setTasks] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [addingTask, setAddingTask] = useState(false);
 
   useEffect(() => {
     if (!accountId) return;
@@ -18,6 +21,13 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
         const daysInt = parseInt(timeRange.replace("d", ""), 10) || 28;
         const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/overview?days=${daysInt}`);
         const metrics = json.data || [];
+        
+        try {
+          const taskRes = await fetch(`/api/insights/tasks?platform=${platform}`);
+          if (taskRes.ok) setTasks(await taskRes.json());
+        } catch (e) {
+          console.error("Failed to load tasks", e);
+        }
         
         // Find metrics
         const findMetric = (name: string) => {
@@ -61,6 +71,22 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
     fetchData();
   }, [timeRange, accountId, platform]);
 
+  const handleTaskToggle = async (id: string, newStatus: string) => {
+    try {
+      await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status: newStatus }) });
+      const taskRes = await fetch(`/api/insights/tasks?platform=${platform}`);
+      if (taskRes.ok) setTasks(await taskRes.json());
+    } catch (e) { console.error(e); }
+  };
+
+  const handleAddTask = async (taskData: any) => {
+    try {
+      await fetch("/api/insights/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(taskData) });
+      const taskRes = await fetch(`/api/insights/tasks?platform=${platform}`);
+      if (taskRes.ok) setTasks(await taskRes.json());
+    } catch (e) { console.error(e); }
+  };
+
   if (!accountId) {
     return (
       <div className="p-12 text-center border border-border rounded-2xl bg-card">
@@ -84,6 +110,9 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
       </div>
     );
   }
+
+  const allTasks = [...(tasks?.weekly || []), ...(tasks?.monthly || [])];
+  const doneTasks = allTasks.filter(t => t.status === "done").length;
 
   return (
     <div className="space-y-6">
@@ -118,6 +147,41 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* TASKS SECTION */}
+      <div className="space-y-5">
+        <div className="p-5 rounded-3xl border border-border bg-card flex items-center justify-between gap-4 shadow-sm">
+          <div>
+            <p className="text-sm font-semibold flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-purple-500" /> Growth Planner checklist
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{doneTasks} of {allTasks.length} tasks completed</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-purple-500 transition-all" style={{ width: `${allTasks.length > 0 ? (doneTasks / allTasks.length) * 100 : 0}%` }} />
+            </div>
+            <button onClick={() => setAddingTask(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500 text-white text-xs font-bold hover:bg-purple-600 transition shadow-sm">
+              <Plus className="w-3.5 h-3.5" /> Add Task
+            </button>
+          </div>
+        </div>
+
+        {tasks?.weekly && tasks.weekly.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-purple-500" />
+              <p className="font-semibold text-sm">Weekly Goals</p>
+            </div>
+            {tasks.weekly.filter((t: any) => t.status !== "skipped").map((task: any) => (
+              <TaskItem key={task.id} task={task} onToggle={handleTaskToggle} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {addingTask && <AddTaskModal onAdd={handleAddTask} onClose={() => setAddingTask(false)} platform={platform} />}
     </div>
   );
 }
@@ -133,6 +197,57 @@ function StatCard({ title, value, trend, isUp }: { title: string, value: string,
       <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${isUp ? 'text-green-600 dark:text-green-500' : 'text-red-500 dark:text-red-400'}`}>
         {isUp ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
         <span>{trend} vs prev period</span>
+    </div>
+  );
+}
+
+function TaskItem({ task, onToggle }: { task: any; onToggle: (id: string, status: string) => void }) {
+  return (
+    <div className={`flex items-start gap-3 p-3 rounded-xl transition-all ${task.status === "done" ? "opacity-60 bg-muted/20" : "bg-card border border-border hover:border-purple-400/30"}`}>
+      <button onClick={() => onToggle(task.id, task.status === "done" ? "pending" : "done")} className="flex-shrink-0 mt-0.5">
+        {task.status === "done" ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Circle className="w-5 h-5 text-muted-foreground/40 hover:text-purple-500 transition" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium ${task.status === "done" ? "line-through text-muted-foreground" : ""}`}>{task.title}</p>
+        {task.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{task.description}</p>}
+        {!task.auto_generated && <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium mt-1 inline-block">Custom</span>}
+      </div>
+      {task.status !== "done" && (
+        <button onClick={() => onToggle(task.id, "skipped")} className="text-muted-foreground/40 hover:text-muted-foreground mt-0.5">
+          <SkipForward className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AddTaskModal({ onAdd, onClose, platform }: { onAdd: (t: any) => void; onClose: () => void; platform: string }) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [type, setType] = useState<"weekly" | "monthly">("weekly");
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-base">Add Custom Task</h3>
+          <button onClick={onClose}><X className="w-4 h-4 text-muted-foreground" /></button>
+        </div>
+        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Task title *"
+          className="w-full px-3 py-2.5 rounded-xl border border-border bg-input text-sm focus:outline-none focus:border-purple-500" />
+        <textarea value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" rows={2}
+          className="w-full px-3 py-2.5 rounded-xl border border-border bg-input text-sm focus:outline-none focus:border-purple-500 resize-none" />
+        <div className="flex gap-2">
+          {(["weekly", "monthly"] as const).map(t => (
+            <button key={t} onClick={() => setType(t)}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${type === t ? "border-purple-400 bg-purple-400/10 text-purple-600 dark:text-purple-400" : "border-border text-muted-foreground"}`}>
+              {t === "weekly" ? "Weekly" : "Monthly"}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { if (title.trim()) { onAdd({ title, description: desc, type, platform }); onClose(); }}}
+          className="w-full py-2.5 rounded-xl bg-purple-500 text-white font-bold text-sm hover:bg-purple-600 transition">
+          Add Task
+        </button>
       </div>
     </div>
   );

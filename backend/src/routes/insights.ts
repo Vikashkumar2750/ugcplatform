@@ -373,6 +373,18 @@ Format the response strictly as a single JSON object with these keys:
     "completeness": "e.g. 90%",
     "seoOptimization": "Suggest keywords to insert in display name and bio search terms"
   },
+  "contentImprovement": {
+    "reels": "How to specifically improve video/reel content based on recent performance",
+    "posts": "How to improve static/carousel posts (design, copy, pacing)",
+    "highlights": "What specific highlights they should set up for profile visitors",
+    "stories": "Story ideas to increase daily retention"
+  },
+  "trendingReelScript": {
+    "topic": "An engaging, algorithm-friendly topic trending in their specific niche",
+    "hook": "A strong, curiosity-inducing hook to grab attention in first 3 seconds",
+    "body": "The core script/outline to deliver on the hook",
+    "cta": "A strong call-to-action to maximize engagement/saves/shares"
+  },
   "recommendations": [
     {
       "title": "Short title",

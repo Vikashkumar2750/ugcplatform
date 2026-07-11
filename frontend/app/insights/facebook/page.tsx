@@ -11,6 +11,30 @@ import {
   Star, ShieldCheck, Award
 } from "lucide-react";
 
+// ── Cache Helpers ──────────────────────────────────────────────────
+const CACHE_TTL = 86400000; // 24 hours in ms
+function getSessionCache(key: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    if (Date.now() > parsed.expiry) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+function setSessionCache(key: string, data: any) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, expiry: Date.now() + CACHE_TTL }));
+  } catch {}
+}
+
 // ── Types ──────────────────────────────────────────────────────────
 interface ComparisonMetric { current: number; previous: number; pct: number | null; }
 interface FBInsightsData {
@@ -390,12 +414,7 @@ export default function FacebookInsightsPage() {
     </div>
   );
 
-  const chartData = data.fanGrowthChart || [
-    { date: "W1", fans: Math.round(data.fans * 0.96) },
-    { date: "W2", fans: Math.round(data.fans * 0.98) },
-    { date: "W3", fans: Math.round(data.fans * 0.99) },
-    { date: "Now", fans: data.fans },
-  ];
+  const chartData = data.fanGrowthChart || [];
 
   // Dynamic Content Type Matrix
   const contentTypes = data.topPosts.reduce((acc: any, post: any) => {
@@ -584,8 +603,12 @@ export default function FacebookInsightsPage() {
                   Growth traction indicators calculated weekly.
                 </p>
               </div>
-              <div className="mt-4">
-                <BarChart data={chartData} />
+              <div className="mt-4 min-h-[96px] flex items-end justify-center">
+                {chartData.length > 0 ? (
+                  <BarChart data={chartData} />
+                ) : (
+                  <p className="text-xs text-muted-foreground pb-4">Insufficient data for growth chart.</p>
+                )}
               </div>
             </div>
           </div>
@@ -963,18 +986,3 @@ export default function FacebookInsightsPage() {
   );
 }
 
-// Session Storage helpers
-const getSessionCache = (key: string) => {
-  if (typeof window === "undefined") return null;
-  try {
-    const item = sessionStorage.getItem(key);
-    if (!item) return null;
-    const parsed = JSON.parse(item);
-    if (Date.now() - parsed.fetchedAt > 24 * 60 * 60 * 1000) return null;
-    return parsed.data;
-  } catch { return null; }
-};
-const setSessionCache = (key: string, data: any) => {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() }));
-};

@@ -177,6 +177,61 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
         </div>
       </div>
 
+      {/* Content Improvement Strategy */}
+      {data.contentImprovement && (
+        <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+            <Sparkles className="w-4 h-4 text-purple-500" /> Content Improvement Strategy
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-4 bg-muted/30 rounded-2xl border border-border">
+              <strong className="text-foreground text-xs block mb-1">Reels & Videos:</strong>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.contentImprovement.reels}</p>
+            </div>
+            <div className="p-4 bg-muted/30 rounded-2xl border border-border">
+              <strong className="text-foreground text-xs block mb-1">Static Posts / Carousels:</strong>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.contentImprovement.posts}</p>
+            </div>
+            <div className="p-4 bg-muted/30 rounded-2xl border border-border">
+              <strong className="text-foreground text-xs block mb-1">Stories:</strong>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.contentImprovement.stories}</p>
+            </div>
+            <div className="p-4 bg-muted/30 rounded-2xl border border-border">
+              <strong className="text-foreground text-xs block mb-1">Profile Highlights:</strong>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.contentImprovement.highlights}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trending Reel Script */}
+      {data.trendingReelScript && (
+        <div className="p-6 rounded-3xl border border-blue-500/20 bg-blue-500/5 shadow-sm">
+          <h3 className="font-semibold text-sm text-blue-600 dark:text-blue-400 flex items-center gap-2 mb-4">
+            <TrendingUp className="w-4 h-4" /> AI Generated Trending Script
+          </h3>
+          <div className="space-y-4">
+            <div className="text-sm">
+              <strong className="text-foreground">Topic:</strong> <span className="text-muted-foreground">{data.trendingReelScript.topic}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-card rounded-2xl border border-border/50">
+                <strong className="text-blue-500 text-xs uppercase tracking-wider block mb-2">1. The Hook (0-3s)</strong>
+                <p className="text-xs text-foreground leading-relaxed">"{data.trendingReelScript.hook}"</p>
+              </div>
+              <div className="p-4 bg-card rounded-2xl border border-border/50">
+                <strong className="text-amber-500 text-xs uppercase tracking-wider block mb-2">2. The Body (3-15s)</strong>
+                <p className="text-xs text-foreground leading-relaxed">{data.trendingReelScript.body}</p>
+              </div>
+              <div className="p-4 bg-card rounded-2xl border border-border/50">
+                <strong className="text-green-500 text-xs uppercase tracking-wider block mb-2">3. The CTA (15s+)</strong>
+                <p className="text-xs text-foreground leading-relaxed">"{data.trendingReelScript.cta}"</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

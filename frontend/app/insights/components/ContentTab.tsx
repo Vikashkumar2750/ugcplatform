@@ -8,6 +8,8 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [selectedPost, setSelectedPost] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     if (!accountId) return;
@@ -16,7 +18,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
       setLoading(true);
       setError(null);
       try {
-        const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/media?limit=30`);
+        const json = await fetchWithCache(`/api/insights/proxy/${platform}/${accountId}/media?limit=100`);
         setData(json.data || []);
       } catch (err: any) {
         console.error(err);
@@ -58,12 +60,15 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
     return true;
   });
 
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <button onClick={() => setFilter("all")} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'all' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>All Content</button>
-        <button onClick={() => setFilter("reels")} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'reels' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Reels</button>
-        <button onClick={() => setFilter("posts")} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'posts' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Posts</button>
+        <button onClick={() => { setFilter("all"); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'all' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>All Content</button>
+        <button onClick={() => { setFilter("reels"); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'reels' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Reels</button>
+        <button onClick={() => { setFilter("posts"); setCurrentPage(1); }} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${filter === 'posts' ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Posts</button>
       </div>
 
       <div className="rounded-2xl border border-border bg-card overflow-hidden min-h-[400px]">
@@ -79,7 +84,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {filteredData.map((post) => (
+            {paginatedData.map((post) => (
               <tr key={post.id} className="hover:bg-muted/30 transition-colors cursor-pointer group" onClick={() => setSelectedPost(post)}>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-4">
@@ -102,7 +107,7 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
                 <td className="px-5 py-4 text-right font-medium text-foreground">{post.insights?.saved?.toLocaleString()}</td>
               </tr>
             ))}
-            {filteredData.length === 0 && (
+            {paginatedData.length === 0 && (
               <tr>
                 <td colSpan={6} className="text-center py-16 text-muted-foreground">No media found for this filter.</td>
               </tr>
@@ -110,6 +115,46 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">
+            Showing <strong className="text-foreground">{(currentPage - 1) * itemsPerPage + 1}</strong> to <strong className="text-foreground">{Math.min(currentPage * itemsPerPage, filteredData.length)}</strong> of <strong className="text-foreground">{filteredData.length}</strong> posts
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-foreground hover:bg-muted/80 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-8 h-8 flex items-center justify-center text-xs font-medium rounded-lg transition-colors ${
+                    currentPage === page ? "bg-red-500 text-white" : "bg-card text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-foreground hover:bg-muted/80 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="p-4 rounded-xl bg-muted/50 border border-border flex gap-3 text-muted-foreground text-sm items-start">
         <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />

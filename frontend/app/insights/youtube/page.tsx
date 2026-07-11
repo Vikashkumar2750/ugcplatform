@@ -11,6 +11,30 @@ import {
   ExternalLink
 } from "lucide-react";
 
+// ── Cache Helpers ──────────────────────────────────────────────────
+const CACHE_TTL = 86400000; // 24 hours in ms
+function getSessionCache(key: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const item = localStorage.getItem(key);
+    if (!item) return null;
+    const parsed = JSON.parse(item);
+    if (Date.now() > parsed.expiry) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+function setSessionCache(key: string, data: any) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ data, expiry: Date.now() + CACHE_TTL }));
+  } catch {}
+}
+
 // ── Types ──────────────────────────────────────────────────────────
 interface YTVideo {
   id: string;
@@ -879,18 +903,3 @@ export default function YouTubeInsightsPage() {
   );
 }
 
-// Session Storage helpers
-const getSessionCache = (key: string) => {
-  if (typeof window === "undefined") return null;
-  try {
-    const item = sessionStorage.getItem(key);
-    if (!item) return null;
-    const parsed = JSON.parse(item);
-    if (Date.now() - parsed.fetchedAt > 24 * 60 * 60 * 1000) return null;
-    return parsed.data;
-  } catch { return null; }
-};
-const setSessionCache = (key: string, data: any) => {
-  if (typeof window === "undefined") return;
-  sessionStorage.setItem(key, JSON.stringify({ data, fetchedAt: Date.now() }));
-};
