@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { data: accounts, error } = await supabase
       .from("connected_accounts")
-      .select("id, platform, platform_username, platform_name, avatar_url, account_type, permissions, connected_at, token_expires_at, is_active, page_id, page_name")
+      .select("id, platform, platform_user_id, platform_username, platform_name, avatar_url, account_type, permissions, connected_at, token_expires_at, is_active, page_id, page_name")
       .eq("user_id", user.id)
       .eq("is_active", true)
       .order("connected_at", { ascending: false });
