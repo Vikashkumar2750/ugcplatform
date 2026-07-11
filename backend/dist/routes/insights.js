@@ -59,24 +59,52 @@ router.get("/:platform/:accountId/overview", async (req, res) => {
     const daysInt = parseInt(days, 10) || 28;
     const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
     const until = Math.floor(Date.now() / 1000);
-    let metrics = "views,reach,profile_views";
-    if (platform === "facebook") {
-        // page_impressions_unique is deprecated in v21.0
-        metrics = "page_impressions,page_post_engagements,page_views_total";
-    }
-    const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
-        `?metric=${metrics}` +
-        `&period=day` +
-        `&since=${since}&until=${until}` +
-        `&access_token=${account.access_token}`;
     try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        if (data.error) {
-            console.error("[Meta API Error - Overview]", data.error);
-            return res.status(400).json({ error: data.error.message });
+        if (platform === "facebook") {
+            const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
+                `?metric=page_impressions,page_post_engagements,page_views_total` +
+                `&period=day` +
+                `&since=${since}&until=${until}` +
+                `&access_token=${account.access_token}`;
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            if (data.error) {
+                console.error("[Meta API Error - Overview FB]", data.error);
+                return res.status(400).json({ error: data.error.message });
+            }
+            return res.json(data);
         }
-        return res.json(data);
+        else {
+            // Instagram: reach supports time_series (default), but views/profile_views require metric_type=total_value
+            const reachUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
+                `?metric=reach` +
+                `&period=day` +
+                `&since=${since}&until=${until}` +
+                `&access_token=${account.access_token}`;
+            const totalUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
+                `?metric=views,profile_views` +
+                `&period=day` +
+                `&since=${since}&until=${until}` +
+                `&metric_type=total_value` +
+                `&access_token=${account.access_token}`;
+            const [reachRes, totalRes] = await Promise.all([
+                fetch(reachUrl),
+                fetch(totalUrl)
+            ]);
+            const reachData = await reachRes.json();
+            const totalData = await totalRes.json();
+            if (reachData.error || totalData.error) {
+                const err = reachData.error || totalData.error;
+                console.error("[Meta API Error - Overview IG]", err);
+                return res.status(400).json({ error: err.message });
+            }
+            // Combine both into one data array
+            const combinedData = [
+                ...(reachData.data || []),
+                ...(totalData.data || [])
+            ];
+            return res.json({ data: combinedData });
+        }
     }
     catch (err) {
         return res.status(500).json({ error: err.message });
@@ -108,6 +136,7 @@ router.get("/:platform/:accountId/audience", async (req, res) => {
     const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
         `?metric=${metrics}` +
         `&period=lifetime` +
+        `&metric_type=total_value` +
         `&access_token=${account.access_token}`;
     try {
         const response = await fetch(apiUrl);
@@ -154,25 +183,25 @@ router.get("/:platform/:accountId/media", async (req, res) => {
         }
         const batchRequests = posts.map((post) => ({
             method: "GET",
-            relative_url: `${post.id}/insights?metric=reach,saved,impressions,shares`
+            relative_url: `${post.id}/insights?metric=reach,saved,views,shares`
         }));
         const batchResults = await (0, meta_batch_1.executeMetaBatch)(account.access_token, batchRequests);
         const enrichedPosts = posts.map((post, index) => {
             const result = batchResults[index];
-            let reach = 0, saved = 0, impressions = 0, shares = 0;
+            let reach = 0, saved = 0, views = 0, shares = 0;
             if (result.code === 200) {
                 const body = JSON.parse(result.body);
                 if (body.data) {
                     const findMetric = (name) => body.data.find((m) => m.name === name)?.values?.[0]?.value || 0;
                     reach = findMetric("reach");
                     saved = findMetric("saved");
-                    impressions = findMetric("impressions");
+                    views = findMetric("views");
                     shares = findMetric("shares");
                 }
             }
             return {
                 ...post,
-                insights: { reach, saved, impressions, shares }
+                insights: { reach, saved, impressions: views, shares }
             };
         });
         return res.json({ data: enrichedPosts });
