@@ -26,8 +26,98 @@ function extractJSON(text: string): any {
 
 // (Fabricated rule-based insights generator removed in compliance with strict actual-data guidelines)
 
+// GET /api/insights/:platform/:accountId/overview
+// Fetches time-series data for Reach, Impressions, Profile Views
+router.get("/:platform/:accountId/overview", async (req: Request, res: Response) => {
+  const { platform, accountId } = req.params;
+  const { userId } = req as AuthenticatedRequest;
+  const { days = "28" } = req.query;
+
+  if (platform !== "instagram" && platform !== "facebook") {
+    return res.status(400).json({ error: "Unsupported platform" });
+  }
+
+  const { data: account, error: accountError } = await supabase
+    .from("connected_accounts")
+    .select("access_token")
+    .eq("platform_user_id", accountId)
+    .eq("user_id", userId)
+    .single();
+
+  if (accountError || !account) {
+    return res.status(404).json({ error: "Connected account not found" });
+  }
+
+  const daysInt = parseInt(days as string, 10) || 28;
+  const since = Math.floor((Date.now() - daysInt * 24 * 60 * 60 * 1000) / 1000);
+  const until = Math.floor(Date.now() / 1000);
+
+  // Impressions, Reach, Profile Views
+  let metrics = "impressions,reach,profile_views";
+  if (platform === "facebook") {
+    metrics = "page_impressions_unique,page_impressions,page_views_total";
+  }
+
+  const apiUrl =
+    `https://graph.facebook.com/v21.0/${accountId}/insights` +
+    `?metric=${metrics}` +
+    `&period=day` +
+    `&since=${since}&until=${until}` +
+    `&access_token=${account.access_token}`;
+
+  try {
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    if (data.error) return res.status(400).json({ error: data.error.message });
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/insights/:platform/:accountId/audience
+// Fetches demographic data (Age, Gender, City, Country)
+router.get("/:platform/:accountId/audience", async (req: Request, res: Response) => {
+  const { platform, accountId } = req.params;
+  const { userId } = req as AuthenticatedRequest;
+
+  if (platform !== "instagram" && platform !== "facebook") {
+    return res.status(400).json({ error: "Unsupported platform" });
+  }
+
+  const { data: account, error: accountError } = await supabase
+    .from("connected_accounts")
+    .select("access_token")
+    .eq("platform_user_id", accountId)
+    .eq("user_id", userId)
+    .single();
+
+  if (accountError || !account) {
+    return res.status(404).json({ error: "Connected account not found" });
+  }
+
+  let metrics = "audience_gender_age,audience_country,audience_city";
+  if (platform === "facebook") {
+    metrics = "page_fans_gender_age,page_fans_country,page_fans_city";
+  }
+
+  const apiUrl =
+    `https://graph.facebook.com/v21.0/${accountId}/insights` +
+    `?metric=${metrics}` +
+    `&period=lifetime` +
+    `&access_token=${account.access_token}`;
+
+  try {
+    const response = await fetch(apiUrl);
+    const data = await response.json();
+    if (data.error) return res.status(400).json({ error: data.error.message });
+    return res.json(data);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/insights/:platform/:accountId
-// Proxy for Meta Graph API insights — keeps access tokens server-side
 router.get("/:platform/:accountId", async (req: Request, res: Response) => {
   const { platform, accountId } = req.params;
   const { userId } = req as AuthenticatedRequest;
