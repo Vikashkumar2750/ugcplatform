@@ -58,7 +58,10 @@ const PLATFORM_CONFIG = {
     permissions: [
       { key: "pages_show_list", label: "List Your Pages", required: true },
       { key: "pages_read_engagement", label: "Page Analytics", required: true },
+      { key: "read_insights", label: "Post Impressions & Reach", required: true },
+      { key: "pages_read_user_content", label: "Post Likes & Comments", required: true },
       { key: "pages_manage_posts", label: "Post Scheduling", required: false, grantedWhenConnected: true },
+      { key: "pages_manage_engagement", label: "Comment Automation", required: false, grantedWhenConnected: true },
       { key: "pages_messaging", label: "Messenger Automation", required: false, grantedWhenConnected: true },
     ],
     requirements: "Requires admin access to a Facebook Page",
