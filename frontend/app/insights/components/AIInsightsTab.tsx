@@ -80,7 +80,7 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
   }
 
   if (error) {
-    const isPermissionError = error.includes("pages_read_engagement");
+    const isPermissionError = error.includes("pages_read_engagement") || error.includes("Page Public Content Access");
     
     return (
       <div className="p-12 text-center border border-red-500/30 rounded-2xl bg-red-500/5 flex flex-col items-center gap-4">
@@ -89,18 +89,23 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
         </div>
         <div>
           <h3 className="text-lg font-semibold text-red-500 mb-2">
-            {isPermissionError ? "Missing Permissions" : "Failed to load insights"}
+            {isPermissionError ? "Meta App Configuration Required" : "Failed to load insights"}
           </h3>
           <p className="text-red-500/80 max-w-lg mx-auto text-sm">
             {isPermissionError 
-              ? "Your Meta connection is missing the required 'pages_read_engagement' permission to analyze Facebook posts. You need to reconnect your account to grant this permission."
+              ? "Your Meta Developer App is blocking access to page posts. Even if you granted the permission during login, Meta requires your app to either be in 'Development Mode' or have the 'Page Public Content Access' feature approved in App Review to read posts via the API."
               : error}
           </p>
         </div>
         {isPermissionError && (
-          <a href="/connect" className="px-6 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors mt-2">
-            Reconnect Facebook
-          </a>
+          <div className="flex gap-4 mt-2">
+            <a href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer" className="px-6 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition-colors">
+              Go to Meta Dashboard
+            </a>
+            <a href="/connect" className="px-6 py-2 bg-card text-foreground border border-border font-medium rounded-lg hover:bg-muted transition-colors">
+              Try Reconnecting
+            </a>
+          </div>
         )}
       </div>
     );
