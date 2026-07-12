@@ -41,9 +41,15 @@ export default function InsightsDashboard() {
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
-  // Stub function for future data fetching
   const refreshData = useCallback(async () => {
-    // API logic will go here
+    // Clear all ce_cache keys from localStorage
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('ce_cache_')) {
+        localStorage.removeItem(key);
+      }
+    });
+    // Reload the page to fetch fresh data
+    window.location.reload();
   }, [timeRange]);
 
   return (
