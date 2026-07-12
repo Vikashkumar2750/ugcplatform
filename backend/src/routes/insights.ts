@@ -234,7 +234,7 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
   try {
     let mediaUrl = "";
     if (platform === "facebook") {
-      mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/posts?fields=id,message,story,created_time,attachments{type,media},shares,permalink_url&limit=${limit}&access_token=${account.access_token}`;
+      mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/posts?fields=id,message,story,created_time,attachments{type,media},likes.summary(true),comments.summary(true),shares,permalink_url&limit=${limit}&access_token=${account.access_token}`;
     } else {
       mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
     }
