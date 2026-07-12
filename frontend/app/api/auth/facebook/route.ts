@@ -16,10 +16,6 @@ const FACEBOOK_SCOPES = [
   "instagram_manage_comments",
   "public_profile",
   "business_management",
-  "pages_read_user_content",
-  "read_insights",
-  "pages_manage_posts",
-  "pages_manage_engagement",
 ].join(",");
 
 // GET /api/auth/facebook — Redirect to Meta OAuth
