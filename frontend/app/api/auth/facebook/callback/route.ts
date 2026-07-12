@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${APP_URL}/api/auth/facebook/callback`;
 
-    // 1. Exchange code for user token
+    // 1. Exchange code for short-lived user token
     const tokenRes = await fetch(
       `https://graph.facebook.com/v21.0/oauth/access_token?` +
       `client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&` +
@@ -26,11 +26,21 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) throw new Error("Token exchange failed");
 
-    // 2. Get list of managed pages with their page access tokens
+    // 2. Exchange short-lived user token for long-lived user token
+    const llUserRes = await fetch(
+      `https://graph.facebook.com/v21.0/oauth/access_token?` +
+      `grant_type=fb_exchange_token&client_id=${META_APP_ID}&` +
+      `client_secret=${META_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`
+    );
+    const llUserData = await llUserRes.json();
+    const longLivedUserToken = llUserData.access_token || tokenData.access_token;
+
+    // 3. Get list of managed pages using the LONG-LIVED user token
+    // This ensures the page.access_token returned is a never-expiring Page Token!
     const pagesRes = await fetch(
       `https://graph.facebook.com/v21.0/me/accounts?` +
       `fields=id,name,category,access_token,fan_count,link,picture&` +
-      `access_token=${tokenData.access_token}`
+      `access_token=${longLivedUserToken}`
     );
     const pagesData = await pagesRes.json();
 
@@ -38,16 +48,9 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.redirect(`${APP_URL}/?auth_required=1`);
 
-    // 3. Upsert each page as a separate connected account
+    // 4. Upsert each page as a separate connected account
     for (const page of (pagesData.data || [])) {
-      // Exchange for never-expiring page access token
-      const longLivedRes = await fetch(
-        `https://graph.facebook.com/v21.0/oauth/access_token?` +
-        `grant_type=fb_exchange_token&client_id=${META_APP_ID}&` +
-        `client_secret=${META_APP_SECRET}&fb_exchange_token=${page.access_token}`
-      );
-      const llData = await longLivedRes.json();
-      const pageToken = llData.access_token || page.access_token;
+      const pageToken = page.access_token;
 
       await supabase.from("connected_accounts").upsert({
         user_id: user.id,
