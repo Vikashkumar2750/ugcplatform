@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         account_id: account_id || null,
         platform,
-        content_type: content_type === "carousel" ? "post" : content_type,
+        content_type: (content_type === "carousel" || content_type === "post") ? "feed" : content_type,
         caption,
         first_comment: first_comment || null,
         media_urls: finalMediaUrls,
