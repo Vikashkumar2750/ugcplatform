@@ -276,9 +276,10 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
 
     const enrichedPosts = posts.map((post: any, index: number) => {
       const result = batchResults[index];
-      let reach = 0, saved = 0, views = 0, shares = 0, engagement = 0;
+      let reach = 0, saved = 0, views = 0, engagement = 0;
+      let shares = rawPosts[index].shares?.count || 0;
       
-      if (result.code === 200) {
+      if (result && result.code === 200) {
         const body = JSON.parse(result.body);
         if (body.data) {
           const findMetric = (name: string) => body.data.find((m: any) => m.name === name)?.values?.[0]?.value || 0;
@@ -287,7 +288,6 @@ router.get("/:platform/:accountId/media", async (req: Request, res: Response) =>
             views = findMetric("post_impressions");
             reach = views; // Facebook post reach isn't standard, use impressions
             engagement = findMetric("post_engaged_users");
-            shares = rawPosts[index].shares?.count || 0;
           } else {
             reach = findMetric("reach");
             saved = findMetric("saved");
