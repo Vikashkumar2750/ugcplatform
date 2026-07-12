@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calendar, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Clock, Camera, Share2, Trash2, X, RefreshCw, Loader2,
@@ -809,6 +810,9 @@ function PostHistoryTab({ posts, onRetry, onDelete, retryingId, deletingId }: {
 
 // ── Main Scheduler ────────────────────────────────────────────────
 export default function SchedulerPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const platform = searchParams.get("platform") || "instagram";
   const now = new Date();
   const [viewYear, setViewYear]   = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
@@ -979,7 +983,7 @@ export default function SchedulerPage() {
             <Bot className="w-4 h-4" /> Import Pipeline
           </button>
           <button
-            onClick={() => { setSelectedDate(undefined); setShowModal(true); }}
+            onClick={() => router.push(`/automation/schedule-v2?platform=${platform}`)}
             className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> New Post
@@ -1051,7 +1055,10 @@ export default function SchedulerPage() {
                 const isToday = day===now.getDate() && viewMonth===now.getMonth() && viewYear===now.getFullYear();
                 return (
                   <div key={day}
-                    onClick={() => { setSelectedDate(new Date(viewYear, viewMonth, day)); setShowModal(true); }}
+                    onClick={() => { 
+                      const d = new Date(viewYear, viewMonth, day);
+                      router.push(`/automation/schedule-v2?platform=${platform}&date=${d.toISOString()}`);
+                    }}
                     className="h-20 border-b border-r border-border/40 p-1.5 cursor-pointer hover:bg-muted/20 transition-colors"
                   >
                     <span className={`w-6 h-6 inline-flex items-center justify-center rounded-full text-xs font-medium mb-1 ${isToday ? "bg-amber-400 text-black" : "text-muted-foreground"}`}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calendar, Camera, Share2, PlayCircle, Users,
   Upload, X, Loader2, AlertCircle, Plus, Send, RefreshCw,
@@ -23,6 +24,8 @@ interface PlatformTweaks {
 }
 
 export default function SchedulerV2Page() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { accounts, rules: automationRules, isLoading: loading, load } = useDashboardStore();
   
   useEffect(() => {
@@ -42,6 +45,11 @@ export default function SchedulerV2Page() {
 
   // Scheduled Date
   const [scheduledDate, setScheduledDate] = useState(() => {
+    const urlDate = searchParams.get("date");
+    if (urlDate) {
+      const d = new Date(urlDate);
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
     const d = new Date();
     d.setHours(19, 0, 0, 0);
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -106,10 +114,8 @@ export default function SchedulerV2Page() {
       const note = hasInstagram ? "\n\nNote: Videos may take 1-2 minutes to process on Instagram." : "";
       alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!${note}`);
       
-      // Reset state
-      setBaseCaption("");
-      setMediaFiles([]);
-      setTweaks({ instagram: {}, facebook: {}, youtube: {}, linkedin: {} });
+      // Redirect back to schedule
+      router.push("/automation/schedule?platform=" + (searchParams.get("platform") || "instagram"));
     } catch (err: any) {
       setError(err.message || "Publish failed");
     }
@@ -137,10 +143,8 @@ export default function SchedulerV2Page() {
       }
       alert(`Successfully scheduled to ${selectedAccounts.length} account(s)!`);
       
-      // Reset state
-      setBaseCaption("");
-      setMediaFiles([]);
-      setTweaks({ instagram: {}, facebook: {}, youtube: {}, linkedin: {} });
+      // Redirect back to schedule
+      router.push("/automation/schedule?platform=" + (searchParams.get("platform") || "instagram"));
     } catch (err: any) {
       setError(err.message || "Schedule failed");
     }
