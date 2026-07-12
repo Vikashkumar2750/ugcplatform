@@ -13,6 +13,7 @@ const AUTOMATION_NAV = [
   { href: "/automation/dm", label: "DM Automation", icon: MessageSquare },
   { href: "/automation/comments", label: "Comments", icon: MessageCircle },
   { href: "/automation/schedule", label: "Scheduler", icon: Calendar },
+  { href: "/automation/schedule-v2", label: "Scheduler 2.0", icon: CalendarPlus },
   { href: "/automation/flows", label: "Flows", icon: Radio },
   { href: "/automation/inbox", label: "AI Inbox", icon: Inbox },
   { href: "/automation/compliance", label: "Compliance", icon: Shield },

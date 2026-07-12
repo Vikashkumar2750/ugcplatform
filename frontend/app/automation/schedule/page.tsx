@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   Calendar, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
   Plus, Clock, Camera, Share2, Trash2, X, RefreshCw, Loader2,
@@ -812,6 +812,8 @@ function PostHistoryTab({ posts, onRetry, onDelete, retryingId, deletingId }: {
 export default function SchedulerPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const isV2 = pathname.includes("schedule-v2");
   const platform = searchParams.get("platform") || "instagram";
   const now = new Date();
   const [viewYear, setViewYear]   = useState(now.getFullYear());
@@ -983,7 +985,10 @@ export default function SchedulerPage() {
             <Bot className="w-4 h-4" /> Import Pipeline
           </button>
           <button
-            onClick={() => router.push(`/automation/schedule-v2?platform=${platform}`)}
+            onClick={() => {
+              if (isV2) router.push(`/automation/schedule-v2/compose?platform=${platform}`);
+              else { setSelectedDate(undefined); setShowModal(true); }
+            }}
             className="btn-amber px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> New Post
@@ -1057,7 +1062,8 @@ export default function SchedulerPage() {
                   <div key={day}
                     onClick={() => { 
                       const d = new Date(viewYear, viewMonth, day);
-                      router.push(`/automation/schedule-v2?platform=${platform}&date=${d.toISOString()}`);
+                      if (isV2) router.push(`/automation/schedule-v2/compose?platform=${platform}&date=${d.toISOString()}`);
+                      else { setSelectedDate(d); setShowModal(true); }
                     }}
                     className="h-20 border-b border-r border-border/40 p-1.5 cursor-pointer hover:bg-muted/20 transition-colors"
                   >
