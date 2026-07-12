@@ -447,11 +447,11 @@ async function publishInstagramPost(post, token) {
     };
     if (isVideo) {
         containerParams.media_type = "REELS";
-        containerParams.video_url = post.media_urls?.[0];
+        containerParams.video_url = Array.isArray(post.media_urls) ? post.media_urls[0] : post.media_urls;
         containerParams.share_to_feed = "true";
     }
     else {
-        containerParams.image_url = post.media_urls?.[0];
+        containerParams.image_url = Array.isArray(post.media_urls) ? post.media_urls[0] : post.media_urls;
     }
     const containerRes = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media`, {
         method: "POST",

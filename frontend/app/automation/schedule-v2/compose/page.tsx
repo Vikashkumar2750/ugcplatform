@@ -116,8 +116,8 @@ export default function SchedulerV2Page() {
       const note = hasInstagram ? "\n\nNote: Videos may take 1-2 minutes to process on Instagram." : "";
       alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!${note}`);
       
-      // Redirect back to schedule
-      router.push("/automation/schedule?platform=" + (searchParams.get("platform") || "instagram"));
+      // Redirect back to schedule-v2
+      router.push("/automation/schedule-v2?platform=" + (searchParams.get("platform") || "instagram"));
     } catch (err: any) {
       setError(err.message || "Publish failed");
     }

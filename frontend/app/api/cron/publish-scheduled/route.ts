@@ -94,13 +94,17 @@ export async function GET(request: NextRequest) {
       let result: { success: boolean; postId?: string; error?: string };
 
       try {
+        const mediaUrl = Array.isArray(post.media_urls) ? post.media_urls[0] : post.media_urls;
+        const carouselUrls = Array.isArray(post.media_urls) && post.media_urls.length > 1 ? post.media_urls : undefined;
+
         if (post.platform === "instagram") {
           result = await publishToInstagram({
             igUserId:    account.platform_user_id,
             token:       account.access_token,
             contentType: post.content_type,
             caption:     post.caption,
-            mediaUrl:    post.media_url || undefined,
+            mediaUrl:    mediaUrl || undefined,
+            carouselUrls,
           });
         } else {
           result = await publishToFacebook({
@@ -108,7 +112,8 @@ export async function GET(request: NextRequest) {
             token:       account.access_token,
             contentType: post.content_type,
             caption:     post.caption,
-            mediaUrl:    post.media_url || undefined,
+            mediaUrl:    mediaUrl || undefined,
+            carouselUrls,
           });
         }
       } catch (err: any) {

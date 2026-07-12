@@ -61,18 +61,33 @@ router.get("/:platform/:accountId/overview", async (req, res) => {
     const until = Math.floor(Date.now() / 1000);
     try {
         if (platform === "facebook") {
-            const apiUrl = `https://graph.facebook.com/v21.0/${accountId}/insights` +
-                `?metric=page_impressions,page_post_engagements,page_views_total` +
-                `&period=day` +
-                `&since=${since}&until=${until}` +
-                `&access_token=${account.access_token}`;
-            const response = await fetch(apiUrl);
-            const data = await response.json();
-            if (data.error) {
-                console.error("[Meta API Error - Overview FB]", data.error);
-                return res.status(400).json({ error: data.error.message });
-            }
-            return res.json(data);
+            const impUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions,page_engaged_users&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
+            const reachUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions_unique&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
+            const fansUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_fans&period=lifetime&since=${since}&until=${until}&access_token=${account.access_token}`;
+            const [impRes, reachRes, fansRes] = await Promise.all([
+                fetch(impUrl),
+                fetch(reachUrl),
+                fetch(fansUrl)
+            ]);
+            const impData = await impRes.json();
+            const reachData = await reachRes.json();
+            const fansData = await fansRes.json();
+            if (impData.error)
+                console.error("[Meta API Error - FB Impressions]", impData.error);
+            if (reachData.error)
+                console.error("[Meta API Error - FB Reach]", reachData.error);
+            if (fansData.error)
+                console.error("[Meta API Error - FB Fans]", fansData.error);
+            // If all of them failed, we log it, but we return an empty array 
+            // instead of a 400 error, because many modern Facebook Pages (New Pages Experience)
+            // simply don't support these legacy page_* metrics and throw 100 errors.
+            // We don't want to crash the UI for this.
+            const combinedData = [
+                ...(impData.data || []),
+                ...(reachData.data || []),
+                ...(fansData.data || [])
+            ];
+            return res.json({ data: combinedData });
         }
         else {
             // Instagram: reach supports time_series (default), but views/profile_views require metric_type=total_value
@@ -184,7 +199,7 @@ router.get("/:platform/:accountId/media", async (req, res) => {
     const { platform, accountId } = req.params;
     const { userId } = req;
     const { limit = "30" } = req.query;
-    if (platform !== "instagram") {
+    if (platform !== "instagram" && platform !== "facebook") {
         return res.status(400).json({ error: "Unsupported platform for media insights" });
     }
     const { data: account, error: accountError } = await supabase_1.supabase
@@ -197,38 +212,66 @@ router.get("/:platform/:accountId/media", async (req, res) => {
         return res.status(404).json({ error: "Connected account not found" });
     }
     try {
-        const mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+        let mediaUrl = "";
+        if (platform === "facebook") {
+            mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/posts?fields=id,message,story,created_time,attachments{type,media},likes.summary(true),comments.summary(true),shares,permalink_url&limit=${limit}&access_token=${account.access_token}`;
+        }
+        else {
+            mediaUrl = `https://graph.facebook.com/v21.0/${accountId}/media?fields=id,timestamp,media_type,media_url,thumbnail_url,caption,like_count,comments_count,permalink&limit=${limit}&access_token=${account.access_token}`;
+        }
         const mediaRes = await fetch(mediaUrl);
         const mediaData = await mediaRes.json();
         if (mediaData.error) {
             console.error("[Meta API Error - Media]", mediaData.error);
             return res.status(400).json({ error: mediaData.error.message });
         }
-        const posts = mediaData.data || [];
-        if (posts.length === 0) {
+        const rawPosts = mediaData.data || [];
+        if (rawPosts.length === 0) {
             return res.json({ data: [] });
         }
+        // Format Facebook posts to match Instagram structure
+        const posts = platform === "facebook" ? rawPosts.map((post) => ({
+            id: post.id,
+            timestamp: post.created_time,
+            media_type: post.attachments?.data?.[0]?.type?.toUpperCase() || "STATUS",
+            media_url: post.attachments?.data?.[0]?.media?.image?.src || "",
+            thumbnail_url: post.attachments?.data?.[0]?.media?.image?.src || "",
+            caption: post.message || post.story || "",
+            like_count: post.likes?.summary?.total_count || 0,
+            comments_count: post.comments?.summary?.total_count || 0,
+            permalink: post.permalink_url || `https://facebook.com/${post.id}`
+        })) : rawPosts;
         const batchRequests = posts.map((post) => ({
             method: "GET",
-            relative_url: `${post.id}/insights?metric=reach,saved,views,shares`
+            relative_url: platform === "facebook"
+                ? `${post.id}/insights?metric=post_impressions,post_engaged_users`
+                : `${post.id}/insights?metric=reach,saved,views,shares`
         }));
         const batchResults = await (0, meta_batch_1.executeMetaBatch)(account.access_token, batchRequests);
         const enrichedPosts = posts.map((post, index) => {
             const result = batchResults[index];
-            let reach = 0, saved = 0, views = 0, shares = 0;
-            if (result.code === 200) {
+            let reach = 0, saved = 0, views = 0, engagement = 0;
+            let shares = rawPosts[index].shares?.count || 0;
+            if (result && result.code === 200) {
                 const body = JSON.parse(result.body);
                 if (body.data) {
                     const findMetric = (name) => body.data.find((m) => m.name === name)?.values?.[0]?.value || 0;
-                    reach = findMetric("reach");
-                    saved = findMetric("saved");
-                    views = findMetric("views");
-                    shares = findMetric("shares");
+                    if (platform === "facebook") {
+                        views = findMetric("post_impressions");
+                        reach = views; // Facebook post reach isn't standard, use impressions
+                        engagement = findMetric("post_engaged_users");
+                    }
+                    else {
+                        reach = findMetric("reach");
+                        saved = findMetric("saved");
+                        views = findMetric("views");
+                        shares = findMetric("shares");
+                    }
                 }
             }
             return {
                 ...post,
-                insights: { reach, saved, impressions: views, shares }
+                insights: { reach, saved, impressions: views, shares, engagement }
             };
         });
         return res.json({ data: enrichedPosts });
@@ -332,6 +375,18 @@ Format the response strictly as a single JSON object with these keys:
     "ctaQuality": "Specific advice on optimizing their link-in-bio call-to-action",
     "completeness": "e.g. 90%",
     "seoOptimization": "Suggest keywords to insert in display name and bio search terms"
+  },
+  "contentImprovement": {
+    "reels": "How to specifically improve video/reel content based on recent performance",
+    "posts": "How to improve static/carousel posts (design, copy, pacing)",
+    "highlights": "What specific highlights they should set up for profile visitors",
+    "stories": "Story ideas to increase daily retention"
+  },
+  "trendingReelScript": {
+    "topic": "An engaging, algorithm-friendly topic trending in their specific niche",
+    "hook": "A strong, curiosity-inducing hook to grab attention in first 3 seconds",
+    "body": "The core script/outline to deliver on the hook",
+    "cta": "A strong call-to-action to maximize engagement/saves/shares"
   },
   "recommendations": [
     {
