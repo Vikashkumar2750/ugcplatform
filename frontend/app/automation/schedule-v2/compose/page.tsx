@@ -37,6 +37,7 @@ export default function SchedulerV2Page() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [baseCaption, setBaseCaption] = useState("");
+  const [useBaseCaptionForAll, setUseBaseCaptionForAll] = useState(true);
   const [mediaFiles, setMediaFiles] = useState<{ url: string; caption: string }[]>([]);
   const [contentType, setContentType] = useState<ContentType>("post");
   
@@ -79,7 +80,7 @@ export default function SchedulerV2Page() {
     return {
       platform: account.platform,
       content_type: mediaFiles.length > 1 && contentType === "post" ? "carousel" : contentType,
-      caption: tweaks[account.platform]?.caption || baseCaption,
+      caption: useBaseCaptionForAll ? baseCaption : (tweaks[account.platform]?.caption || baseCaption),
       first_comment: account.platform === "instagram" ? tweaks.instagram?.firstComment : undefined,
       media_url: mediaFiles.length > 0 ? mediaFiles[0].url : undefined,
       carousel_urls: mediaFiles.length > 1 ? mediaFiles.map(m => m.url) : undefined,
@@ -306,7 +307,18 @@ export default function SchedulerV2Page() {
           {/* 3. Platform Tweaks */}
           {selectedPlatforms.length > 0 && (
             <section className="space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">3. Platform Tweaks</h2>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
+                3. Platform Tweaks
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useBaseCaptionForAll}
+                    onChange={(e) => setUseBaseCaptionForAll(e.target.checked)}
+                    className="rounded border-border text-amber-500 focus:ring-amber-500 bg-background"
+                  />
+                  Use Base Caption for all platforms
+                </label>
+              </h2>
               
               <div className="space-y-3">
                 {selectedPlatforms.map(platform => (
@@ -316,6 +328,7 @@ export default function SchedulerV2Page() {
                     rules={automationRules}
                     isReel={contentType === "reel"}
                     tweaks={tweaks[platform as Platform] || {}}
+                    useBaseCaptionForAll={useBaseCaptionForAll}
                     onChange={(updates) => setTweaks(prev => ({
                       ...prev,
                       [platform]: { ...prev[platform], ...updates }
@@ -409,12 +422,13 @@ export default function SchedulerV2Page() {
 
 // ── Components ────────────────────────────────────────────────────────
 
-function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
+function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel, useBaseCaptionForAll }: {
   platform: Platform;
   tweaks: PlatformTweaks;
   onChange: (t: Partial<PlatformTweaks>) => void;
   rules: any[];
   isReel: boolean;
+  useBaseCaptionForAll?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = platform === "instagram" ? Camera : platform === "facebook" ? Share2 : platform === "youtube" ? PlayCircle : Users;
@@ -434,16 +448,18 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel }: {
 
       {expanded && (
         <div className="p-4 pt-0 space-y-4 border-t border-border mt-1">
-          <div className="space-y-1.5 mt-3">
-            <label className="text-xs font-medium text-muted-foreground">Override Caption (optional)</label>
-            <textarea
-              value={tweaks.caption || ""}
-              onChange={e => onChange({ caption: e.target.value })}
-              placeholder="Leave blank to use Base Caption..."
-              rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:border-amber-500/50 resize-none transition"
-            />
-          </div>
+          {!useBaseCaptionForAll && (
+            <div className="space-y-1.5 mt-3">
+              <label className="text-xs font-medium text-muted-foreground">Override Caption (optional)</label>
+              <textarea
+                value={tweaks.caption || ""}
+                onChange={e => onChange({ caption: e.target.value })}
+                placeholder="Leave blank to use Base Caption..."
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:border-amber-500/50 resize-none transition"
+              />
+            </div>
+          )}
 
           {platform === "instagram" && (
             <>

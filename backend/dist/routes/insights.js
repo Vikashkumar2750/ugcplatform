@@ -396,6 +396,42 @@ Format the response strictly as a single JSON object with these keys:
       "reasoning": "Data-backed reasoning based on their stats",
       "suggestedAction": "Extremely tactical template or action step they can execute today"
     }
+  ],
+  "accountHighlights": "Detailed suggestion for account highlights to be set with best SEO and engagement practices, including ideas for cover images.",
+  "profileOptimization": {
+    "name": "Suggested SEO optimized Name",
+    "bio": "Suggested full bio text",
+    "links": "Suggested links structure specifically to collect leads for an AI digital marketing course",
+    "details": "Full profile optimization text"
+  },
+  "reelScripts": [
+    {
+      "topic": "Topic of the reel",
+      "hooks": ["Non-scrolling hook 1", "Non-scrolling hook 2", "Non-scrolling hook 3"],
+      "body": "Detailed script ready to shoot with face",
+      "cta": "Call to action"
+    }
+  ],
+  "contentSuitability": "Detailed description of the type of content that suits the account (e.g. educational, informational, entertainment etc.)",
+  "attentionHooks": ["Hook 1", "Hook 2", "Hook 3", "Hook 4", "Hook 5", "Hook 6", "Hook 7", "Hook 8", "Hook 9", "Hook 10"],
+  "trendingTopics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10"],
+  "viralChecklist": ["Task 1", "Task 2", "Task 3", "Task 4", "Task 5"],
+  "trialReelGuide": "Detailed explanation of how to utilize the trial reel option of Instagram",
+  "captionGuide": {
+    "howToWrite": "Guide on writing an engaging caption",
+    "hashtagsCount": "How many hashtags should be used",
+    "hashtagsToUse": "What kind of hashtags to use",
+    "howToFind": "How to find the best hashtags"
+  },
+  "currentTrendingTopics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"],
+  "sevenDayContentPipeline": [
+    {
+      "day": "Day 1",
+      "topic": "Topic according to 2026 trend",
+      "hook": "Hook",
+      "body": "Body text",
+      "cta": "Call to action"
+    }
   ]
 }`;
         // Invoke LLM

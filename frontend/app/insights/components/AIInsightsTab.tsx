@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, Sparkles, TrendingUp, AlertTriangle, Clock, Lightbulb } from "lucide-react";
+import { Loader2, Sparkles, TrendingUp, AlertTriangle, Clock, Lightbulb, Target, CheckCircle2, FileText, PlayCircle, Users, Star } from "lucide-react";
 import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function AIInsightsTab({ accountId, platform = "instagram" }: { accountId?: string, platform?: string }) {
@@ -255,6 +255,174 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
           </div>
         </div>
       )}
+
+      {/* 10 Hooks & Trending Topics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {data.attentionHooks && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <Lightbulb className="w-4 h-4 text-yellow-500" /> 10 Attention Grabbing Hooks
+            </h3>
+            <ul className="space-y-2 list-disc list-inside text-xs text-muted-foreground">
+              {data.attentionHooks.map((hook: string, i: number) => (
+                <li key={i} className="leading-relaxed">{hook}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {data.trendingTopics && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <TrendingUp className="w-4 h-4 text-green-500" /> 10 Trending Topics in Niche
+            </h3>
+            <ul className="space-y-2 list-disc list-inside text-xs text-muted-foreground">
+              {data.trendingTopics.map((topic: string, i: number) => (
+                <li key={i} className="leading-relaxed">{topic}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* 5 Reel Scripts */}
+      {data.reelScripts && data.reelScripts.length > 0 && (
+        <div className="p-6 rounded-3xl border border-border bg-card shadow-sm mt-6">
+          <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+            <Sparkles className="w-4 h-4 text-purple-500" /> 5 Ready-To-Shoot Reel Scripts (Face Included)
+          </h3>
+          <div className="space-y-6">
+            {data.reelScripts.map((script: any, i: number) => (
+              <div key={i} className="p-5 bg-muted/20 rounded-2xl border border-border">
+                <h4 className="text-sm font-bold mb-3 text-foreground">Script {i + 1}: {script.topic}</h4>
+                <div className="space-y-3 text-xs">
+                  <div>
+                    <strong className="text-amber-500">Hooks (Choose 1):</strong>
+                    <ul className="list-disc list-inside text-muted-foreground mt-1 ml-1 space-y-1">
+                      {script.hooks?.map((h: string, j: number) => <li key={j}>{h}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <strong className="text-blue-500">Body / Script:</strong>
+                    <p className="text-muted-foreground mt-1 whitespace-pre-wrap">{script.body}</p>
+                  </div>
+                  <div>
+                    <strong className="text-green-500">Call to Action:</strong>
+                    <p className="text-muted-foreground mt-1">{script.cta}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Profile Optimization & Highlights */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {data.profileOptimization && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <Target className="w-4 h-4 text-indigo-500" /> Full Profile Optimization
+            </h3>
+            <div className="space-y-4 text-xs text-muted-foreground">
+              <div className="p-3 bg-muted/30 rounded-xl border border-border">
+                <strong className="text-foreground block mb-1">Name (SEO):</strong> {data.profileOptimization.name}
+              </div>
+              <div className="p-3 bg-muted/30 rounded-xl border border-border">
+                <strong className="text-foreground block mb-1">Bio:</strong> {data.profileOptimization.bio}
+              </div>
+              <div className="p-3 bg-muted/30 rounded-xl border border-border">
+                <strong className="text-foreground block mb-1">Links Strategy (AI Lead Gen):</strong> {data.profileOptimization.links}
+              </div>
+              <div className="p-3 bg-muted/30 rounded-xl border border-border">
+                <strong className="text-foreground block mb-1">Details:</strong> {data.profileOptimization.details}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {data.accountHighlights && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <Star className="w-4 h-4 text-amber-500" /> Account Highlights Strategy
+            </h3>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              {data.accountHighlights}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Guides & Checklist */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {data.viralChecklist && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Post-Reel Viral Checklist
+            </h3>
+            <ul className="space-y-2 list-none text-xs text-muted-foreground">
+              {data.viralChecklist.map((task: string, i: number) => (
+                <li key={i} className="flex gap-2">
+                  <div className="w-4 h-4 rounded-full border border-border flex-shrink-0 mt-0.5" />
+                  <span className="leading-relaxed">{task}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {data.captionGuide && (
+            <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+              <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+                <FileText className="w-4 h-4 text-orange-500" /> Caption & Hashtag Guide
+              </h3>
+              <div className="space-y-3 text-xs text-muted-foreground">
+                <p><strong>How to write:</strong> {data.captionGuide.howToWrite}</p>
+                <p><strong>Hashtags Count:</strong> {data.captionGuide.hashtagsCount}</p>
+                <p><strong>What to use:</strong> {data.captionGuide.hashtagsToUse}</p>
+                <p><strong>How to find:</strong> {data.captionGuide.howToFind}</p>
+              </div>
+            </div>
+          )}
+
+          {data.trialReelGuide && (
+            <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+              <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+                <PlayCircle className="w-4 h-4 text-pink-500" /> Trial Reel Usage
+              </h3>
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                {data.trialReelGuide}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Suitability & Current Topics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        {data.contentSuitability && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <Users className="w-4 h-4 text-cyan-500" /> Content Suitability
+            </h3>
+            <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              {data.contentSuitability}
+            </p>
+          </div>
+        )}
+        {data.currentTrendingTopics && (
+          <div className="p-6 rounded-3xl border border-border bg-card shadow-sm">
+            <h3 className="font-semibold text-sm text-foreground flex items-center gap-2 mb-4">
+              <TrendingUp className="w-4 h-4 text-rose-500" /> 5 Current Trending Topics
+            </h3>
+            <ul className="space-y-2 list-disc list-inside text-xs text-muted-foreground">
+              {data.currentTrendingTopics.map((topic: string, i: number) => (
+                <li key={i} className="leading-relaxed">{topic}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
 
     </div>
   );
