@@ -322,7 +322,7 @@ export default function ResultsPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            id={`result-tab-${tab.id}`}
+            data-testid={`section-nav-${tab.id}`}
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
               activeTab === tab.id
