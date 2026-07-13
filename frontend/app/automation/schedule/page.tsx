@@ -18,6 +18,7 @@ interface ScheduledPost {
   caption: string;
   first_comment?: string;
   media_url?: string;
+  media_urls?: string[];
   scheduled_at: string;
   status: PostStatus;
   published_at?: string;
