@@ -597,20 +597,36 @@ Return ONLY this JSON structure:
       "avgViews": "estimated avg views when used",
       "confidence": "High/Medium"
     },
-    {
-      "formula": "second hook formula",
-      "example": "real example",
-      "emotionalTrigger": "trigger type",
-      "avgViews": "avg views",
-      "confidence": "High/Medium"
-    },
-    {
-      "formula": "third hook formula",
-      "example": "real example",
-      "emotionalTrigger": "trigger type",
-      "avgViews": "avg views",
-      "confidence": "High/Medium"
-    }
+    { "formula": "hook 2", "example": "...", "emotionalTrigger": "...", "avgViews": "...", "confidence": "High" },
+    { "formula": "hook 3", "example": "...", "emotionalTrigger": "...", "avgViews": "...", "confidence": "High" },
+    { "formula": "hook 4", "example": "...", "emotionalTrigger": "...", "avgViews": "...", "confidence": "High" },
+    { "formula": "hook 5", "example": "...", "emotionalTrigger": "...", "avgViews": "...", "confidence": "High" }
+  ],
+  "viralContentIdeas": [
+    { "title": "Idea 1", "hook": "Suggested hook", "whyItWorks": "Why this works for this audience" },
+    { "title": "Idea 2", "hook": "Suggested hook", "whyItWorks": "Why this works for this audience" },
+    { "title": "Idea 3", "hook": "Suggested hook", "whyItWorks": "Why this works for this audience" },
+    { "title": "Idea 4", "hook": "Suggested hook", "whyItWorks": "Why this works for this audience" },
+    { "title": "Idea 5", "hook": "Suggested hook", "whyItWorks": "Why this works for this audience" }
+  ],
+  "contentGaps": [
+    { "gap": "Missing topic 1", "suggestedTopic": "How to fill it", "viralPotential": "High" },
+    { "gap": "Missing topic 2", "suggestedTopic": "How to fill it", "viralPotential": "Medium" }
+  ],
+  "hashtagClusters": {
+    "growth": ["#tag1", "#tag2", "#tag3"],
+    "niche": ["#tag4", "#tag5", "#tag6"],
+    "viral": ["#tag7", "#tag8", "#tag9"]
+  },
+  "userVsCompetitor": {
+    "userStrength": "What the user is doing better",
+    "userWeakness": "Where competitors are winning",
+    "quickWin": "Actionable step to beat them"
+  },
+  "keyInsights": [
+    "Crucial insight 1",
+    "Crucial insight 2",
+    "Crucial insight 3"
   ],
   "reelFramework": {
     "structure": "Hook → Problem → Solution → CTA",
@@ -1027,28 +1043,13 @@ RULES:
 
 Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
     
-    // Upgraded: 7 posts/week covering all 7 days with forced angles to prevent repetition
+    // Upgraded: 7 days of unique Reels (as requested: 7 day content, 7 unique reels only)
     const WEEK_DEFS = [
-      { week: 1, theme: "Awareness - Introduce your expertise, hook new audience, build curiosity",
+      { week: 1, theme: "Viral 7-Day Reel Strategy (2026 Trends)",
         days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
-        formats: ["Reel","Carousel","Reel","Post","Reel","Story+Post","Reel"],
-        angles: ["Myth vs Fact", "Step-by-Step Tutorial", "Personal Story of Failure/Success", "Contrarian Opinion (Hot Take)", "Tool/Resource Sharing", "Behind the Scenes / Day in the Life", "Actionable Checklist"]
-      },
-      { week: 2, theme: "Education - Teach your best tips, deliver massive value, build trust",
-        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
-        formats: ["Reel","Carousel","Reel","Carousel","Reel","Post","Reel"],
-        angles: ["Common Beginner Mistake", "Advanced Strategy Breakdown", "Case Study / Client Result", "Industry News/Update", "Resource/Template Reveal", "Q&A / Answering FAQs", "System/Process Walkthrough"]
-      },
-      { week: 3, theme: "Engagement - Community stories, relatability, sparking conversations",
-        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
-        formats: ["Reel","Post","Carousel","Reel","Reel","Carousel","Story+Reel"],
-        angles: ["Relatable Meme/Struggle", "Poll/Question for Audience", "Controversial Debate Topic", "Personal Reflection / Journey", "Challenge for the Audience", "Before & After Transformation", "User Generated Content/Story"]
-      },
-      { week: 4, theme: "Authority & Conversion - Results, transformation, strong CTA, social proof",
-        days: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
-        formats: ["Reel","Carousel","Reel","Post","Reel","Carousel","Reel"],
-        angles: ["Client Testimonial/Success Story", "Why My Method Works (Proof)", "Overcoming a Specific Objection", "Direct Pitch / Hard Sell", "Limited Time Offer / Urgency", "The Cost of Inaction", "Vision Casting / Aspirational"]
-      },
+        formats: ["Reel","Reel","Reel","Reel","Reel","Reel","Reel"],
+        angles: ["Myth vs Fact (High curiosity)", "Step-by-Step Tutorial (High value)", "Personal Story/Failure (High relatability)", "Contrarian Opinion/Hot Take (High engagement)", "Tool/Resource Reveal (High saves)", "Behind the Scenes/Process (High trust)", "Actionable Checklist (High shares)"]
+      }
     ];
 
     let competitorPostsContext = "";
