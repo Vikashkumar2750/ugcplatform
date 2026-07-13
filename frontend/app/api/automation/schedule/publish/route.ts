@@ -53,7 +53,11 @@ export async function POST(request: NextRequest) {
       platform     = data.platform;
       content_type = data.content_type;
       caption      = data.caption;
-      media_url    = data.media_url;
+      
+      const mediaList = Array.isArray(data.media_urls) ? data.media_urls : (data.media_urls ? [data.media_urls] : []);
+      media_url    = mediaList.length > 0 ? mediaList[0] : undefined;
+      carousel_urls = mediaList.length > 1 ? mediaList : undefined;
+
       // Use account_id from DB if available (multi-account support)
       account_id   = account_id || data.account_id;
 

@@ -752,11 +752,11 @@ function PostHistoryTab({ posts, onRetry, onDelete, retryingId, deletingId }: {
                     </div>
 
                     {/* Media preview */}
-                    {post.media_url && (
+                    {post.media_urls?.[0] && (
                       <div className="w-16 h-12 rounded-lg overflow-hidden bg-muted/30">
-                        {/\.(mp4|mov)$/i.test(post.media_url)
-                          ? <video src={post.media_url} className="w-full h-full object-cover" />
-                          : <img src={post.media_url} alt="" className="w-full h-full object-cover" />}
+                        {/\.(mp4|mov)$/i.test(post.media_urls[0])
+                          ? <video src={post.media_urls[0]} className="w-full h-full object-cover" />
+                          : <img src={post.media_urls[0]} alt="" className="w-full h-full object-cover" />}
                       </div>
                     )}
 
@@ -1122,11 +1122,11 @@ export default function SchedulerPage() {
                     </span>
                   </div>
 
-                  {post.media_url && (
-                    <div className="w-full h-14 rounded-lg overflow-hidden bg-muted/30">
-                      {/\.(mp4|mov)$/i.test(post.media_url)
-                        ? <video src={post.media_url} className="w-full h-full object-cover" />
-                        : <img src={post.media_url} alt="" className="w-full h-full object-cover" />}
+                  {post.media_urls?.[0] && (
+                    <div className="h-40 w-full overflow-hidden flex-shrink-0 bg-muted/30">
+                      {/\.(mp4|mov|avi|webm)$/i.test(post.media_urls[0])
+                        ? <video src={post.media_urls[0]} className="w-full h-full object-cover" />
+                        : <img src={post.media_urls[0]} alt="" className="w-full h-full object-cover" />}
                     </div>
                   )}
 
