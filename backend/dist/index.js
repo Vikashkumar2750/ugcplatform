@@ -358,11 +358,12 @@ node_cron_1.default.schedule("0 * * * *", async () => {
 // ─────────────────────────────────────────────
 async function publishScheduledPosts() {
     const now = new Date().toISOString();
+    const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: posts, error } = await supabase
         .from("scheduled_posts")
         .select("*, connected_accounts(access_token, platform_user_id, page_id)")
-        .eq("status", "scheduled")
-        .lte("scheduled_at", now)
+        .or(`and(status.eq.scheduled,scheduled_at.lte.${now}),and(status.eq.publishing,updated_at.lte.${tenMinsAgo})`)
+        .order("scheduled_at", { ascending: true })
         .order("scheduled_at", { ascending: true })
         .limit(10);
     if (error || !posts?.length)
@@ -370,7 +371,7 @@ async function publishScheduledPosts() {
     let publishedCount = 0;
     for (const post of posts) {
         try {
-            await supabase.from("scheduled_posts").update({ status: "publishing" }).eq("id", post.id);
+            await supabase.from("scheduled_posts").update({ status: "publishing", updated_at: new Date().toISOString() }).eq("id", post.id);
             const platformPostId = await publishPost(post);
             await supabase.from("scheduled_posts").update({
                 status: "published",
@@ -495,22 +496,42 @@ async function waitForVideoUpload(containerId, token, maxAttempts = 12) {
 }
 async function publishFacebookPost(post, token) {
     const pageId = post.connected_accounts?.page_id;
-    const body = {
-        message: post.caption || "",
-        access_token: token,
-    };
-    if (post.media_urls?.length > 0) {
-        body.link = post.media_urls[0];
+    const isVideo = post.content_type === "reel" || post.content_type === "video";
+    const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : undefined;
+    if (!mediaUrl)
+        throw new Error("Media URL is required");
+    if (isVideo) {
+        const body = {
+            description: post.caption || "",
+            file_url: mediaUrl,
+            access_token: token,
+        };
+        const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!data.id)
+            throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
+        return data.id;
     }
-    const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!data.id)
-        throw new Error(`Facebook post failed: ${JSON.stringify(data)}`);
-    return data.id;
+    else {
+        const body = {
+            message: post.caption || "",
+            url: mediaUrl,
+            access_token: token,
+        };
+        const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!data.id)
+            throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
+        return data.id;
+    }
 }
 // ─────────────────────────────────────────────
 // Core: Refresh Expiring Tokens

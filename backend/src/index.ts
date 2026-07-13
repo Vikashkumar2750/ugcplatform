@@ -372,11 +372,13 @@ cron.schedule("0 * * * *", async () => {
 async function publishScheduledPosts(): Promise<number> {
   const now = new Date().toISOString();
 
+  const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
   const { data: posts, error } = await supabase
     .from("scheduled_posts")
     .select("*, connected_accounts(access_token, platform_user_id, page_id)")
-    .eq("status", "scheduled")
-    .lte("scheduled_at", now)
+    .or(`and(status.eq.scheduled,scheduled_at.lte.${now}),and(status.eq.publishing,updated_at.lte.${tenMinsAgo})`)
+    .order("scheduled_at", { ascending: true })
     .order("scheduled_at", { ascending: true })
     .limit(10);
 
@@ -386,7 +388,7 @@ async function publishScheduledPosts(): Promise<number> {
 
   for (const post of posts) {
     try {
-      await supabase.from("scheduled_posts").update({ status: "publishing" }).eq("id", post.id);
+      await supabase.from("scheduled_posts").update({ status: "publishing", updated_at: new Date().toISOString() }).eq("id", post.id);
 
       const platformPostId = await publishPost(post);
 
@@ -537,23 +539,40 @@ async function waitForVideoUpload(
 async function publishFacebookPost(post: any, token: string): Promise<string> {
   const pageId = post.connected_accounts?.page_id;
 
-  const body: Record<string, string> = {
-    message: post.caption || "",
-    access_token: token,
-  };
+  const isVideo = post.content_type === "reel" || post.content_type === "video";
+  const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : undefined;
 
-  if (post.media_urls?.length > 0) {
-    body.link = post.media_urls[0];
+  if (!mediaUrl) throw new Error("Media URL is required");
+
+  if (isVideo) {
+    const body: Record<string, string> = {
+      description: post.caption || "",
+      file_url: mediaUrl,
+      access_token: token,
+    };
+    const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/videos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.id) throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
+    return data.id;
+  } else {
+    const body: Record<string, string> = {
+      message: post.caption || "",
+      url: mediaUrl,
+      access_token: token,
+    };
+    const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.id) throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
+    return data.id;
   }
-
-  const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!data.id) throw new Error(`Facebook post failed: ${JSON.stringify(data)}`);
-  return data.id;
 }
 
 // ─────────────────────────────────────────────
