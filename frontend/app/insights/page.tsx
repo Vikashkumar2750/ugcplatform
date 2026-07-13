@@ -41,10 +41,17 @@ export default function InsightsDashboard() {
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
 
-  // Stub function for future data fetching
-  const refreshData = useCallback(async () => {
-    // API logic will go here
-  }, [timeRange]);
+  const refreshData = useCallback(() => {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("ce_cache_")) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    window.location.reload();
+  }, []);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-24">
