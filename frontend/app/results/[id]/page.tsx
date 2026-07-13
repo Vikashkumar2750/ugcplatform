@@ -318,7 +318,7 @@ export default function ResultsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto border-b border-border bg-card px-6">
+      <div className="flex flex-wrap items-center border-b border-border bg-card px-6 min-h-[48px] gap-2">
         {TABS.map((tab) => (
           <button
             key={tab.id}
