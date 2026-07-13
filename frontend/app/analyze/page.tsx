@@ -461,7 +461,7 @@ export default function AnalyzePage() {
                   {phase.id === "pipeline" && status === "running" && (
                     <div className="mt-3">
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">Generating 28 posts...</span>
+                        <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">Generating 7 posts...</span>
                         <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">{pipelineProgress}%</span>
                       </div>
                       <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">

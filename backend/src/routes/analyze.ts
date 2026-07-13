@@ -1138,7 +1138,7 @@ Your output must be a single JSON object:
 CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
     };
 
-    console.log(`[pipeline] Generating 4 weeks × 7 posts = 28 calls for: ${effectiveNiche}`);
+    console.log(`[pipeline] Generating 1 week × 7 posts = 7 calls for: ${effectiveNiche}`);
     const contentCalendar: any[] = [];
     let provider = "gemini"; let model = "";
 
@@ -1167,9 +1167,9 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
           const pi = batchStart + bi;
           const pr = postResults[bi];
           
-          // Increment progress per post (approx 90% total for 28 posts ~ 3.2% per post)
+          // Increment progress per post (approx 90% total for 7 posts ~ 12.8% per post)
           const currentProgress = pipelineProgressMap.get(progressKey) || 5;
-          pipelineProgressMap.set(progressKey, Math.min(95, currentProgress + 3.2));
+          pipelineProgressMap.set(progressKey, Math.min(95, currentProgress + 12.8));
 
           if (!pr.ok) { console.warn(`[pipeline] w${w+1} p${pi+1} LLM failed: ${(pr as any).error}`); continue; }
           
