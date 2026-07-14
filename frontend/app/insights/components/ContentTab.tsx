@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { AlertCircle, PlayCircle, Image as ImageIcon, Loader2, X, AlertTriangle } from "lucide-react";
+import { AlertCircle, PlayCircle, Image as ImageIcon, Loader2, X, AlertTriangle, Globe } from "lucide-react";
 import { fetchWithCache } from "../lib/fetchWithCache";
 
 export default function ContentTab({ timeRange, accountId, platform = "instagram" }: { timeRange: string, accountId?: string, platform?: string }) {
@@ -132,7 +132,16 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
                 <td className="px-5 py-4 text-right font-medium text-foreground">{post.insights?.impressions?.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right font-medium text-foreground">{post.like_count?.toLocaleString()}</td>
                 <td className="px-5 py-4 text-right font-medium text-foreground">{post.comments_count?.toLocaleString()}</td>
-                <td className="px-5 py-4 text-right font-medium text-foreground">{post.insights?.saved?.toLocaleString()}</td>
+                <td className="px-5 py-4 text-right font-medium text-foreground">
+                  <div className="flex items-center justify-end gap-3">
+                    <span>{post.insights?.saved?.toLocaleString() ?? 0}</span>
+                    {post.permalink && (
+                      <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded transition-colors" onClick={(e) => e.stopPropagation()} title="View on Platform">
+                        <Globe className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
             {paginatedData.length === 0 && (
@@ -212,6 +221,17 @@ export default function ContentTab({ timeRange, accountId, platform = "instagram
                     <span className="px-2 py-1 bg-muted border border-border rounded text-xs text-muted-foreground font-medium">{new Date(selectedPost.timestamp).toLocaleDateString()}</span>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between mt-4 bg-muted/20 p-4 rounded-2xl border border-border">
+                 <p className="text-sm font-medium text-muted-foreground">Original Media</p>
+                 {selectedPost.permalink ? (
+                   <a href={selectedPost.permalink} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-primary hover:underline flex items-center gap-1.5">
+                     <Globe className="w-4 h-4" /> View on Platform
+                   </a>
+                 ) : (
+                   <span className="text-sm text-muted-foreground">Link not available</span>
+                 )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">

@@ -58,16 +58,19 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
       const impUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions,page_engaged_users&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
       const reachUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_impressions_unique&period=day&since=${since}&until=${until}&access_token=${account.access_token}`;
       const fansUrl = `https://graph.facebook.com/v21.0/${accountId}/insights?metric=page_fans&period=lifetime&since=${since}&until=${until}&access_token=${account.access_token}`;
+      const profileUrl = `https://graph.facebook.com/v21.0/${accountId}?fields=followers_count&access_token=${account.access_token}`;
 
-      const [impRes, reachRes, fansRes] = await Promise.all([
+      const [impRes, reachRes, fansRes, profileRes] = await Promise.all([
         fetch(impUrl),
         fetch(reachUrl),
-        fetch(fansUrl)
+        fetch(fansUrl),
+        fetch(profileUrl)
       ]);
 
       const impData = await impRes.json();
       const reachData = await reachRes.json();
       const fansData = await fansRes.json();
+      const profileData = await profileRes.json();
 
       if (impData.error) console.error("[Meta API Error - FB Impressions]", impData.error);
       if (reachData.error) console.error("[Meta API Error - FB Reach]", reachData.error);
@@ -80,7 +83,8 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
       const combinedData = [
         ...(impData.data || []),
         ...(reachData.data || []),
-        ...(fansData.data || [])
+        ...(fansData.data || []),
+        { name: "net_followers", total_value: { value: profileData.followers_count || 0 } }
       ];
 
       return res.json({ data: combinedData });
@@ -101,13 +105,17 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
         `&metric_type=total_value` +
         `&access_token=${account.access_token}`;
 
-      const [reachRes, totalRes] = await Promise.all([
+      const profileUrl = `https://graph.facebook.com/v21.0/${accountId}?fields=followers_count&access_token=${account.access_token}`;
+
+      const [reachRes, totalRes, profileRes] = await Promise.all([
         fetch(reachUrl),
-        fetch(totalUrl)
+        fetch(totalUrl),
+        fetch(profileUrl)
       ]);
 
       const reachData = await reachRes.json();
       const totalData = await totalRes.json();
+      const profileData = await profileRes.json();
 
       if (reachData.error || totalData.error) {
         const err = reachData.error || totalData.error;
@@ -118,7 +126,8 @@ router.get("/:platform/:accountId/overview", async (req: Request, res: Response)
       // Combine both into one data array
       const combinedData = [
         ...(reachData.data || []),
-        ...(totalData.data || [])
+        ...(totalData.data || []),
+        { name: "net_followers", total_value: { value: profileData.followers_count || 0 } }
       ];
 
       return res.json({ data: combinedData });
@@ -168,11 +177,9 @@ router.get("/:platform/:accountId/audience", async (req: Request, res: Response)
     const genderData = await genderRes.json();
     const cityData = await cityRes.json();
 
-    if (ageData.error || genderData.error || cityData.error) {
-      const err = ageData.error || genderData.error || cityData.error;
-      console.error("[Meta API Error - Audience]", err);
-      return res.status(400).json({ error: err.message });
-    }
+    if (ageData.error) console.error("[Meta API Error - Age]", ageData.error);
+    if (genderData.error) console.error("[Meta API Error - Gender]", genderData.error);
+    if (cityData.error) console.error("[Meta API Error - City]", cityData.error);
 
     // Transform into legacy format for frontend AudienceTab
     const legacyGenderAge: Record<string, number> = {};
@@ -399,19 +406,13 @@ Format the response strictly as a single JSON object with these keys:
   "topPostsAnalysis": [
     { 
       "postId": "string", 
-      "hookAnalysis": "Specific breakdown of why the hook worked or failed (considering if it's a Reel, Carousel, Short, or Image)",
-      "bodyAnalysis": "Specific breakdown of why the body retained attention or failed, keeping the content format in mind",
-      "ctaAnalysis": "Specific breakdown of the Call-To-Action used, and a better alternative CTA example"
+      "analysis": "Specific breakdown of why it worked (hook, body, CTA)"
     }
   ],
   "underperformingPostsAnalysis": [
     { "postId": "string", "reason": "Specific reasons why this post did not hit reach targets", "suggestion": "Actionable visual or copywriting tweak to fix it" }
   ],
-  "bestPostingTime": {
-    "days": ["string"],
-    "hours": ["string"],
-    "confidenceScore": 1-100
-  },
+  "bestPostingTime": "Concise recommended posting days/times",
   "profileHealth": {
     "bioOptimization": "Specific suggestion for writing a better, benefit-driven bio",
     "ctaQuality": "Specific advice on optimizing their link-in-bio call-to-action",
@@ -430,51 +431,12 @@ Format the response strictly as a single JSON object with these keys:
     "body": "The core script/outline to deliver on the hook",
     "cta": "A strong call-to-action to maximize engagement/saves/shares"
   },
-  "recommendations": [
-    {
-      "title": "Short title",
-      "expectedImpact": "High" | "Medium" | "Low",
-      "priority": "High" | "Medium" | "Low",
-      "reasoning": "Data-backed reasoning based on their stats",
-      "suggestedAction": "Extremely tactical template or action step they can execute today"
-    }
-  ],
-  "accountHighlights": "Detailed suggestion for account highlights to be set with best SEO and engagement practices, including ideas for cover images.",
   "profileOptimization": {
     "name": "Suggested SEO optimized Name",
     "bio": "Suggested full bio text",
-    "links": "Suggested links structure specifically to collect leads for an AI digital marketing course",
+    "links": "Suggested links structure",
     "details": "Full profile optimization text"
-  },
-  "reelScripts": [
-    {
-      "topic": "Topic of the reel",
-      "hooks": ["Non-scrolling hook 1", "Non-scrolling hook 2", "Non-scrolling hook 3"],
-      "body": "Detailed script ready to shoot with face",
-      "cta": "Call to action"
-    }
-  ],
-  "contentSuitability": "Detailed description of the type of content that suits the account (e.g. educational, informational, entertainment etc.)",
-  "attentionHooks": ["Hook 1", "Hook 2", "Hook 3", "Hook 4", "Hook 5", "Hook 6", "Hook 7", "Hook 8", "Hook 9", "Hook 10"],
-  "trendingTopics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10"],
-  "viralChecklist": ["Task 1", "Task 2", "Task 3", "Task 4", "Task 5"],
-  "trialReelGuide": "Detailed explanation of how to utilize the trial reel option of Instagram",
-  "captionGuide": {
-    "howToWrite": "Guide on writing an engaging caption",
-    "hashtagsCount": "How many hashtags should be used",
-    "hashtagsToUse": "What kind of hashtags to use",
-    "howToFind": "How to find the best hashtags"
-  },
-  "currentTrendingTopics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"],
-  "sevenDayContentPipeline": [
-    {
-      "day": "Day 1",
-      "topic": "Topic according to 2026 trend",
-      "hook": "Hook",
-      "body": "Body text",
-      "cta": "Call to action"
-    }
-  ]
+  }
 }`;
 
     // Invoke LLM

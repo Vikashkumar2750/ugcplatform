@@ -142,10 +142,16 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
             {data.topPostsAnalysis?.map((post: any, i: number) => (
               <div key={i} className="p-4 bg-muted/30 rounded-2xl border border-border">
                 <p className="text-xs font-semibold text-foreground mb-2">Post #{i+1}</p>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <p><strong className="text-foreground">Hook:</strong> {post.hookAnalysis}</p>
-                  <p><strong className="text-foreground">Body:</strong> {post.bodyAnalysis}</p>
-                  <p><strong className="text-foreground">CTA:</strong> {post.ctaAnalysis}</p>
+                <div className="space-y-2 text-xs text-muted-foreground leading-relaxed">
+                  {post.analysis ? (
+                    <p>{post.analysis}</p>
+                  ) : (
+                    <>
+                      <p><strong className="text-foreground">Hook:</strong> {post.hookAnalysis}</p>
+                      <p><strong className="text-foreground">Body:</strong> {post.bodyAnalysis}</p>
+                      <p><strong className="text-foreground">CTA:</strong> {post.ctaAnalysis}</p>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -175,7 +181,11 @@ export default function AIInsightsTab({ accountId, platform = "instagram" }: { a
             <Clock className="w-4 h-4 text-blue-500" /> Optimal Posting Schedule
           </h3>
           <div className="space-y-3">
-            {data.bestPostingTime?.days?.map((day: string, i: number) => (
+            {typeof data.bestPostingTime === "string" ? (
+              <div className="p-4 bg-muted/30 rounded-xl border border-border text-sm text-foreground">
+                {data.bestPostingTime}
+              </div>
+            ) : data.bestPostingTime?.days?.map((day: string, i: number) => (
               <div key={i} className="flex justify-between items-center p-3 bg-muted/30 rounded-xl border border-border">
                 <span className="text-sm font-medium text-foreground">{day}</span>
                 <span className="text-sm font-bold text-blue-500 dark:text-blue-400">{data.bestPostingTime.hours[i]}</span>

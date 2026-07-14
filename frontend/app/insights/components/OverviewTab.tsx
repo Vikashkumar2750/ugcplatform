@@ -32,12 +32,18 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
         // Find metrics
         const findMetric = (name: string) => {
           const m = metrics.find((m: any) => m.name === name);
-          return m?.total_value?.value ?? m?.values?.[0]?.value ?? 0;
+          if (!m) return 0;
+          if (m.total_value?.value !== undefined) return m.total_value.value;
+          if (Array.isArray(m.values)) {
+            return m.values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
+          }
+          return 0;
         };
         
         const reach = findMetric("reach") || findMetric("page_impressions_unique") || 0;
         const impressions = findMetric("impressions") || findMetric("views") || findMetric("page_impressions") || 0;
         const profileViews = findMetric("profile_views") || findMetric("page_views_total") || 0;
+        const netFollowers = findMetric("net_followers") || 0;
         
         // Chart data - we take the timeline values
         const reachData = metrics.find((m: any) => m.name === "reach" || m.name === "page_impressions_unique")?.values || [];
@@ -56,7 +62,7 @@ export default function OverviewTab({ timeRange, accountId, platform = "instagra
           reach,
           impressions,
           profileViews,
-          netFollowers: 0, // Since we don't have historical followers API in basic tier
+          netFollowers,
           chartData: chartData.length > 0 ? chartData : [
             { date: "N/A", reach: reach, impressions: impressions }
           ]
