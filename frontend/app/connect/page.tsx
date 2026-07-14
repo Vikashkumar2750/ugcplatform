@@ -365,9 +365,8 @@ function ConnectContent() {
             Refresh
           </button>
         </div>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           Connect your social accounts for real analytics, DM automation, and post scheduling.
-          Your own Apify key is only needed for competitor analysis.
         </p>
       </div>
 
@@ -442,24 +441,6 @@ function ConnectContent() {
           </div>
         </div>
       )}
-
-      {/* Apify status */}
-      <div className="p-5 rounded-2xl border border-border bg-card">
-        <div className="flex items-start gap-3">
-          <Shield className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold">Apify API Key</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {connectedCount > 0
-                ? "Your Apify key is optional now — it's only used for deep competitor analysis (profiles you don't own)."
-                : "Without a connected account, Apify is used to scrape your profile. Connect an account above for more accurate data."}
-            </p>
-            <a href="/settings" className="text-xs text-amber-600 dark:text-amber-400 hover:underline mt-2 inline-block">
-              Manage API keys in Settings →
-            </a>
-          </div>
-        </div>
-      </div>
 
     </div>
   );
