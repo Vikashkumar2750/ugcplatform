@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { TopNav } from "@/components/top-nav";
+import { ProfileMakeover } from "@/components/profile-makeover";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import {
   Download, Copy, ExternalLink, FileText, BarChart3,
@@ -437,6 +439,10 @@ export default function ResultsPage() {
                     </div>
                   </div>
                 </div>
+
+                {audit.profileMakeover && (
+                  <ProfileMakeover makeover={audit.profileMakeover} />
+                )}
 
                 {/* Diagnosis & Advanced Insights */}
                 <div className="grid grid-cols-1 gap-4">
