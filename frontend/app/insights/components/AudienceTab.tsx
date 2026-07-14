@@ -40,7 +40,10 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
           .sort((a, b) => b.value - a.value)
           .slice(0, 5);
 
+        const hasData = totalGenderAge > 0 || Object.keys(cityData).length > 0;
+
         setData({
+          hasData,
           ageGender,
           topLocations: topLocations.length > 0 ? topLocations : [{ name: "No data", value: 1 }]
         });
@@ -74,6 +77,20 @@ export default function AudienceTab({ accountId, platform = "instagram" }: { acc
     return (
       <div className="flex items-center justify-center p-24">
         <Loader2 className="w-8 h-8 text-zinc-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!data.hasData) {
+    return (
+      <div className="p-12 text-center border border-amber-500/30 rounded-2xl bg-amber-500/5 max-w-2xl mx-auto my-12">
+        <div className="w-12 h-12 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Users className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-foreground mb-2">Not Enough Data</h3>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          Meta Graph API requires a minimum of <strong className="text-foreground">100 followers</strong> to display detailed demographic insights like Age, Gender, and Cities. Keep posting great content to grow your audience and unlock these metrics!
+        </p>
       </div>
     );
   }
