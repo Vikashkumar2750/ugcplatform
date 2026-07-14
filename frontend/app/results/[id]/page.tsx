@@ -1311,7 +1311,7 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
           }`} />
           <span className="font-bold">Data Confidence: {dataConfidence}</span>
           {totalPostsScraped != null && (
-            <span className="text-muted-foreground ml-1">· {totalPostsScraped} posts scraped</span>
+            <span className="text-muted-foreground ml-1">· {totalPostsScraped} posts analysed</span>
           )}
         </div>
       )}
@@ -1319,7 +1319,7 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
       {/* Scraped stats — always shown even if AI JSON failed */}
       {scrapedStats.length > 0 && (
         <div className="p-5 rounded-2xl border border-border bg-card">
-          <p className="text-sm font-bold mb-3">Scraped Competitor Profiles</p>
+          <p className="text-sm font-bold mb-3">Analysed Competitor Profiles</p>
           <div className="space-y-3">
             {scrapedStats.map((stat: any, i: number) => (
               <div key={i} className="flex items-center gap-4 p-3 rounded-xl border border-border">
@@ -1339,11 +1339,14 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
         </div>
       )}
 
-      {/* ── SCRAPED POSTS per competitor ── */}
+      {/* ── ANALYSED POSTS per competitor ── */}
       {Object.keys(postsByCompetitor).length > 0 && (
         <div className="p-5 rounded-2xl border border-border bg-card space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-bold">📋 Scraped Posts ({scrapedPosts.length} total)</p>
+            <div className="flex flex-col">
+              <p className="text-sm font-bold">📋 Analysed Posts ({scrapedPosts.length} total)</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Stats are from when the post was last analysed by our providers (may be cached)</p>
+            </div>
             <button
               onClick={() => downloadPostsCSV(scrapedPosts, `competitor_posts_${new Date().toISOString().slice(0, 10)}.csv`)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-400/40 bg-amber-400/5 hover:bg-amber-400/15 text-xs font-medium text-amber-600 dark:text-amber-400 transition"
