@@ -1110,9 +1110,9 @@ CRITICAL RULES:
 1. NO PLACEHOLDERS — every word must be real, usable content. No [brackets] allowed.
 2. STRICT UNIQUE ANGLE: You MUST use the exact Required Angle/Framework ("${angle}").
 3. BAN GENERIC ADVICE: Do NOT suggest extremely basic, outdated tools or advice that everyone knows. Suggest highly specific, modern, 2026-relevant tools, AI software, or hyper-niche strategies.
-4. EXACT STRUCTURE REQUIRED: You must format your script EXACTLY like the "GOLD STANDARD EXAMPLE" below. Use numbered transitions like "Sabse pehle", "Doosra", "Teersra", "Chautha", "Paanchwa". 
-5. Hook must be direct and stop the scroll in under 2 seconds.
-6. The CTA must be very specific, offering a lead magnet or detailed guide in DMs.
+4. EXACT STRUCTURE REQUIRED: You must format your script EXACTLY like the "GOLD STANDARD EXAMPLE" below (numbered transitions). HOWEVER, DO NOT COPY THE TOPIC (AI SEO). You MUST generate a COMPLETELY UNIQUE topic based strictly on the user's niche (${effectiveNiche}) and the Required Angle (${angle}).
+5. Hook must be direct, FOMO-driven, and stop the scroll in under 2 seconds.
+6. The CTA must be very specific, offering a lead magnet or detailed guide in DMs to drive follows.
 
 GOLD STANDARD EXAMPLE OF SCRIPT PACING & FORMAT (${lang}):
 "AI SEO mei rank krna hai to ye 5 cheeze miss mat krna
@@ -1139,10 +1139,10 @@ Your output must be a single JSON object:
   "b_roll_suggestions": ["Specific B-roll shot 1 needed", "B-roll shot 2", "B-roll shot 3"],
   "music_suggestion": "Specific trending audio name or type of background music for this post",
   "script": {
-    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — direct hook (e.g. '...mei rank krna hai to ye 5 cheeze miss mat krna')",
+    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — direct FOMO hook related to ${effectiveNiche}",
     "scene2_problem": "Not needed if using direct numbered format, but can add 1 line of context if necessary",
-    "scene3_solution": "Exact spoken words in ${lang} delivering 3 to 5 specific actionable tips using numbered transitions (Sabse pehle, Doosra, Teersra...) — concrete, not generic",
-    "scene4_cta": "Exact spoken words in ${lang} for the CTA — e.g. 'Detailed guide ke liye follow krke comment kro [Keyword] DM aajayega'",
+    "scene3_solution": "Exact spoken words in ${lang} delivering 3 to 5 specific actionable tips using numbered transitions (Sabse pehle, Doosra...) — concrete, hyper-specific to the angle '${angle}', NOT generic",
+    "scene4_cta": "Exact spoken words in ${lang} for the CTA — compelling lead magnet offer in DMs",
     "voiceover_notes": "Detailed instructions: tone (excited/serious/casual), speed (fast/medium), energy level, emotional shifts, pauses",
     "text_overlays": ["Bold text for hook scene", "Tip 1 text overlay", "Tip 2 text overlay", "CTA text overlay"],
     "visual_directions": ["Scene 1: Close-up face, surprised expression", "Scene 2: Screen recording showing the problem", "Scene 3: Split screen with examples", "Scene 4: Point at camera + text overlay"]
