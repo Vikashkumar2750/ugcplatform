@@ -15,8 +15,9 @@ export function isNightTime(timeZone: string = "Asia/Kolkata"): boolean {
     // Extract the hour (0-23)
     const hour = parseInt(formatter.format(new Date()), 10);
     
-    // If it's between 23:00 (11 PM) and 07:00 (7 AM), it's nighttime.
-    return hour >= 23 || hour < 7;
+    // For testing tonight, changed from 23:00 to 02:00.
+    // If it's between 02:00 (2 AM) and 07:00 (7 AM), it's nighttime.
+    return hour >= 2 && hour < 7;
   } catch (e) {
     // Fallback if timezone is invalid
     return false;

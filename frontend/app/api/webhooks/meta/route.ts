@@ -477,12 +477,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
   console.log(`[Webhook] Page account found: ${pageAccount ? 'YES (id=' + pageAccount.id + ')' : 'NO'}`);
 
-  // Skip if commentor is our own account
-  if (pageAccount?.platform_user_id && commentorId === pageAccount.platform_user_id) {
-    console.log(`[Webhook] Skipping own account comment`);
-    return;
-  }
-
   // ── Get ALL active comment rules ───────────────────────────────────────
   // Query by BOTH account_id match AND rules with null account_id (for this user)
   let rulesQuery = supabase
