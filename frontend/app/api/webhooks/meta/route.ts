@@ -477,6 +477,15 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
   console.log(`[Webhook] Page account found: ${pageAccount ? 'YES (id=' + pageAccount.id + ')' : 'NO'}`);
 
+  let antiBotEnabled = true;
+  if (pageAccount?.user_id) {
+    const { data: { user } } = await supabase.auth.admin.getUserById(pageAccount.user_id);
+    if (user?.user_metadata?.anti_bot_enabled === false) {
+      antiBotEnabled = false;
+      console.log(`[Webhook] Anti-bot sleep cycle DISABLED by user settings`);
+    }
+  }
+
   // ── Get ALL active comment rules ───────────────────────────────────────
   // Query by BOTH account_id match AND rules with null account_id (for this user)
   let rulesQuery = supabase
@@ -631,7 +640,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     
     if (shouldReply && finalReplyText) {
       // Add a random 2-5 second delay to mimic human behavior without feeling broken
-      const replyDelayMs = randomGaussianDelayMs(2, 5) + getSleepCycleDelayMs();
+      const replyDelayMs = randomGaussianDelayMs(2, 5) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       const spunReplyText = parseSpintax(finalReplyText);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
 
@@ -702,7 +711,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
-      const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs();
+      const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
       const enqueueResult = await enqueueViaBackend({

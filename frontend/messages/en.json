@@ -60,8 +60,12 @@
       "desc": "Google Docs, Notion, PDF — save wherever you work"
     },
     "hooks": {
-      "title": "Hook Library",
-      "desc": "50+ proven templates filterable by niche and emotion"
+      "title": "Viral Hook Library",
+      "desc": "Fill-in-the-blank templates proven to retain viewers"
+    },
+    "antibot": {
+      "title": "Anti-Ban Protection",
+      "desc": "Smart sleep cycles and human-like delays keep your account 100% safe"
     }
   },
   "testimonials": {

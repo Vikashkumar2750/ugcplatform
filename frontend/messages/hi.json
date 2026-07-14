@@ -62,6 +62,10 @@
     "hooks": {
       "title": "Hook Library",
       "desc": "50+ proven templates filterable by niche aur emotion"
+    },
+    "antibot": {
+      "title": "Anti-Ban Protection",
+      "desc": "Smart sleep cycles and human-like delays aapke account ko 100% safe rakhte hain"
     }
   },
   "testimonials": {

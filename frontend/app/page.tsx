@@ -283,6 +283,13 @@ export default function LandingPage() {
                 badge: "Library",
                 highlight: false,
               },
+              {
+                icon: Shield,
+                title: t("features.antibot.title"),
+                desc: t("features.antibot.desc"),
+                badge: "Safe",
+                highlight: true,
+              },
             ].map((f, i) => (
               <div
                 key={i}

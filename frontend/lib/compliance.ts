@@ -15,9 +15,8 @@ export function isNightTime(timeZone: string = "Asia/Kolkata"): boolean {
     // Extract the hour (0-23)
     const hour = parseInt(formatter.format(new Date()), 10);
     
-    // For testing tonight, changed from 23:00 to 02:00.
-    // If it's between 02:00 (2 AM) and 07:00 (7 AM), it's nighttime.
-    return hour >= 2 && hour < 7;
+    // If it's between 23:00 (11 PM) and 07:00 (7 AM), it's nighttime.
+    return hour >= 23 || hour < 7;
   } catch (e) {
     // Fallback if timezone is invalid
     return false;
@@ -28,7 +27,8 @@ export function isNightTime(timeZone: string = "Asia/Kolkata"): boolean {
  * Calculates a long delay (queue) until 7:00 AM local time if it's currently night.
  * Returns 0 if it's not night time.
  */
-export function getSleepCycleDelayMs(timeZone: string = "Asia/Kolkata"): number {
+export function getSleepCycleDelayMs(timeZone: string = "Asia/Kolkata", antiBotEnabled: boolean = true): number {
+  if (!antiBotEnabled) return 0;
   if (!isNightTime(timeZone)) return 0;
   
   try {

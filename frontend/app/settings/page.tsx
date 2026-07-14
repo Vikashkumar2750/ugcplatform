@@ -137,6 +137,7 @@ export default function SettingsPage() {
   const [testing, setTesting]         = useState<Record<string, boolean>>({});
   const [language, setLanguage]       = useState<"hi" | "en">("hi");
   const [defaultPlatform, setDefaultPlatform] = useState("Instagram");
+  const [antiBotEnabled, setAntiBotEnabled]   = useState(true);
   const [userInfo, setUserInfo]       = useState<{ email: string; name: string } | null>(null);
   const [prefSaved, setPrefSaved]     = useState(false);
   const [loadError, setLoadError]     = useState("");
@@ -170,7 +171,10 @@ export default function SettingsPage() {
 
       // User info
       const me = await fetch("/api/auth/me").then(r => r.json()).catch(() => ({}));
-      if (me.user) setUserInfo({ email: me.user.email || "", name: me.user.user_metadata?.full_name || me.user.email || "" });
+      if (me.user) {
+         setUserInfo({ email: me.user.email || "", name: me.user.user_metadata?.full_name || me.user.email || "" });
+         setAntiBotEnabled(me.user.user_metadata?.anti_bot_enabled !== false);
+      }
     } catch (err: any) {
       setLoadError(err.message);
     }
@@ -229,8 +233,16 @@ export default function SettingsPage() {
     setSavedProviders(prev => { const n = new Set(prev); n.delete(providerId); return n; });
   };
 
-  const savePrefs = () => {
+  const savePrefs = async () => {
     localStorage.setItem("ce_prefs", JSON.stringify({ llmPriority, scraperPriority, llmEnabled, scraperEnabled, language, defaultPlatform }));
+    try {
+      const token = await getAuthToken();
+      await fetch(`/api/auth/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ anti_bot_enabled: antiBotEnabled })
+      });
+    } catch(e) {}
     setPrefSaved(true);
     setTimeout(() => setPrefSaved(false), 2500);
   };
@@ -402,6 +414,26 @@ export default function SettingsPage() {
               className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring/30">
               {["Instagram", "YouTube", "Facebook"].map(p => <option key={p}>{p}</option>)}
             </select>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1">
+                  Anti-Bot System (Sleep Cycle)
+                  <div className="group relative flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4 text-muted-foreground hover:text-amber-500 cursor-help transition" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-card border border-border rounded-xl shadow-lg text-xs opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      Raat ko (2 AM - 7 AM) bot automation rokk kar subah queue mein send karta hai, taaki Meta aapka account ban na kare. Safe rehne ke liye Ise ON rakhein.
+                    </div>
+                  </div>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Pause midnight automations to prevent account ban</p>
+              </div>
+              <div onClick={() => setAntiBotEnabled(!antiBotEnabled)} className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer ${antiBotEnabled ? "bg-amber-500" : "bg-muted-foreground/30"}`}>
+                <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${antiBotEnabled ? "left-7" : "left-1"}`} />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3">
