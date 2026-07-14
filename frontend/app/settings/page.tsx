@@ -157,6 +157,13 @@ export default function SettingsPage() {
         if (d.defaultPlatform)  setDefaultPlatform(d.defaultPlatform);
       }
 
+      // User info
+      const me = await fetch("/api/auth/me").then(r => r.json()).catch(() => ({}));
+      if (me.user) {
+         setUserInfo({ email: me.user.email || "", name: me.user.user_metadata?.full_name || me.user.email || "" });
+         setAntiBotEnabled(me.user.user_metadata?.anti_bot_enabled !== false);
+      }
+
       // Get saved provider list from backend
       const token = await getAuthToken();
       if (!token) { setLoadError("Login karke dobara aao"); return; }
@@ -167,13 +174,6 @@ export default function SettingsPage() {
       if (res.ok) {
         const { keys } = await res.json();
         setSavedProviders(new Set((keys || []).map((k: { provider: string }) => k.provider)));
-      }
-
-      // User info
-      const me = await fetch("/api/auth/me").then(r => r.json()).catch(() => ({}));
-      if (me.user) {
-         setUserInfo({ email: me.user.email || "", name: me.user.user_metadata?.full_name || me.user.email || "" });
-         setAntiBotEnabled(me.user.user_metadata?.anti_bot_enabled !== false);
       }
     } catch (err: any) {
       setLoadError(err.message);
