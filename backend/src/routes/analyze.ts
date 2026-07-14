@@ -1094,7 +1094,7 @@ Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
         "Sunday": "11:00 AM IST",
       };
 
-      return `Generate exactly 1 highly realistic, publication-ready post (#${postNumber}/28) for ${platform} in the niche "${effectiveNiche}".
+      return `Generate exactly 1 highly realistic, publication-ready post (#${postNumber}/7) for ${platform} in the niche "${effectiveNiche}".
       
 CREATOR PROFILE: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
@@ -1110,19 +1110,10 @@ CRITICAL RULES:
 1. NO PLACEHOLDERS — every word must be real, usable content. No [brackets] allowed.
 2. STRICT UNIQUE ANGLE: You MUST use the exact Required Angle/Framework ("${angle}").
 3. BAN GENERIC ADVICE: Do NOT suggest extremely basic, outdated tools or advice that everyone knows. Provide DIRECT VALUABLE ANSWERS to specific problems. Do not waste the user's time.
-4. EXACT STRUCTURE REQUIRED: You must format your script EXACTLY like the "GOLD STANDARD EXAMPLE" below (numbered transitions). HOWEVER, DO NOT COPY THE TOPIC (AI SEO). You MUST generate a COMPLETELY UNIQUE topic based strictly on the user's niche (${effectiveNiche}) and the Required Angle (${angle}).
+4. DYNAMIC & ENGAGING STRUCTURE: Do NOT use a generic 'firstly, secondly, thirdly' (pehle, doosra, teesra) format every time. Vary the script structure based on the Required Angle. Use storytelling, rapid-fire facts, contrarian statements, or direct problem-solving. The script must feel natural, highly engaging, and not like a boring list.
 5. 20-SECOND SCRIPT LIMIT: The spoken script must take exactly 20 seconds to speak at a normal pace (around 50-60 words total). Keep it punchy, fast-paced, and zero fluff.
 6. SCROLL-STOPPING HOOK: The hook MUST evoke strong FOMO, extreme curiosity, or agitate a painful problem. No generic "Hello guys".
 7. The CTA must be very specific, offering a lead magnet or detailed guide in DMs to drive follows and engagement.
-
-GOLD STANDARD EXAMPLE OF SCRIPT PACING & FORMAT (${lang}):
-"AI SEO mei rank krna hai to ye 5 cheeze miss mat krna
-Sabse pehle apni robot.txt file AI KE ACCORDING bnao aur saare ai models ko allow kro crawling ke liye
-Doosra ek llms.txt file bnakar website ki root directory mei daalo
-Teersra agar website vibe code ya code se developed hai to automate kro sitemap generation ko backend mei ek automate script ke sath
-Chautha Koi bhi heading ya para mei direct answers do user ka faltu mei time waste nahi kro
-Paanchwa or last search queries ko solve kro keywords ko chase krna band kro
-Detailed guide or Agli video ke liye follow krke comment kro AI DM aajayega"
 
 Your output must be a single JSON object:
 {
@@ -1141,8 +1132,8 @@ Your output must be a single JSON object:
   "music_suggestion": "Specific trending audio name or type of background music for this post",
   "script": {
     "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — direct FOMO or extreme curiosity hook related to ${effectiveNiche}",
-    "scene2_problem": "Not needed if using direct numbered format, but can add 1 line of context if necessary",
-    "scene3_solution": "Exact spoken words in ${lang} delivering 3 to 5 specific actionable tips using numbered transitions (Sabse pehle, Doosra...) — concrete, hyper-specific to the angle '${angle}', NOT generic",
+    "scene2_problem": "Add 1 line of context or agitate the problem further (optional, keep it brief)",
+    "scene3_solution": "Exact spoken words in ${lang} delivering the core value/solution. Use a dynamic structure (story, rapid-fire, contrarian fact) — concrete, hyper-specific to the angle '${angle}', NOT generic",
     "scene4_cta": "Exact spoken words in ${lang} for the CTA — compelling lead magnet offer in DMs",
     "voiceover_notes": "Detailed instructions: tone (excited/serious/casual), speed (fast/medium), energy level, emotional shifts, pauses",
     "text_overlays": ["Bold text for hook scene", "Tip 1 text overlay", "Tip 2 text overlay", "CTA text overlay"],
@@ -1236,7 +1227,7 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
     const rawTargetER = ownData ? (ownData.engagementRate ?? 0) * 1.3 : 3.5;
     const targetER = Math.min(30, Math.max(3, rawTargetER)).toFixed(1);
     const metaPrompt = `Return ONLY valid JSON for ${effectiveNiche} ${platform} content strategy (replace placeholders with real values):
-{"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":30,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":25,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":15,"examples":["idea1"]},{"pillar":"ACTUAL pillar 5 - Community/BTS","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 28 posts in 3 days for ${effectiveNiche} creator - equipment, outfit changes, shooting order, location changes","postingSchedule":{"frequency":"7 posts/week (daily posting)","bestDays":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"bestTimes":{"Monday":"8:30 AM IST","Tuesday":"12:30 PM IST","Wednesday":"7:00 PM IST","Thursday":"9:00 AM IST","Friday":"6:30 PM IST","Saturday":"10:00 AM IST","Sunday":"11:00 AM IST"},"reason":"Why these specific times work for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"7/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}","savesTarget":"Target save rate per post","shareTarget":"Target shares per week"}}`;
+"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":30,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":25,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":15,"examples":["idea1"]},{"pillar":"ACTUAL pillar 5 - Community/BTS","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 7 posts in 1 day for ${effectiveNiche} creator - equipment, outfit changes, shooting order, location changes","postingSchedule":{"frequency":"7 posts/week (daily posting)","bestDays":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"bestTimes":{"Monday":"8:30 AM IST","Tuesday":"12:30 PM IST","Wednesday":"7:00 PM IST","Thursday":"9:00 AM IST","Friday":"6:30 PM IST","Saturday":"10:00 AM IST","Sunday":"11:00 AM IST"},"reason":"Why these specific times work for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"7/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}","savesTarget":"Target save rate per post","shareTarget":"Target shares per week"}}`;
     let metaData: any = { contentPillars: [], postingSchedule: { bestDays: ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], bestTimes: {"Monday":"8:30 AM IST"} }, kpis: { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } };
     try {
       const metaRes = await callLLM({ userId, endpoint: "pipeline_meta", prompt: metaPrompt, systemPrompt });

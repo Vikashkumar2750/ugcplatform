@@ -777,10 +777,22 @@ export default function ResultsPage() {
                           <div className="w-full h-1.5 bg-muted rounded-full">
                             <div className="h-full rounded-full bg-amber-400" style={{ width: `${pillar.percentage}%` }} />
                           </div>
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {(pillar.examples || []).map((ex: string) => (
-                              <span key={ex} className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">{ex}</span>
-                            ))}
+                          <div className="mt-2">
+                            <details className="group">
+                              <summary className="text-xs font-medium cursor-pointer text-amber-600 dark:text-amber-400 list-none flex items-center gap-1 hover:opacity-80 transition-opacity">
+                                <span className="group-open:hidden">▶</span>
+                                <span className="hidden group-open:inline">▼</span>
+                                View Engaging Content Ideas
+                              </summary>
+                              <div className="flex flex-col gap-2 mt-2 pl-3 border-l-2 border-border/60">
+                                {(pillar.examples || []).map((ex: string, eIdx: number) => (
+                                  <div key={eIdx} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                                    <span className="text-amber-500 mt-0.5">•</span>
+                                    <span>{ex}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </details>
                           </div>
                         </div>
                       ))}
@@ -1249,7 +1261,7 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
 
   const togglePosts = (key: string) => setExpandedPosts(prev => ({ ...prev, [key]: !prev[key] }));
 
-  // Download scraped posts as CSV
+  // Download analysed posts as CSV
   const downloadPostsCSV = (posts: any[], filename: string) => {
     if (!posts.length) return;
     const headers = ["Competitor", "Type", "Likes", "Comments", "Views", "Caption", "Hashtags", "URL"];
@@ -1289,7 +1301,7 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
     const hasAIData = competitors && !competitors.raw &&
       (competitors.detectedNiche || compArr.length > 0 || toArr(competitors.keyInsights).length > 0);
 
-    // Group scraped posts by competitor
+    // Group analysed posts by competitor
     const postsByCompetitor: Record<string, any[]> = {};
     for (const post of scrapedPosts) {
       const key = post.competitor || "unknown";
@@ -1316,7 +1328,7 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
         </div>
       )}
 
-      {/* Scraped stats — always shown even if AI JSON failed */}
+      {/* Analysed stats — always shown even if AI JSON failed */}
       {scrapedStats.length > 0 && (
         <div className="p-5 rounded-2xl border border-border bg-card">
           <p className="text-sm font-bold mb-3">Analysed Competitor Profiles</p>
@@ -1405,8 +1417,8 @@ function CompetitorsTab({ competitors: raw }: { competitors: any }) {
       {!hasAIData && (
         <div className="p-6 rounded-2xl border border-amber-400/20 bg-amber-400/5 text-center space-y-2">
           <p className="text-sm font-bold text-amber-500">AI Analysis Incomplete</p>
-          <p className="text-xs text-muted-foreground">
-            Data scraped successfully ({totalPostsScraped || 0} posts). Click &ldquo;Re-analyze Competitors&rdquo; above to generate the full analysis.
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Data analysed successfully ({totalPostsScraped || 0} posts). Click &ldquo;Re-analyze Competitors&rdquo; above to generate the full analysis.
           </p>
         </div>
       )}
