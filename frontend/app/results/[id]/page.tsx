@@ -364,7 +364,12 @@ export default function ResultsPage() {
               <>
                 {/* Key metrics */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-1 p-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 space-y-2">
+                  <div className="sm:col-span-1 p-5 rounded-2xl border border-amber-400/30 bg-amber-400/5 space-y-2 relative">
+                    {data.profileUrl && (
+                      <div className="absolute top-3 right-3 px-2 py-1 bg-amber-400/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold rounded">
+                        @{data.profileUrl.split("/").filter(Boolean).pop()}
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground">Engagement Rate</p>
                     {(() => {
                       const { display, capped } = formatER(audit.engagementRate);
@@ -441,7 +446,15 @@ export default function ResultsPage() {
                 </div>
 
                 {audit.profileMakeover && (
-                  <ProfileMakeover makeover={audit.profileMakeover} />
+                  <ProfileMakeover 
+                    makeover={audit.profileMakeover} 
+                    stats={{ 
+                      followers: audit.followerCount, 
+                      posts: audit.mediaCount || audit.postsAnalyzed, 
+                      following: audit.followingCount,
+                      username: data.profileUrl?.split("/").filter(Boolean).pop() 
+                    }} 
+                  />
                 )}
 
                 {/* Diagnosis & Advanced Insights */}

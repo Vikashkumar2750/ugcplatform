@@ -289,6 +289,8 @@ Return JSON:
   "engagementRate": "${realData?.engagementRate || 0}%",
   "benchmark": "Is this ER actually good for the current algorithm in the ${niche} niche? Be honest.",
   "followerCount": "${realData?.followers?.toLocaleString() || "Unknown"}",
+  "followingCount": "${realData?.following?.toLocaleString() || "Unknown"}",
+  "mediaCount": "${realData?.mediaCount?.toLocaleString() || "Unknown"}",
   "avgLikes": "${realData?.avgLikes || "Unknown"}",
   "avgComments": "${realData?.avgComments || "Unknown"}",
   "postsAnalyzed": ${realData?.posts?.length || 0},

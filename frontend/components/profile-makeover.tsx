@@ -13,14 +13,24 @@ export interface ProfileMakeoverProps {
       benefits?: string[];
     };
   };
+  stats?: {
+    followers?: string | number;
+    posts?: string | number;
+    following?: string | number;
+    username?: string;
+  };
 }
 
-export function ProfileMakeover({ makeover }: ProfileMakeoverProps) {
+export function ProfileMakeover({ makeover, stats }: ProfileMakeoverProps) {
   if (!makeover || (!makeover.before && !makeover.after)) {
     return null;
   }
 
   const { before, after } = makeover;
+  const username = stats?.username || "creator";
+  const followers = stats?.followers || "10K";
+  const posts = stats?.posts || "100";
+  const following = stats?.following || "50";
 
   return (
     <div className="flex flex-col space-y-8 py-8 border-t border-border mt-8">
@@ -49,15 +59,15 @@ export function ProfileMakeover({ makeover }: ProfileMakeoverProps) {
               </div>
               <div className="flex justify-between w-full">
                 <div className="text-center">
-                  <p className="font-bold text-lg">32</p>
+                  <p className="font-bold text-lg">{posts}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Posts</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold text-lg">342</p>
+                  <p className="font-bold text-lg">{followers}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Followers</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold text-lg">258</p>
+                  <p className="font-bold text-lg">{following}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Following</p>
                 </div>
               </div>
@@ -66,6 +76,7 @@ export function ProfileMakeover({ makeover }: ProfileMakeoverProps) {
             {/* Fake Profile Bio */}
             <div className="px-6 pb-6 space-y-2 relative">
               <div className="font-bold">{before?.name || "Karan"}</div>
+              <div className="text-xs text-muted-foreground mb-1">@{username}</div>
               <div className="text-sm whitespace-pre-wrap text-muted-foreground p-3 border border-red-400/30 border-dashed rounded-lg bg-red-400/5 relative">
                 {before?.bio || "Foodie 🍔 | Dreamer ✨ | Traveller ✈️\nLiving my best life ❤️\nBlessed 😇"}
                 <XCircle className="w-5 h-5 text-red-500 absolute top-4 right-4 bg-background rounded-full" />
@@ -107,15 +118,15 @@ export function ProfileMakeover({ makeover }: ProfileMakeoverProps) {
               </div>
               <div className="flex justify-between w-full">
                 <div className="text-center">
-                  <p className="font-bold text-lg">250</p>
+                  <p className="font-bold text-lg">{posts}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Posts</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold text-lg">12.4K</p>
+                  <p className="font-bold text-lg">{followers}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Followers</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold text-lg">210</p>
+                  <p className="font-bold text-lg">{following}</p>
                   <p className="text-[10px] text-muted-foreground uppercase">Following</p>
                 </div>
               </div>
@@ -124,6 +135,7 @@ export function ProfileMakeover({ makeover }: ProfileMakeoverProps) {
             {/* Fake Profile Bio */}
             <div className="px-6 pb-6 space-y-2 relative">
               <div className="font-bold text-green-600 dark:text-green-400">{after?.name || "Aditya | Instagram Growth Coach"}</div>
+              <div className="text-xs text-muted-foreground mb-1">@{username}</div>
               <div className="text-sm whitespace-pre-wrap p-3 border border-green-400/40 border-dashed rounded-lg bg-green-400/5 relative">
                 {after?.bio || "Helping Creators Grow On Instagram\n✅ Growth Tips\n🎯 Content Strategy\n🚀 Daily Creator Advice"}
                 <CheckCircle2 className="w-5 h-5 text-green-500 absolute top-4 right-4 bg-background rounded-full" />
