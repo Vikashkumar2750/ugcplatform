@@ -298,15 +298,38 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       const rule = followerRules[0];
       console.log(`[Webhook] Triggering dm_new_follower rule: ${rule.name}`);
       
+      let isFollowing = false;
+      if (rule.action_config?.require_follow && account?.access_token) {
+        try {
+          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.is_user_follow_business === true) {
+             isFollowing = true;
+             console.log(`[Webhook] User ${senderId} is already following! Bypassing follow prompt.`);
+          }
+        } catch (err: any) {
+          console.warn(`[Webhook] Follower check failed:`, err.message);
+        }
+      }
+
+      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
+
       let dmText = "";
-      if (rule.action_config?.require_follow) {
+      let dmLink = undefined;
+      let quickReplies = undefined;
+
+      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+        dmLink = rule.action_config?.link || undefined;
       }
 
       await enqueueViaBackend({
@@ -315,7 +338,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         recipientId: senderId,
         messagePayload: {
           text: dmText,
-          link: rule.action_config?.require_follow ? (account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined) : (rule.action_config?.link || undefined),
+          link: dmLink,
+          quick_replies: quickReplies,
         },
         messageType: "dm",
         automationRuleId: rule.id,
@@ -412,11 +436,33 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
 
     if (matched) {
       console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
+      let isFollowing = false;
+      if (rule.action_config?.require_follow && account?.access_token) {
+        try {
+          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.is_user_follow_business === true) {
+             isFollowing = true;
+             console.log(`[Webhook] User ${senderId} is already following! Bypassing follow prompt.`);
+          }
+        } catch (err: any) {
+          console.warn(`[Webhook] Follower check failed:`, err.message);
+        }
+      }
+
+      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
+
       let dmText = "";
-      if (rule.action_config?.require_follow) {
+      let dmLink = undefined;
+      let quickReplies = undefined;
+
+      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        dmText = parseSpintax(randomMsg || "Please follow me and click 'DONE' to get the link!");
+        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
         
         // Log to processed_comments so the "DONE" check can find this rule
         try {
@@ -434,6 +480,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏");
+        dmLink = rule.action_config?.link || undefined;
       }
 
       await enqueueViaBackend({
@@ -442,7 +489,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         recipientId: senderId,
         messagePayload: {
           text: dmText,
-          link: rule.action_config?.require_follow ? (account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined) : (rule.action_config?.link || undefined),
+          link: dmLink,
+          quick_replies: quickReplies,
         },
         messageType: "dm",
         automationRuleId: rule.id,
