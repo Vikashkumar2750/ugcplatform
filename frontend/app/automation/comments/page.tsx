@@ -189,7 +189,8 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   onClose: () => void; onSaved: () => void; platform: string; accounts: ConnectedAccount[];
 }) {
   const [name, setName] = useState("");
-  const [selectedAccountId, setSelectedAccountId] = useState<string>("ALL");
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>(accounts.map(a => a.id));
+  const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [matchType, setMatchType] = useState<"any" | "all">("any");
@@ -247,11 +248,10 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
     setSaving(true); setError("");
     try {
       // If ALL selected, create a single rule with account_id = null
-      const accountIds = selectedAccountId === "ALL" 
-        ? [null] 
-        : [selectedAccountId];
+      const isAll = selectedAccountIds.length === accounts.length;
+      const accountIdsToSave = isAll ? [null] : selectedAccountIds;
 
-      for (const accId of accountIds) {
+      for (const accId of accountIdsToSave) {
         const res = await fetch("/api/automation/rules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -325,17 +325,66 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
               <>
                 {/* Account selector */}
                 {accounts.length > 0 && (
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to account</label>
-                    <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30">
-                      <option value="ALL">🌐 Cross-Platform (ALL {accounts.length} Accounts)</option>
-                      {accounts.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.platform === "facebook" ? "Facebook" : "Instagram"}: @{a.platform_username || a.platform_display_name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="space-y-1.5 relative">
+                    <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to accounts</label>
+                    <button
+                      onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                    >
+                      <span className="truncate">
+                        {selectedAccountIds.length === accounts.length
+                          ? `🌐 Cross-Platform (ALL ${accounts.length} Accounts)`
+                          : `${selectedAccountIds.length} account(s) selected`}
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    </button>
+                    {accountDropdownOpen && (
+                      <div className="absolute top-[100%] left-0 w-full mt-2 bg-card border border-border rounded-xl shadow-xl z-50 p-2 space-y-1 max-h-[250px] overflow-y-auto">
+                        <button
+                          onClick={() => {
+                            if (selectedAccountIds.length === accounts.length) {
+                              setSelectedAccountIds([]);
+                            } else {
+                              setSelectedAccountIds(accounts.map(a => a.id));
+                            }
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm font-medium hover:bg-muted/50 rounded-lg flex items-center gap-2"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedAccountIds.length === accounts.length}
+                            readOnly
+                            className="w-4 h-4 rounded text-amber-500 border-border focus:ring-amber-500"
+                          />
+                          Select All
+                        </button>
+                        <div className="w-full h-px bg-border my-1" />
+                        {accounts.map(a => (
+                          <button
+                            key={a.id}
+                            onClick={() => {
+                              if (selectedAccountIds.includes(a.id)) {
+                                setSelectedAccountIds(selectedAccountIds.filter(id => id !== a.id));
+                              } else {
+                                setSelectedAccountIds([...selectedAccountIds, a.id]);
+                              }
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 rounded-lg flex items-center gap-2"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedAccountIds.includes(a.id)}
+                              readOnly
+                              className="w-4 h-4 rounded text-amber-500 border-border focus:ring-amber-500"
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-medium truncate">@{a.platform_username || a.platform_display_name}</span>
+                              <span className="text-[10px] text-muted-foreground capitalize">{a.platform}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1000,7 +1049,7 @@ export default function CommentsAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={allAccounts} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={allAccounts.filter(a => a.platform === "facebook" || a.platform === "instagram")} />}
     </div>
   );
 }
