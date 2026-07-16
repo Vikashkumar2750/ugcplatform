@@ -211,10 +211,10 @@ async function processChangeEvent(
 // ─────────────────────────────────────────────────────────────
 async function processMessagingEvent(supabase: any, messaging: any, pageId: string) {
   // Skip delivery receipts, reads etc.
-  if (!messaging.message && !messaging.follow) return;
+  if (!messaging.message && !messaging.follow && !messaging.postback) return;
 
   const senderId: string = messaging.sender?.id;
-  const messageText: string = messaging.message?.text?.toLowerCase() || "";
+  const messageText: string = (messaging.message?.text || messaging.postback?.payload || messaging.postback?.title || "").toLowerCase();
 
   console.log(`[Webhook] DM from ${senderId} to page ${pageId}: "${messageText.substring(0, 80)}"`);
 
@@ -368,20 +368,30 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   }
 
   // ── 1.5. Follow requirement check ("DONE") ──────────────────────
-  if (messageText.includes("done")) {
-    const { data: recentLog } = await supabase
-      .from("processed_comments")
-      .select("rule_id, id")
-      .eq("commentor_id", senderId)
-      .order("processed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+  if (messageText.startsWith("done:") || messageText === "done") {
+    let ruleId = undefined;
+    
+    // If they tapped the postback button, we have the rule ID directly!
+    if (messageText.startsWith("done:")) {
+      ruleId = messageText.split("done:")[1]?.trim();
+    } else {
+      // Fallback: they manually typed "done". We try to find their recent comment.
+      // Note: commentor_id (global IG ID) often won't match senderId (ig_sid).
+      const { data: recentLog } = await supabase
+        .from("processed_comments")
+        .select("rule_id, id")
+        .eq("commentor_id", senderId)
+        .order("processed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      ruleId = recentLog?.rule_id;
+    }
 
-    if (recentLog) {
+    if (ruleId) {
       const { data: rule } = await supabase
         .from("automation_rules")
         .select("*")
-        .eq("id", recentLog.rule_id)
+        .eq("id", ruleId)
         .single();
 
       if (rule && rule.action_config?.require_follow) {
@@ -770,11 +780,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        dmText = parseSpintax(randomMsg || "Please follow me and tap 'DONE ✅' to get the link!");
         if (pageAccount?.platform_username) {
           dmText += `\n\ninstagram.com/${pageAccount?.platform_username}`;
         }
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
         dmLink = undefined;
       } else {
         const msgs = rule.action_config?.messages || [];
@@ -783,7 +793,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         
         if (rule.action_config?.link) {
           dmText = `${baseText}\n\nTap below to get the link! 👇`;
-          quickReplies = [{ content_type: "text", title: (rule.action_config?.button_label || "Get Link").substring(0, 20), payload: "DONE" }];
+          quickReplies = [{ content_type: "text", title: (rule.action_config?.button_label || "Get Link").substring(0, 20), payload: `DONE:${rule.id}` }];
           dmLink = undefined;
         } else {
           dmText = baseText;
