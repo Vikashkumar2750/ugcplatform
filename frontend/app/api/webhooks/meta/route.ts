@@ -602,7 +602,13 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   for (const rule of rules) {
     // Media filter — skip if rule is for a specific post and this isn't it
     const ruleMediaId = rule.trigger_config?.media_id;
-    if (ruleMediaId && ruleMediaId !== mediaId) continue;
+    const ruleMediaIds: any[] = rule.trigger_config?.media_ids || [];
+    
+    if (ruleMediaIds.length > 0) {
+      if (!ruleMediaIds.some(m => m.mediaId === mediaId)) continue;
+    } else if (ruleMediaId) {
+      if (ruleMediaId !== mediaId) continue;
+    }
 
     // Keyword match — use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];

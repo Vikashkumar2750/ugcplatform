@@ -31,71 +31,130 @@ interface CommentRule {
 }
 
 // ─── Post Picker Modal ─────────────────────────────────────────────────
-function PostPickerModal({ onSelect, onClose }: {
-  onSelect: (post: MediaPost) => void;
+function PostPickerModal({ onSelect, onClose, accounts }: {
+  onSelect: (posts: any[]) => void;
   onClose: () => void;
+  accounts: ConnectedAccount[];
 }) {
   const [media, setMedia] = useState<MediaPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeAccountId, setActiveAccountId] = useState<string>(accounts[0]?.id || "");
+  const [selectedPosts, setSelectedPosts] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("/api/automation/media")
+    if (!activeAccountId) return;
+    setLoading(true);
+    fetch(`/api/automation/media?accountId=${activeAccountId}`)
       .then(r => r.json())
       .then(d => {
         if (d.error && !d.media?.length) setError(d.error);
+        else setError("");
         setMedia(d.media || []);
       })
       .catch(() => setError("Failed to load posts"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeAccountId]);
+
+  const toggleSelect = (post: MediaPost) => {
+    const exists = selectedPosts.find(p => p.mediaId === post.id);
+    if (exists) {
+      setSelectedPosts(selectedPosts.filter(p => p.mediaId !== post.id));
+    } else {
+      setSelectedPosts([...selectedPosts, {
+        accountId: activeAccountId,
+        mediaId: post.id,
+        thumb: post.thumbnail,
+        caption: post.caption
+      }]);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
-            <h3 className="font-bold text-base">Select a Post</h3>
-            <p className="text-xs text-muted-foreground">Rule will only trigger on comments from this post</p>
+            <h3 className="font-bold text-base">Select Posts</h3>
+            <p className="text-xs text-muted-foreground">Pick specific posts across your accounts</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
+        
+        {/* Account Selector */}
+        <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-4">
+          <select 
+            value={activeAccountId} 
+            onChange={e => setActiveAccountId(e.target.value)}
+            className="flex-1 bg-muted border border-border rounded-xl px-3 py-2 text-sm focus:outline-none"
+          >
+            {accounts.map(acc => (
+              <option key={acc.id} value={acc.id}>
+                {acc.platform === "facebook" ? "Facebook Page" : "Instagram Account"}: {acc.platform_username || acc.platform_display_name}
+              </option>
+            ))}
+          </select>
+          <div className="text-xs font-medium bg-amber-500/10 text-amber-500 px-3 py-1.5 rounded-full border border-amber-500/20">
+            {selectedPosts.length} post{selectedPosts.length !== 1 && 's'} selected
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" /> Loading your posts...
+              <Loader2 className="w-5 h-5 animate-spin" /> Fetching posts...
             </div>
           ) : error ? (
             <div className="text-center py-12 space-y-2">
               <AlertCircle className="w-8 h-8 mx-auto text-amber-500" />
               <p className="text-sm text-muted-foreground">{error}</p>
-              <p className="text-xs text-muted-foreground">Connect Instagram first from the Connect page</p>
             </div>
           ) : media.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">No posts found on your account</div>
+            <div className="text-center py-12 text-muted-foreground text-sm">No posts found on this account</div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {media.map(post => (
-                <button key={post.id} onClick={() => { onSelect(post); onClose(); }}
-                  className="relative aspect-square rounded-xl overflow-hidden border-2 border-transparent hover:border-amber-400 transition group">
-                  {post.url ? (
-                    <img src={post.url} alt={post.caption} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-muted flex items-center justify-center">
-                      <ImageIcon className="w-6 h-6 text-muted-foreground" />
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+              {media.map(post => {
+                const isSelected = selectedPosts.some(p => p.mediaId === post.id);
+                return (
+                  <button key={post.id} onClick={() => toggleSelect(post)}
+                    className={`relative aspect-square rounded-xl overflow-hidden border-4 transition group ${isSelected ? 'border-amber-500 scale-95' : 'border-transparent hover:border-amber-400/50'}`}>
+                    {post.url ? (
+                      <img src={post.url} alt={post.caption} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-muted flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
+                    
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center backdrop-blur-[1px]">
+                        <CheckCircle2 className="w-8 h-8 text-amber-500 bg-black/40 rounded-full" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-end">
+                      <p className="text-[10px] text-white p-1.5 line-clamp-2 opacity-0 group-hover:opacity-100 transition">{post.caption || "No caption"}</p>
                     </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-end">
-                    <p className="text-[10px] text-white p-1.5 line-clamp-2 opacity-0 group-hover:opacity-100 transition">{post.caption || "No caption"}</p>
-                  </div>
-                  {post.type === "VIDEO" && (
-                    <div className="absolute top-1 right-1 bg-black/60 rounded px-1 py-0.5 text-[9px] text-white">Reel</div>
-                  )}
-                </button>
-              ))}
+                    {post.type === "VIDEO" && (
+                      <div className="absolute top-1 right-1 bg-black/60 rounded px-1 py-0.5 text-[9px] text-white">Reel</div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
+        </div>
+        
+        <div className="p-4 border-t border-border flex justify-end gap-3 bg-card rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium hover:text-muted-foreground transition">Cancel</button>
+          <button 
+            onClick={() => { onSelect(selectedPosts); onClose(); }} 
+            disabled={selectedPosts.length === 0}
+            className="btn-amber px-6 py-2 rounded-xl text-sm font-bold disabled:opacity-50"
+          >
+            Confirm Selection
+          </button>
         </div>
       </div>
     </div>
@@ -155,7 +214,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
 
   // Scope
   const [scope, setScope] = useState<"global" | "specific">("global");
-  const [selectedPost, setSelectedPost] = useState<MediaPost | null>(null);
+  const [selectedPosts, setSelectedPosts] = useState<any[]>([]);
   const [showPostPicker, setShowPostPicker] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -176,7 +235,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
     if (enableReply && !replyTexts.some(t => t.trim())) { setError("At least one reply text is required"); return; }
     if (enableDM && !dmMessages.some(t => t.trim())) { setError("At least one DM message is required"); return; }
     if (enableDM && requireFollow && !followPromptMessages.some(t => t.trim())) { setError("Follow prompt message is required"); return; }
-    if (scope === "specific" && !selectedPost) { setError("Please select a post"); return; }
+    if (scope === "specific" && selectedPosts.length === 0) { setError("Please select at least one post"); return; }
 
     // Auto-add any pending keyword before saving
     let finalKeywords = [...keywords];
@@ -214,9 +273,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             followUpMessages: (enableDM && followUpEnabled) ? followUpMessages.filter(t => t.trim()) : [],
             hide: enableHide,
             actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
-            mediaId: scope === "specific" ? selectedPost?.id : null,
-            mediaThumb: scope === "specific" ? selectedPost?.thumbnail : null,
-            mediaCaption: scope === "specific" ? selectedPost?.caption : null,
+            mediaIds: scope === "specific" ? selectedPosts : null,
           }),
         });
         const data = await res.json();
@@ -235,7 +292,8 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
     <>
       {showPostPicker && (
         <PostPickerModal
-          onSelect={post => setSelectedPost(post)}
+          accounts={accounts}
+          onSelect={posts => setSelectedPosts(posts)}
           onClose={() => setShowPostPicker(false)}
         />
       )}
@@ -271,9 +329,11 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                     <label className="text-sm font-medium flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Apply to account</label>
                     <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none focus:ring-2 focus:ring-amber-400/30">
-                      <option value="ALL">🌐 ALL {platform} accounts ({accounts.length})</option>
+                      <option value="ALL">🌐 Cross-Platform (ALL {accounts.length} Accounts)</option>
                       {accounts.map(a => (
-                        <option key={a.id} value={a.id}>@{a.platform_username || a.platform_display_name}</option>
+                        <option key={a.id} value={a.id}>
+                          {a.platform === "facebook" ? "Facebook" : "Instagram"}: @{a.platform_username || a.platform_display_name}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -310,19 +370,30 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                   </div>
                   {scope === "specific" && (
                     <div className="mt-2">
-                      {selectedPost ? (
-                        <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-400/40 bg-amber-400/5">
-                          <img src={selectedPost.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{selectedPost.caption || "No caption"}</p>
-                            <p className="text-[10px] text-amber-500 mt-0.5">{selectedPost.type}</p>
+                    <div className="mt-2">
+                      {selectedPosts.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-amber-500">{selectedPosts.length} post{selectedPosts.length !== 1 && 's'} selected</span>
+                            <button onClick={() => setShowPostPicker(true)} className="text-xs text-muted-foreground hover:text-foreground font-medium underline">Edit Selection</button>
                           </div>
-                          <button onClick={() => setShowPostPicker(true)} className="text-xs text-amber-500 hover:text-amber-400 font-medium">Change</button>
+                          <div className="flex gap-2 overflow-x-auto pb-2">
+                            {selectedPosts.map((post, i) => (
+                              <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border border-border group">
+                                <img src={post.thumb || post.url} alt="" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                  <button onClick={() => setSelectedPosts(selectedPosts.filter((_, idx) => idx !== i))} className="text-white hover:text-red-400">
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <button onClick={() => setShowPostPicker(true)}
                           className="w-full py-3 rounded-xl border-2 border-dashed border-border hover:border-amber-400/40 text-sm text-muted-foreground hover:text-foreground transition flex items-center justify-center gap-2">
-                          <ImageIcon className="w-4 h-4" /> Pick a post or reel
+                          <ImageIcon className="w-4 h-4" /> Pick posts or reels across accounts
                         </button>
                       )}
                     </div>
@@ -821,16 +892,24 @@ export default function CommentsAutomationPage() {
   const [showModal, setShowModal] = useState(false);
 
   const { data: accountsData } = useSWR("/api/connect/accounts", fetcher);
-  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=comments&platform=${platform}`, fetcher);
+  // Fetch ALL rules (we will display rules that match the current platform, OR cross-platform rules)
+  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=comments`, fetcher);
 
   const loading = !accountsData || !rulesData;
-  const accounts = (accountsData?.accounts || []).filter((a: any) => a.platform === platform);
-  const rules = rulesData?.rules || [];
+  const allAccounts = accountsData?.accounts || [];
+  
+  // Rules are filtered on client side to show rules that either match the platform OR are cross-platform (account_id = null or multiple)
+  // Actually, wait, if it's cross platform, the backend `platform` might be saved as "facebook,instagram" or something.
+  // For now, let's just let the backend return all rules and we filter them here if we want to organize by tabs.
+  const rules = (rulesData?.rules || []).filter((r: any) => 
+    r.platform === platform || r.platform === "cross_platform" || r.platform === "all"
+  );
 
+  // But we pass ALL accounts to NewRuleModal so they can pick cross-platform specific posts
   const handleToggle = async (rule: CommentRule) => {
     mutateRules({
       ...rulesData,
-      rules: rules.map((r: CommentRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
+      rules: rulesData.rules.map((r: CommentRule) => r.id === rule.id ? { ...r, is_active: !r.is_active } : r)
     }, false);
     
     await fetch("/api/automation/rules", {
@@ -860,7 +939,7 @@ export default function CommentsAutomationPage() {
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             One rule, multiple actions — auto-reply, DM, and hide in a single automation
-            {accounts.length > 0 && <span className="ml-1 text-amber-500 font-medium">({accounts.length} account{accounts.length > 1 ? "s" : ""})</span>}
+            {allAccounts.length > 0 && <span className="ml-1 text-amber-500 font-medium">({allAccounts.length} account{allAccounts.length > 1 ? "s" : ""})</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -922,7 +1001,7 @@ export default function CommentsAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={accounts} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={allAccounts} />}
     </div>
   );
 }
