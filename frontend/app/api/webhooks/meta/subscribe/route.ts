@@ -18,12 +18,21 @@ function getServiceClient() {
 }
 
 export async function GET(request: NextRequest) {
+  const { createClient: createServerClient } = await import("@/lib/supabase/server");
+  const supabaseAuth = await createServerClient();
+  const { data: { user } } = await supabaseAuth.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = getServiceClient();
 
-  // Get all active connected accounts that have a page_id
+  // Get all active connected accounts for the current user that have a page_id
   const { data: accounts, error } = await supabase
     .from("connected_accounts")
     .select("id, platform_username, page_id, page_name, platform, access_token, platform_user_id")
+    .eq("user_id", user.id)
     .eq("is_active", true)
     .not("page_id", "is", null);
 
@@ -64,12 +73,21 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const { createClient: createServerClient } = await import("@/lib/supabase/server");
+  const supabaseAuth = await createServerClient();
+  const { data: { user } } = await supabaseAuth.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = getServiceClient();
 
-  // Get all active connected accounts that have a page_id
+  // Get all active connected accounts for the current user that have a page_id
   const { data: accounts, error } = await supabase
     .from("connected_accounts")
     .select("id, user_id, platform_username, page_id, page_name, access_token, platform_user_id")
+    .eq("user_id", user.id)
     .eq("is_active", true)
     .not("page_id", "is", null);
 

@@ -570,16 +570,24 @@ function WebhookStatusBanner() {
           setDetail("No connected account with page found");
           return;
         }
-        const result = data.results[0];
-        if (result.error) {
+        
+        const subscribedCount = data.results.filter((r: any) => r.subscriptions?.length > 0).length;
+        const errorResult = data.results.find((r: any) => r.error);
+        const total = data.results.length;
+
+        if (errorResult && subscribedCount === 0) {
           setStatus("error");
-          setDetail(result.error);
-        } else if (result.subscriptions?.length > 0) {
+          setDetail(errorResult.error);
+        } else if (subscribedCount > 0) {
           setStatus("ok");
-          setDetail(`Page "${result.page_name}" subscribed`);
+          if (total === 1) {
+            setDetail(`Page "${data.results[0].page_name}" subscribed`);
+          } else {
+            setDetail(`${subscribedCount} connected accounts subscribed`);
+          }
         } else {
           setStatus("not_subscribed");
-          setDetail(`Page "${result.page_name}" NOT subscribed — webhooks won't fire`);
+          setDetail(`Pages NOT subscribed — webhooks won't fire`);
         }
       })
       .catch(() => { setStatus("error"); setDetail("Failed to check"); });
@@ -590,13 +598,15 @@ function WebhookStatusBanner() {
     try {
       const res = await fetch("/api/webhooks/meta/subscribe", { method: "POST" });
       const data = await res.json();
-      const result = data.results?.[0];
-      if (result?.success) {
+      
+      const successCount = data.results?.filter((r: any) => r.success).length || 0;
+      
+      if (successCount > 0) {
         setStatus("ok");
-        setDetail(`✅ Page subscribed successfully!`);
+        setDetail(`✅ Subscribed successfully!`);
       } else {
         setStatus("error");
-        setDetail(result?.error || "Subscription failed");
+        setDetail(data.results?.[0]?.error || "Subscription failed");
       }
     } catch {
       setStatus("error");

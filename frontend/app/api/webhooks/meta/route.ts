@@ -417,6 +417,19 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        
+        // Log to processed_comments so the "DONE" check can find this rule
+        try {
+          await supabase.from("processed_comments").insert({
+            comment_id: "dm_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9),
+            rule_id: rule.id,
+            commentor_id: senderId,
+            media_id: "dm_automation",
+            processed_at: new Date().toISOString(),
+          });
+        } catch (e: any) {
+          console.warn(`[Webhook] Failed to insert processed_comments for DM requirement: ${e.message}`);
+        }
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
