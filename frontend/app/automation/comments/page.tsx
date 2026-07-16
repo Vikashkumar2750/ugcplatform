@@ -370,7 +370,6 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                   </div>
                   {scope === "specific" && (
                     <div className="mt-2">
-                    <div className="mt-2">
                       {selectedPosts.length > 0 ? (
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center justify-between">
