@@ -762,6 +762,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     if (shouldDM && commentorId && commentId) {
       let dmText = "";
       let dmLink = undefined;
+      let quickReplies = undefined;
 
       // If require_follow is true BUT they are already following, act like it's a standard rule
       const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
@@ -777,8 +778,15 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
-        dmLink = rule.action_config?.link || undefined;
+        const baseText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+        
+        if (rule.action_config?.link) {
+          dmText = `${baseText}\n\nTap below to get the link! 👇`;
+          quickReplies = [{ content_type: "text", title: (rule.action_config?.button_label || "Get Link").substring(0, 20), payload: "DONE" }];
+          dmLink = undefined;
+        } else {
+          dmText = baseText;
+        }
       }
       
       // Add a random 3-8 second delay — DM comes AFTER the public reply
@@ -790,7 +798,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentId,          // comment_id — NOT the user's IG ID
-        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
+        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label, quick_replies: quickReplies },
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(dmDelayMs),
@@ -803,7 +811,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           const privateReplyBody: any = {
             recipient: { comment_id: commentId },
             message: {
-              text: dmLink ? `${dmText}\n\n${dmLink}` : dmText
+              text: dmText,
+              quick_replies: quickReplies
             },
           };
 

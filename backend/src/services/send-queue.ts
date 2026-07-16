@@ -371,6 +371,15 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }
 
+    // Quick replies for Private Reply
+    if (payload.quick_replies?.length) {
+      (privateReplyBody.message as Record<string, unknown>).quick_replies = payload.quick_replies.map(qr => ({
+        content_type: "text",
+        title: qr.title.substring(0, 20),
+        payload: qr.payload,
+      }));
+    }
+
     // Private Reply uses the Page ID as the sender endpoint (NOT the IG User ID)
     // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies
     // Endpoint: POST /{page-id}/messages with recipient: { comment_id }
