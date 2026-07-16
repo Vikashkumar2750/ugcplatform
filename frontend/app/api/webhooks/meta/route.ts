@@ -774,6 +774,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         if (pageAccount?.platform_username) {
           dmText += `\n\ninstagram.com/${pageAccount?.platform_username}`;
         }
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
         dmLink = undefined;
       } else {
         const msgs = rule.action_config?.messages || [];
