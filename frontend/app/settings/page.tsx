@@ -154,11 +154,11 @@ export default function SettingsPage() {
         if (d.defaultPlatform)  setDefaultPlatform(d.defaultPlatform);
       }
 
-      // User info
-      const me = await fetch("/api/auth/me").then(r => r.json()).catch(() => ({}));
-      if (me.user) {
-         setUserInfo({ email: me.user.email || "", name: me.user.user_metadata?.full_name || me.user.email || "" });
-         setAntiBotEnabled(me.user.user_metadata?.anti_bot_enabled !== false);
+      // User info - use client-side supabase to get the freshest data
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+         setUserInfo({ email: user.email || "", name: user.user_metadata?.full_name || user.email || "" });
+         setAntiBotEnabled(user.user_metadata?.anti_bot_enabled !== false);
       }
 
       // Get saved provider list from backend
@@ -240,6 +240,10 @@ export default function SettingsPage() {
       if (error) {
         throw new Error(error.message || "Failed to update preferences");
       }
+      
+      // Force session refresh to sync cookies if needed
+      await supabase.auth.refreshSession();
+      
       setPrefSaved(true);
       setTimeout(() => setPrefSaved(false), 2500);
     } catch(e: any) {
