@@ -371,13 +371,32 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }
 
-    // Quick replies for Private Reply
+    // Quick replies for Private Reply -> Convert to Generic Template Postback Buttons for Stylish Look!
     if (payload.quick_replies?.length) {
-      (privateReplyBody.message as Record<string, unknown>).quick_replies = payload.quick_replies.map(qr => ({
-        content_type: "text",
-        title: qr.title.substring(0, 20),
-        payload: qr.payload,
-      }));
+      let title = payload.text;
+      let subtitle = "";
+      if (title.length > 80) {
+        title = payload.text.substring(0, 80);
+        subtitle = payload.text.substring(80, 160);
+      }
+      
+      (privateReplyBody.message as Record<string, unknown>).attachment = {
+        type: "template",
+        payload: {
+          template_type: "generic",
+          elements: [{
+            title,
+            ...(subtitle ? { subtitle } : {}),
+            buttons: payload.quick_replies.slice(0, 3).map(qr => ({
+              type: "postback",
+              title: qr.title.substring(0, 20),
+              payload: qr.payload,
+            })),
+          }],
+        },
+      };
+      // Remove text because generic template handles the text in the title
+      delete (privateReplyBody.message as Record<string, unknown>).text;
     }
 
     // Private Reply uses the Page ID as the sender endpoint (NOT the IG User ID)
@@ -411,13 +430,20 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
 
   // Build message body
   if (payload.link) {
+    let title = payload.text;
+    let subtitle = "";
+    if (title.length > 80) {
+      title = payload.text.substring(0, 80);
+      subtitle = payload.text.substring(80, 160);
+    }
     // Template with button (for Instagram, use generic template)
     (dmBody.message as Record<string, unknown>).attachment = {
       type: "template",
       payload: {
         template_type: "generic",
         elements: [{
-          title: payload.text.substring(0, 80),
+          title,
+          ...(subtitle ? { subtitle } : {}),
           default_action: { type: "web_url", url: payload.link },
           buttons: [{ type: "web_url", url: payload.link, title: payload.button_label || "Open Link →" }],
         }],
