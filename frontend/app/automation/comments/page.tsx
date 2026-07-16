@@ -664,9 +664,6 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
     hide: rule.type === "hide_comment" || !!rule.action_config?.hide,
   };
   
-  setDmMessages(rule.action_config?.messages?.length ? rule.action_config.messages : (rule.action_config?.message ? [rule.action_config.message] : [""]));
-  setDmLink(rule.action_config?.link || "");
-  setDmLinkLabel(rule.action_config?.button_label || "");
 
   // Legacy type label
   const legacyLabel = rule.type === "comment_to_dm" ? "Comment → DM"
