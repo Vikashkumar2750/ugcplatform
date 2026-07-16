@@ -334,7 +334,10 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
-        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
+        if (account.platform_username) {
+          dmText += `\n\n@${account.platform_username}`;
+        }
+        dmLink = undefined;
         quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
       } else {
         const msgs = rule.action_config?.messages || [];
@@ -766,7 +769,10 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
-        dmLink = pageAccount?.platform_username ? `https://instagram.com/${pageAccount.platform_username}` : undefined;
+        if (pageAccount?.platform_username) {
+          dmText += `\n\n@${pageAccount.platform_username}`;
+        }
+        dmLink = undefined;
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
