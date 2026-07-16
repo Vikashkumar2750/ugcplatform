@@ -236,7 +236,6 @@ export default function SettingsPage() {
   const savePrefs = async () => {
     localStorage.setItem("ce_prefs", JSON.stringify({ llmPriority, scraperPriority, llmEnabled, scraperEnabled, language, defaultPlatform }));
     try {
-      const supabase = createClient();
       const { error } = await supabase.auth.updateUser({
         data: { anti_bot_enabled: antiBotEnabled }
       });
