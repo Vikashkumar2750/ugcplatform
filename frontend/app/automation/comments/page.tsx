@@ -144,6 +144,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   const [replyTexts, setReplyTexts] = useState<string[]>([""]);
   const [dmMessages, setDmMessages] = useState<string[]>([""]);
   const [dmLink, setDmLink] = useState("");
+  const [dmLinkLabel, setDmLinkLabel] = useState("");
 
   // Advanced Flow
   const [requireFollow, setRequireFollow] = useState(false);
@@ -205,6 +206,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             replyTexts: enableReply ? replyTexts.filter(t => t.trim()) : [],
             dmMessages: enableDM ? dmMessages.filter(t => t.trim()) : [],
             dmLink: enableDM ? dmLink : "",
+            dmLinkLabel: enableDM ? dmLinkLabel : "",
             requireFollow: enableDM ? requireFollow : false,
             followPromptMessages: (enableDM && requireFollow) ? followPromptMessages.filter(t => t.trim()) : [],
             followUpEnabled: enableDM ? followUpEnabled : false,
@@ -469,8 +471,12 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                       <label className="text-xs font-medium flex items-center gap-1.5">
                         <LinkIcon className="w-3 h-3" /> Link (optional)
                       </label>
-                      <input value={dmLink} onChange={e => setDmLink(e.target.value)} placeholder="https://your-link.com"
-                        className="w-full px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
+                      <div className="flex gap-2">
+                        <input value={dmLinkLabel} onChange={e => setDmLinkLabel(e.target.value)} placeholder="Button Text (e.g. Open Link)"
+                          className="w-1/3 px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
+                        <input value={dmLink} onChange={e => setDmLink(e.target.value)} placeholder="https://your-link.com"
+                          className="w-2/3 px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
+                      </div>
                     </div>
                     
                     <div className="pt-2 border-t border-violet-500/10" />
@@ -657,6 +663,10 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
     dm: !!rule.action_config?.message,
     hide: rule.type === "hide_comment" || !!rule.action_config?.hide,
   };
+  
+  setDmMessages(rule.action_config?.messages?.length ? rule.action_config.messages : (rule.action_config?.message ? [rule.action_config.message] : [""]));
+  setDmLink(rule.action_config?.link || "");
+  setDmLinkLabel(rule.action_config?.button_label || "");
 
   // Legacy type label
   const legacyLabel = rule.type === "comment_to_dm" ? "Comment → DM"

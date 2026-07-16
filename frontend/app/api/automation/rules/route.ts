@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, platform = "instagram", keywords, replyText, replyTexts, dmMessage, dmMessages, dmLink, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide, account_id, requireFollow, followPromptMessages, followUpEnabled, followUpDelay, followUpMessages } = body;
+  const { name, type, platform = "instagram", keywords, replyText, replyTexts, dmMessage, dmMessages, dmLink, dmLinkLabel, delay, matchType, mediaId, mediaThumb, mediaCaption, actionsEnabled, hide, account_id, requireFollow, followPromptMessages, followUpEnabled, followUpDelay, followUpMessages } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
     reply_text: replyText || "",
     reply_texts: replyTexts || (replyText ? [replyText] : []),
     link: dmLink || "",
+    button_label: dmLinkLabel || "",
     delay_seconds: delay || 0,
     hide: hide || false,
     actions_enabled: actionsEnabled || null,

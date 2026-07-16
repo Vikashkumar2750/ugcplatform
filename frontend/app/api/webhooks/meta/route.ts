@@ -353,6 +353,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         messagePayload: {
           text: dmText,
           link: dmLink,
+          button_label: rule.action_config?.button_label,
           quick_replies: quickReplies,
         },
         messageType: "dm",
@@ -789,7 +790,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentId,          // comment_id — NOT the user's IG ID
-        messagePayload: { text: dmText, link: dmLink },
+        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(dmDelayMs),
@@ -867,7 +868,7 @@ async function enqueueViaBackend(opts: {
   accountId: string;
   userId: string;
   recipientId: string;
-  messagePayload: { text: string; link?: string };
+  messagePayload: { text: string; link?: string; button_label?: string };
   messageType: string;
   automationRuleId?: string;
   scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)

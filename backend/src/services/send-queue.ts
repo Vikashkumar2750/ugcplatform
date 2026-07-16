@@ -33,6 +33,7 @@ export interface EnqueueInput {
 export interface MessagePayload {
   text: string;
   link?: string;
+  button_label?: string;
   attachment?: {
     type: string;
     payload: Record<string, unknown>;
@@ -409,7 +410,7 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
         elements: [{
           title: payload.text.substring(0, 80),
           default_action: { type: "web_url", url: payload.link },
-          buttons: [{ type: "web_url", url: payload.link, title: "Open Link →" }],
+          buttons: [{ type: "web_url", url: payload.link, title: payload.button_label || "Open Link →" }],
         }],
       },
     };
