@@ -163,7 +163,8 @@ export async function POST(request: NextRequest) {
       }
 
       // ── Messaging events (DMs) ──────────────────────────────
-      for (const msg of (entry.messaging || [])) {
+      const allMessages = [...(entry.messaging || []), ...(entry.standby || [])];
+      for (const msg of allMessages) {
         await processMessagingEvent(supabase, msg, pageId);
       }
     }
