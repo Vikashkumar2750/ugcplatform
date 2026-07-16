@@ -6,14 +6,11 @@ import {
   Shield, Globe, User, ChevronDown, ChevronUp,
   AlertCircle, Zap, RefreshCw, Lock
 } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "https://content-engineer-api.onrender.com";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 async function getAuthToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
