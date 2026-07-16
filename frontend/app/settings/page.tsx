@@ -236,15 +236,19 @@ export default function SettingsPage() {
   const savePrefs = async () => {
     localStorage.setItem("ce_prefs", JSON.stringify({ llmPriority, scraperPriority, llmEnabled, scraperEnabled, language, defaultPlatform }));
     try {
-      const token = await getAuthToken();
-      await fetch(`/api/auth/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ anti_bot_enabled: antiBotEnabled })
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({
+        data: { anti_bot_enabled: antiBotEnabled }
       });
-    } catch(e) {}
-    setPrefSaved(true);
-    setTimeout(() => setPrefSaved(false), 2500);
+      
+      if (error) {
+        throw new Error(error.message || "Failed to update preferences");
+      }
+      setPrefSaved(true);
+      setTimeout(() => setPrefSaved(false), 2500);
+    } catch(e: any) {
+      alert("Error saving preferences: " + e.message);
+    }
   };
 
   const movePriority = (list: string[], idx: number, dir: -1 | 1, setter: (v: string[]) => void) => {
