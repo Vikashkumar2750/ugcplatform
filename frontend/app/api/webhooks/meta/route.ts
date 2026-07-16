@@ -105,6 +105,16 @@ export async function POST(request: NextRequest) {
 
     const body = parsedBody || JSON.parse(rawBody);
 
+    // Raw payload log
+    try {
+      await supabase.from("webhook_events").insert({
+        platform: "meta_raw",
+        event_type: "raw",
+        payload: body,
+        processed: true
+      });
+    } catch(e){}
+
     console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 800));
     console.log("[Webhook] Object:", body.object, "| Entries:", body.entry?.length);
 
@@ -373,7 +383,6 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
         let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
-        if (dmText && !dmText.includes("STOP")) dmText += "\n\n[Reply STOP to opt-out]";
 
         try {
           // Send Main DM
@@ -391,7 +400,6 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
             const followMsgs = rule.action_config?.follow_up_messages || [];
             const randomFollow = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
             let followupText = parseSpintax(randomFollow || "Did you check it out?");
-            if (followupText && !followupText.includes("STOP")) followupText += "\n\n[Reply STOP to opt-out]";
             
             const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
             await enqueueViaBackend({
@@ -765,11 +773,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         dmLink = rule.action_config?.link || undefined;
       }
       
-      // Append Opt-Out for compliance if it's the actual DM
-      if (dmText && !dmText.includes("STOP")) {
-        dmText += "\n\n[Reply STOP to opt-out]";
-      }
-
       // Add a random 3-8 second delay — DM comes AFTER the public reply
       // This mimics: person sees comment → writes reply → then sends DM
       const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs(undefined, antiBotEnabled);
