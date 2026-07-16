@@ -868,7 +868,7 @@ async function enqueueViaBackend(opts: {
   accountId: string;
   userId: string;
   recipientId: string;
-  messagePayload: { text: string; link?: string; button_label?: string };
+  messagePayload: { text: string; link?: string; button_label?: string; quick_replies?: any[] };
   messageType: string;
   automationRuleId?: string;
   scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)
