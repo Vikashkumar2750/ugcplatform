@@ -837,44 +837,75 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Check Follower Status ────────────────────────────────────────────
-    // IMPORTANT: is_user_follow_business API works with IGSID (messaging scoped ID)
-    // but comment webhooks give us the PUBLIC IG user ID. We try both approaches:
-    // 1. Direct is_user_follow_business on commentorId (works if they've messaged before)
-    // 2. If API returns error/no data, assume NOT following (safe fallback)
+    // PROBLEM: is_user_follow_business API requires the user to have an ACTIVE
+    // messaging thread with the business. Comment users often DON'T have one.
+    // SOLUTION: Multi-strategy follower detection:
+    //   1. is_user_follow_business API (works if they've DM'd before)
+    //   2. dm_conversations table (checks if they have prior DM history)
+    //   3. processed_comments table (checks if they've done this flow before)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId && token) {
+      // Strategy 1: Try Meta API (is_user_follow_business)
       try {
-        // Try the is_user_follow_business field
         const url = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
         const res = await fetch(url);
         const data = await res.json();
-        console.log(`[Webhook] Follower check for ${commentorId}: raw response = ${JSON.stringify(data)}`);
+        console.log(`[Webhook] 👤 Follower check API for ${commentorId}: ${JSON.stringify(data)}`);
         
         if (data.is_user_follow_business === true) {
-           isFollowing = true;
-           console.log(`[Webhook] User ${commentorId} is already following! Bypassing follow prompt.`);
+          isFollowing = true;
+          console.log(`[Webhook] 👤 Strategy 1: User IS following (API confirmed)`);
         } else if (data.error) {
-          // API returned error — likely the commentorId is not an IGSID
-          // Try alternative: check followers edge on the IG business account
-          console.warn(`[Webhook] is_user_follow_business failed: ${data.error.message}. Will try followers edge.`);
-          try {
-            const igUserId = pageAccount?.platform_user_id;
-            if (igUserId) {
-              const followersUrl = `https://graph.facebook.com/v21.0/${igUserId}?fields=business_discovery.fields(followers_count)&access_token=${token}`;
-              const fRes = await fetch(followersUrl);
-              const fData = await fRes.json();
-              console.log(`[Webhook] Followers edge check: ${JSON.stringify(fData).substring(0, 200)}`);
-              // Note: Meta doesn't provide a follower LIST via API,
-              // so we can't check individual users this way.
-              // Fall through to require_follow prompt as safe default.
-            }
-          } catch (e2: any) {
-            console.warn(`[Webhook] Followers edge check failed: ${e2.message}`);
-          }
+          console.warn(`[Webhook] 👤 Strategy 1 FAILED: ${data.error.message} (code: ${data.error.code})`);
+        } else {
+          console.log(`[Webhook] 👤 Strategy 1: is_user_follow_business = ${data.is_user_follow_business}`);
         }
       } catch (err: any) {
-        console.warn(`[Webhook] Follower check failed:`, err.message);
+        console.warn(`[Webhook] 👤 Strategy 1 FAILED: ${err.message}`);
       }
+
+      // Strategy 2: Check dm_conversations for prior DM history
+      // If user has messaged this account before, they likely follow
+      if (!isFollowing && pageAccount?.id) {
+        try {
+          const { data: existingConv } = await supabase
+            .from("dm_conversations")
+            .select("sender_id, message_count")
+            .eq("account_id", pageAccount.id)
+            .eq("sender_id", commentorId)
+            .maybeSingle();
+          
+          if (existingConv && (existingConv.message_count || 0) > 0) {
+            isFollowing = true;
+            console.log(`[Webhook] 👤 Strategy 2: User has prior DM history (${existingConv.message_count} msgs) — treating as follower`);
+          } else {
+            console.log(`[Webhook] 👤 Strategy 2: No DM history found for commentorId=${commentorId}`);
+          }
+        } catch (e: any) {
+          console.warn(`[Webhook] 👤 Strategy 2 FAILED: ${e.message}`);
+        }
+      }
+
+      // Strategy 3: Check if user has previously completed a DONE flow
+      if (!isFollowing) {
+        try {
+          const { data: prevDone } = await supabase
+            .from("processed_comments")
+            .select("id")
+            .eq("commentor_id", commentorId)
+            .limit(2);
+          
+          // If they have 2+ processed comments, they've done this before → likely follower
+          if (prevDone && prevDone.length > 1) {
+            isFollowing = true;
+            console.log(`[Webhook] 👤 Strategy 3: User has ${prevDone.length} prior processed comments — treating as follower`);
+          }
+        } catch (e: any) {
+          console.warn(`[Webhook] 👤 Strategy 3 FAILED: ${e.message}`);
+        }
+      }
+
+      console.log(`[Webhook] 👤 Final follower status: isFollowing=${isFollowing}`);
     }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
@@ -938,7 +969,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         // ── STEP 1: Send Follow Prompt ──
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and tap 'DONE ✅' to get the link!");
+        // Default text tells user to BOTH tap the button AND type "done" as backup
+        dmText = parseSpintax(randomMsg || "Please follow me, then tap 'DONE ✅' below or reply 'done' to get the link! 🔗");
         if (pageAccount?.platform_username) {
           dmText += `\n\ninstagram.com/${pageAccount?.platform_username}`;
         }
