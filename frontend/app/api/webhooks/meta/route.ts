@@ -214,9 +214,20 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   if (!messaging.message && !messaging.follow && !messaging.postback) return;
 
   const senderId: string = messaging.sender?.id;
-  const messageText: string = (messaging.message?.text || messaging.postback?.payload || messaging.postback?.title || "").toLowerCase();
+  // IMPORTANT: Instagram quick_reply responses come as messaging.message.quick_reply.payload
+  // NOT as messaging.postback. We must check ALL possible payload locations:
+  // 1. messaging.message.quick_reply.payload (quick reply button click)
+  // 2. messaging.postback.payload (generic template postback button click)
+  // 3. messaging.message.text (user typed text)
+  // 4. messaging.postback.title (postback button title as last resort)
+  const quickReplyPayload: string = messaging.message?.quick_reply?.payload || "";
+  const postbackPayload: string = messaging.postback?.payload || "";
+  const rawText: string = messaging.message?.text || "";
+  
+  // Priority: quick_reply payload > postback payload > message text > postback title
+  const messageText: string = (quickReplyPayload || postbackPayload || rawText || messaging.postback?.title || "").toLowerCase();
 
-  console.log(`[Webhook] DM from ${senderId} to page ${pageId}: "${messageText.substring(0, 80)}"`);
+  console.log(`[Webhook] DM from ${senderId} to page ${pageId}: "${messageText.substring(0, 80)}" (qr=${quickReplyPayload ? 'yes' : 'no'}, pb=${postbackPayload ? 'yes' : 'no'}, text=${rawText ? 'yes' : 'no'})`);
 
   // Log DM event
   await supabase.from("webhook_events").insert({
@@ -640,14 +651,22 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     // Keyword match — use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];
     const matchType: string = rule.trigger_config?.match_type || "any";
+
+    // IMPORTANT: Skip rules with NO keywords for comment_automation type.
+    // An empty keywords array would match EVERY comment, causing false triggers.
+    if (keywords.length === 0 && rule.type === "comment_automation") {
+      console.log(`[Webhook] Skipping rule "${rule.name}" — no keywords defined (would match everything)`);
+      continue;
+    }
+
     const matched = keywords.length === 0
-      ? true
+      ? true  // Only for legacy comment_reply/comment_to_dm types
       : matchType === "all"
         ? keywords.every((k: string) => keywordMatch(commentText, k))
         : keywords.some((k: string) => keywordMatch(commentText, k));
 
     if (!matched) {
-      console.log(`[Webhook] Keywords didn't match for rule "${rule.name}"`);
+      console.log(`[Webhook] Keywords didn't match for rule "${rule.name}" (keywords=${keywords.join(',')}, text="${commentText.substring(0, 30)}")`);
       continue;
     }
 
@@ -735,15 +754,40 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Check Follower Status ────────────────────────────────────────────
+    // IMPORTANT: is_user_follow_business API works with IGSID (messaging scoped ID)
+    // but comment webhooks give us the PUBLIC IG user ID. We try both approaches:
+    // 1. Direct is_user_follow_business on commentorId (works if they've messaged before)
+    // 2. If API returns error/no data, assume NOT following (safe fallback)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId && token) {
       try {
+        // Try the is_user_follow_business field
         const url = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
         const res = await fetch(url);
         const data = await res.json();
+        console.log(`[Webhook] Follower check for ${commentorId}: raw response = ${JSON.stringify(data)}`);
+        
         if (data.is_user_follow_business === true) {
            isFollowing = true;
            console.log(`[Webhook] User ${commentorId} is already following! Bypassing follow prompt.`);
+        } else if (data.error) {
+          // API returned error — likely the commentorId is not an IGSID
+          // Try alternative: check followers edge on the IG business account
+          console.warn(`[Webhook] is_user_follow_business failed: ${data.error.message}. Will try followers edge.`);
+          try {
+            const igUserId = pageAccount?.platform_user_id;
+            if (igUserId) {
+              const followersUrl = `https://graph.facebook.com/v21.0/${igUserId}?fields=business_discovery.fields(followers_count)&access_token=${token}`;
+              const fRes = await fetch(followersUrl);
+              const fData = await fRes.json();
+              console.log(`[Webhook] Followers edge check: ${JSON.stringify(fData).substring(0, 200)}`);
+              // Note: Meta doesn't provide a follower LIST via API,
+              // so we can't check individual users this way.
+              // Fall through to require_follow prompt as safe default.
+            }
+          } catch (e2: any) {
+            console.warn(`[Webhook] Followers edge check failed: ${e2.message}`);
+          }
         }
       } catch (err: any) {
         console.warn(`[Webhook] Follower check failed:`, err.message);

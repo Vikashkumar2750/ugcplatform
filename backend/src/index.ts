@@ -949,7 +949,11 @@ async function handleCommentDMTrigger(event: any): Promise<void> {
 
 async function handleMessageDMTrigger(event: any): Promise<void> {
   const payload = event.event_data || {};
-  const messageText: string = (payload.text || payload.message || "").toLowerCase();
+  // Check all possible payload locations (matching frontend webhook handler):
+  // quick_reply.payload > postback.payload > text > message
+  const qrPayload: string = payload.quick_reply?.payload || payload.message?.quick_reply?.payload || "";
+  const pbPayload: string = payload.postback?.payload || "";
+  const messageText: string = (qrPayload || pbPayload || payload.text || payload.message || "").toLowerCase();
   const senderId: string = payload.sender?.id || payload.sender_id;
   const pageId: string = payload.recipient?.id || payload.recipient_id;
 
