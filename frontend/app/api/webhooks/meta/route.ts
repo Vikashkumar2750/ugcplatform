@@ -292,10 +292,196 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     return;
   }
 
-  // ── 1. dm_new_follower: fires on FIRST message ──────────────
-  // Instagram doesn't send follow webhooks — we detect "new follower"
-  // as the first time they message us (most common scenario).
-  if (isFirstMessage) {
+  // ── 1. Follow requirement check ("DONE") — must run FIRST ───────────
+  // When user clicks DONE button or types "done", complete the pending require_follow flow.
+  // This MUST run before keyword matching, otherwise "done" could match a keyword rule.
+  if (messageText.startsWith("done:") || messageText === "done" || messageText === "done ✅") {
+    let ruleId = undefined;
+    
+    // If they tapped the postback button, we have the rule ID directly!
+    if (messageText.startsWith("done:")) {
+      ruleId = messageText.split("done:")[1]?.trim();
+    } else {
+      // Fallback 1: Check processed_comments (for comment-triggered require_follow flows)
+      const { data: recentLog } = await supabase
+        .from("processed_comments")
+        .select("rule_id, id")
+        .eq("commentor_id", senderId)
+        .order("processed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      ruleId = recentLog?.rule_id;
+
+      // Fallback 2: Check dm_trigger_log (for DM-keyword-triggered require_follow flows)
+      if (!ruleId) {
+        const { data: recentDmLog } = await supabase
+          .from("dm_trigger_log")
+          .select("automation_id")
+          .eq("sender_id", senderId)
+          .eq("page_id", pageId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        ruleId = recentDmLog?.automation_id;
+      }
+    }
+
+    if (ruleId) {
+      const { data: rule } = await supabase
+        .from("automation_rules")
+        .select("*")
+        .eq("id", ruleId)
+        .single();
+
+      if (rule && rule.action_config?.require_follow) {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
+
+        try {
+          // Send Main DM with the actual content/link
+          await enqueueViaBackend({
+            accountId: rule.account_id || account.id,
+            userId: rule.user_id,
+            recipientId: senderId,
+            messagePayload: { text: dmText, link: rule.action_config?.link || undefined },
+            messageType: "dm",
+            automationRuleId: rule.id,
+          });
+
+          // Schedule Follow-up DM if enabled
+          if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+            const followMsgs = rule.action_config?.follow_up_messages || [];
+            const randomFollow = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+            let followupText = parseSpintax(randomFollow || "Did you check it out?");
+            
+            const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+            await enqueueViaBackend({
+              accountId: rule.account_id || account.id,
+              userId: rule.user_id,
+              recipientId: senderId,
+              messagePayload: { text: followupText },
+              messageType: "dm",
+              automationRuleId: rule.id,
+              scheduledSendAt: scheduledAt,
+            });
+          }
+
+          // Update trigger count
+          await supabase.from("automation_rules").update({
+            trigger_count: (rule.trigger_count || 0) + 1,
+            last_triggered: new Date().toISOString(),
+          }).eq("id", rule.id);
+
+          // Successfully handled DONE flow — stop here
+          return;
+        } catch (e: any) {
+          console.error(`[Webhook] DONE handling failed: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  // ── 2. dm_keyword: fires when message matches keywords ───────────────
+  // This runs BEFORE dm_new_follower so that if a first-time user sends a keyword,
+  // the keyword rule fires instead of the generic welcome message.
+  let keywordRuleMatched = false;
+
+  const { data: keywordRules } = await supabase
+    .from("automation_rules")
+    .select("*")
+    .or(`account_id.eq.${account.id},account_id.is.null`)
+    .eq("user_id", account.user_id)
+    .eq("type", "dm_keyword")
+    .eq("is_active", true);
+
+  for (const rule of (keywordRules || [])) {
+    // Keyword match — use word-boundary regex (not substring includes)
+    const keywords: string[] = rule.trigger_config?.keywords || [];
+    const matchType: string = rule.trigger_config?.match_type || "any";
+
+    if (keywords.length === 0) continue; // Skip rules with no keywords
+
+    const matched = matchType === "all"
+      ? keywords.every(k => keywordMatch(messageText, k))
+      : keywords.some(k => keywordMatch(messageText, k));
+
+    if (matched) {
+      console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
+      keywordRuleMatched = true;
+
+      let isFollowing = false;
+      if (rule.action_config?.require_follow && account?.access_token) {
+        try {
+          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.is_user_follow_business === true) {
+             isFollowing = true;
+             console.log(`[Webhook] User ${senderId} is already following! Bypassing follow prompt.`);
+          }
+        } catch (err: any) {
+          console.warn(`[Webhook] Follower check failed:`, err.message);
+        }
+      }
+
+      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
+
+      let dmText = "";
+      let dmLink = undefined;
+      let quickReplies = undefined;
+
+      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
+        const followMsgs = rule.action_config?.follow_prompt_messages || [];
+        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || "Please follow me and click 'DONE' to get the link!");
+        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
+        // FIXED: Include rule.id in DONE payload so handler can find the correct rule
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
+        
+        // Log to processed_comments so the "DONE" check can find this rule
+        try {
+          await supabase.from("processed_comments").insert({
+            comment_id: "dm_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9),
+            rule_id: rule.id,
+            commentor_id: senderId,
+            media_id: "dm_automation",
+            processed_at: new Date().toISOString(),
+          });
+        } catch (e: any) {
+          console.warn(`[Webhook] Failed to insert processed_comments for DM requirement: ${e.message}`);
+        }
+      } else {
+        const msgs = rule.action_config?.messages || [];
+        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏");
+        dmLink = rule.action_config?.link || undefined;
+      }
+
+      await enqueueViaBackend({
+        accountId: account.id,
+        userId: account.user_id,
+        recipientId: senderId,
+        messagePayload: {
+          text: dmText,
+          link: dmLink,
+          quick_replies: quickReplies,
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+      });
+      await supabase.from("automation_rules").update({
+        trigger_count: (rule.trigger_count || 0) + 1,
+        last_triggered: new Date().toISOString(),
+      }).eq("id", rule.id);
+      break; // First matching rule only
+    }
+  }
+
+  // ── 3. dm_new_follower: fires on FIRST message if no keyword matched ──
+  // Only triggers if no keyword rule was already matched above.
+  // This ensures keyword intent is always respected over generic welcome.
+  if (!keywordRuleMatched && isFirstMessage) {
     const { data: followerRules } = await supabase
       .from("automation_rules")
       .select("*")
@@ -338,7 +524,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
           dmText += `\n\ninstagram.com/${account.platform_username}`;
         }
         dmLink = undefined;
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
+        // FIXED: Include rule.id in DONE payload
+        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
@@ -363,166 +550,6 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         trigger_count: (rule.trigger_count || 0) + 1,
         last_triggered: new Date().toISOString(),
       }).eq("id", rule.id);
-      return; // Don't also trigger keyword rules on first message
-    }
-  }
-
-  // ── 1.5. Follow requirement check ("DONE") ──────────────────────
-  if (messageText.startsWith("done:") || messageText === "done") {
-    let ruleId = undefined;
-    
-    // If they tapped the postback button, we have the rule ID directly!
-    if (messageText.startsWith("done:")) {
-      ruleId = messageText.split("done:")[1]?.trim();
-    } else {
-      // Fallback: they manually typed "done". We try to find their recent comment.
-      // Note: commentor_id (global IG ID) often won't match senderId (ig_sid).
-      const { data: recentLog } = await supabase
-        .from("processed_comments")
-        .select("rule_id, id")
-        .eq("commentor_id", senderId)
-        .order("processed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      ruleId = recentLog?.rule_id;
-    }
-
-    if (ruleId) {
-      const { data: rule } = await supabase
-        .from("automation_rules")
-        .select("*")
-        .eq("id", ruleId)
-        .single();
-
-      if (rule && rule.action_config?.require_follow) {
-        const msgs = rule.action_config?.messages || [];
-        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
-
-        try {
-          // Send Main DM
-          await enqueueViaBackend({
-            accountId: rule.account_id || account.id,
-            userId: rule.user_id,
-            recipientId: senderId,
-            messagePayload: { text: dmText, link: rule.action_config?.link || undefined },
-            messageType: "dm",
-            automationRuleId: rule.id,
-          });
-
-          // Schedule Follow-up DM if enabled
-          if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
-            const followMsgs = rule.action_config?.follow_up_messages || [];
-            const randomFollow = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-            let followupText = parseSpintax(randomFollow || "Did you check it out?");
-            
-            const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
-            await enqueueViaBackend({
-              accountId: rule.account_id || account.id,
-              userId: rule.user_id,
-              recipientId: senderId,
-              messagePayload: { text: followupText },
-              messageType: "dm",
-              automationRuleId: rule.id,
-              scheduledSendAt: scheduledAt,
-            });
-          }
-
-          // Stop processing keywords since we handled a "DONE" flow
-          return;
-        } catch (e: any) {
-          console.error(`[Webhook] DONE handling failed: ${e.message}`);
-        }
-      }
-    }
-  }
-
-  // ── 2. dm_keyword: fires when message matches keywords ───────
-  const { data: keywordRules } = await supabase
-    .from("automation_rules")
-    .select("*")
-    .or(`account_id.eq.${account.id},account_id.is.null`)
-    .eq("user_id", account.user_id)
-    .eq("type", "dm_keyword")
-    .eq("is_active", true);
-
-  for (const rule of (keywordRules || [])) {
-    // Keyword match — use word-boundary regex (not substring includes)
-    const keywords: string[] = rule.trigger_config?.keywords || [];
-    const matchType: string = rule.trigger_config?.match_type || "any";
-
-    if (keywords.length === 0) continue; // Skip rules with no keywords
-
-    const matched = matchType === "all"
-      ? keywords.every(k => keywordMatch(messageText, k))
-      : keywords.some(k => keywordMatch(messageText, k));
-
-    if (matched) {
-      console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
-      let isFollowing = false;
-      if (rule.action_config?.require_follow && account?.access_token) {
-        try {
-          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
-          const res = await fetch(url);
-          const data = await res.json();
-          if (data.is_user_follow_business === true) {
-             isFollowing = true;
-             console.log(`[Webhook] User ${senderId} is already following! Bypassing follow prompt.`);
-          }
-        } catch (err: any) {
-          console.warn(`[Webhook] Follower check failed:`, err.message);
-        }
-      }
-
-      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
-
-      let dmText = "";
-      let dmLink = undefined;
-      let quickReplies = undefined;
-
-      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        const followMsgs = rule.action_config?.follow_prompt_messages || [];
-        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and click 'DONE' to get the link!");
-        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: "DONE" }];
-        
-        // Log to processed_comments so the "DONE" check can find this rule
-        try {
-          await supabase.from("processed_comments").insert({
-            comment_id: "dm_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9),
-            rule_id: rule.id,
-            commentor_id: senderId,
-            media_id: "dm_automation",
-            processed_at: new Date().toISOString(),
-          });
-        } catch (e: any) {
-          console.warn(`[Webhook] Failed to insert processed_comments for DM requirement: ${e.message}`);
-        }
-      } else {
-        const msgs = rule.action_config?.messages || [];
-        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏");
-        dmLink = rule.action_config?.link || undefined;
-      }
-
-      await enqueueViaBackend({
-        accountId: account.id,
-        userId: account.user_id,
-        recipientId: senderId,
-        messagePayload: {
-          text: dmText,
-          link: dmLink,
-          quick_replies: quickReplies,
-        },
-        messageType: "dm",
-        automationRuleId: rule.id,
-      });
-      await supabase.from("automation_rules").update({
-        trigger_count: (rule.trigger_count || 0) + 1,
-        last_triggered: new Date().toISOString(),
-      }).eq("id", rule.id);
-      break; // First matching rule only
     }
   }
 }

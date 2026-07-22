@@ -16,6 +16,7 @@ import { processMessageQueue, recoverStaleMessages } from "./services/send-queue
 import { cleanupExpiredRateLimits } from "./services/rate-limiter";
 import { publishYoutubeVideo } from "./services/publish-youtube";
 import { publishLinkedinPost } from "./services/publish-linkedin";
+import { decrypt } from "./services/crypto";
 
 // ─────────────────────────────────────────────
 // Config validation
@@ -376,9 +377,8 @@ async function publishScheduledPosts(): Promise<number> {
 
   const { data: posts, error } = await supabase
     .from("scheduled_posts")
-    .select("*, connected_accounts(access_token, platform_user_id, page_id)")
+    .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
     .or(`and(status.eq.scheduled,scheduled_at.lte.${now}),and(status.eq.publishing,updated_at.lte.${tenMinsAgo})`)
-    .order("scheduled_at", { ascending: true })
     .order("scheduled_at", { ascending: true })
     .limit(10);
 
@@ -447,8 +447,15 @@ async function publishScheduledPosts(): Promise<number> {
 }
 
 async function publishPost(post: any): Promise<string> {
-  const token = post.connected_accounts?.access_token;
+  let token = post.connected_accounts?.access_token;
   if (!token) throw new Error("No access token found for account");
+
+  // Decrypt token if it's encrypted
+  try {
+    token = decrypt(token);
+  } catch {
+    // Token might not be encrypted yet (pre-migration) — use as-is
+  }
 
   switch (post.platform) {
     case "instagram":
@@ -537,14 +544,15 @@ async function waitForVideoUpload(
 }
 
 async function publishFacebookPost(post: any, token: string): Promise<string> {
-  const pageId = post.connected_accounts?.page_id;
+  // Use page_id, fallback to platform_user_id (for Facebook, they're the same from OAuth callback)
+  const pageId = post.connected_accounts?.page_id || post.connected_accounts?.platform_user_id;
+  if (!pageId) throw new Error("No Facebook Page ID found for account");
 
   const isVideo = post.content_type === "reel" || post.content_type === "video";
-  const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : undefined;
+  const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : (post.media_url || undefined);
 
-  if (!mediaUrl) throw new Error("Media URL is required");
-
-  if (isVideo) {
+  // Video / Reel
+  if (isVideo && mediaUrl) {
     const body: Record<string, string> = {
       description: post.caption || "",
       file_url: mediaUrl,
@@ -556,9 +564,13 @@ async function publishFacebookPost(post: any, token: string): Promise<string> {
       body: JSON.stringify(body),
     });
     const data = await res.json();
+    if (data.error) throw new Error(`Facebook video post failed: ${data.error.message}`);
     if (!data.id) throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
     return data.id;
-  } else {
+  }
+
+  // Photo post
+  if (mediaUrl) {
     const body: Record<string, string> = {
       message: post.caption || "",
       url: mediaUrl,
@@ -570,9 +582,25 @@ async function publishFacebookPost(post: any, token: string): Promise<string> {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (!data.id) throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
-    return data.id;
+    if (data.error) throw new Error(`Facebook photo post failed: ${data.error.message}`);
+    if (!data.id && !data.post_id) throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
+    return data.post_id || data.id;
   }
+
+  // Text-only post (no media required)
+  const body: Record<string, string> = {
+    message: post.caption || "",
+    access_token: token,
+  };
+  const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(`Facebook text post failed: ${data.error.message}`);
+  if (!data.id) throw new Error(`Facebook text post failed: ${JSON.stringify(data)}`);
+  return data.id;
 }
 
 // ─────────────────────────────────────────────
@@ -933,22 +961,46 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
     return "";
   };
 
-  // 1. Check for 2-step follower workaround ("DONE" reply)
+  // ── 1. Check for "DONE" reply (require_follow completion) ──────────
+  // Must run FIRST before keyword matching.
   if (messageText.includes("done")) {
-    const { data: recentLog } = await supabase
-      .from("dm_trigger_log")
-      .select("automation_id, id")
-      .eq("sender_id", senderId)
-      .eq("page_id", pageId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let ruleId: string | undefined;
 
-    if (recentLog) {
+    // Check if message contains rule ID (from postback button: "done:<rule_id>")
+    if (messageText.startsWith("done:")) {
+      ruleId = messageText.split("done:")[1]?.trim();
+    }
+
+    // Fallback: check dm_trigger_log for the most recent rule for this sender
+    if (!ruleId) {
+      const { data: recentLog } = await supabase
+        .from("dm_trigger_log")
+        .select("automation_id, id")
+        .eq("sender_id", senderId)
+        .eq("page_id", pageId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      ruleId = recentLog?.automation_id;
+    }
+
+    // Fallback 2: check processed_comments (for comment-triggered flows)
+    if (!ruleId) {
+      const { data: recentComment } = await supabase
+        .from("processed_comments")
+        .select("rule_id")
+        .eq("commentor_id", senderId)
+        .order("processed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      ruleId = recentComment?.rule_id;
+    }
+
+    if (ruleId) {
       const { data: rule } = await supabase
         .from("automation_rules")
         .select("*")
-        .eq("id", recentLog.automation_id)
+        .eq("id", ruleId)
         .single();
 
       if (rule && rule.action_config?.require_follow) {
@@ -956,7 +1008,7 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
         if (dmText && !dmText.includes("STOP")) dmText += "\n\n[Reply STOP to opt-out]";
 
         try {
-          // Send Main DM
+          // Send Main DM with the actual content/link
           await enqueueMessage({
             accountId: rule.account_id,
             userId: rule.user_id,
@@ -982,10 +1034,17 @@ async function handleMessageDMTrigger(event: any): Promise<void> {
               scheduledSendAt: scheduledAt,
             });
           }
+
+          // Update trigger count
+          await supabase.from("automation_rules").update({
+            trigger_count: (rule.trigger_count || 0) + 1,
+            last_triggered: new Date().toISOString(),
+          }).eq("id", rule.id);
+
         } catch (err: any) {
           console.error(`[DM Follower Workaround] Failed: ${err.message}`);
         }
-        return; // Workaround successfully executed, skip standard DM rules
+        return; // DONE flow handled, skip standard DM rules
       }
     }
   }
