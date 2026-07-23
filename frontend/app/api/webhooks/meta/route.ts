@@ -398,6 +398,32 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       }
     }
 
+    // Method 5: Direct query — find any active require_follow rule for this user
+    // This is the ultimate fallback when postback payload is stripped (standby mode)
+    if (!ruleId && account?.user_id) {
+      try {
+        const { data: requireFollowRules } = await supabase
+          .from("automation_rules")
+          .select("id, name, action_config")
+          .eq("user_id", account.user_id)
+          .eq("is_active", true)
+          .in("type", ["comment_automation", "comment_to_dm"])
+          .order("last_triggered", { ascending: false })
+          .limit(5);
+        
+        const matchingRule = requireFollowRules?.find((r: any) => r.action_config?.require_follow === true);
+        if (matchingRule) {
+          ruleId = matchingRule.id;
+          lookupSource = "direct_query_require_follow";
+          console.log(`[Webhook] 🔍 DONE Method 5 (direct query): Found require_follow rule "${matchingRule.name}" ruleId=${ruleId}`);
+        } else {
+          console.log(`[Webhook] 🔍 DONE Method 5: No active require_follow rules found for user`);
+        }
+      } catch (e: any) {
+        console.warn(`[Webhook] DONE Method 5 failed: ${e.message}`);
+      }
+    }
+
     console.log(`[Webhook] 🔍 DONE ruleId resolution: ruleId=${ruleId || 'NOT FOUND'} via ${lookupSource}`);
 
     if (ruleId) {
