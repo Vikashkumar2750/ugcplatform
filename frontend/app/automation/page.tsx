@@ -63,7 +63,7 @@ export default function AutomationPage() {
   };
 
   const allRules = rulesData?.rules || [];
-  const rules = allRules.filter((r: ActiveRule) => !r.platform || r.platform === platform).slice(0, 10);
+  const rules = allRules.filter((r: ActiveRule) => !r.platform || r.platform === platform || r.platform === "all").slice(0, 10);
 
   const toggleRule = async (rule: ActiveRule) => {
     // Optimistic update

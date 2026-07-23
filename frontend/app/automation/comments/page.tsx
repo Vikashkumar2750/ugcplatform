@@ -252,13 +252,15 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
       const accountIdsToSave = isAll ? [null] : selectedAccountIds;
 
       for (const accId of accountIdsToSave) {
+        // If ALL accounts selected, this is a cross-platform rule → platform = "all"
+        const rulePlatform = isAll ? "all" : platform;
         const res = await fetch("/api/automation/rules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name,
             type: "comment_automation",
-            platform,
+            platform: rulePlatform,
             account_id: accId || null,
             keywords: finalKeywords,
             matchType,
@@ -940,18 +942,14 @@ export default function CommentsAutomationPage() {
   const [showModal, setShowModal] = useState(false);
 
   const { data: accountsData } = useSWR("/api/connect/accounts", fetcher);
-  // Fetch ALL rules (we will display rules that match the current platform, OR cross-platform rules)
-  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=comments`, fetcher);
+  // Fetch ALL comment rules (no platform filter — cross-platform rules have platform="all")
+  const { data: rulesData, mutate: mutateRules } = useSWR(`/api/automation/rules?type=comments&platform=${platform}`, fetcher);
 
   const loading = !accountsData || !rulesData;
   const allAccounts = accountsData?.accounts || [];
   
-  // Rules are filtered on client side to show rules that either match the platform OR are cross-platform (account_id = null or multiple)
-  // Actually, wait, if it's cross platform, the backend `platform` might be saved as "facebook,instagram" or something.
-  // For now, let's just let the backend return all rules and we filter them here if we want to organize by tabs.
-  const rules = (rulesData?.rules || []).filter((r: any) => 
-    r.platform === platform || r.platform === "cross_platform" || r.platform === "all"
-  );
+  // Rules already filtered by API (includes platform-specific + platform="all" rules)
+  const rules = rulesData?.rules || [];
 
   // But we pass ALL accounts to NewRuleModal so they can pick cross-platform specific posts
   const handleToggle = async (rule: CommentRule) => {

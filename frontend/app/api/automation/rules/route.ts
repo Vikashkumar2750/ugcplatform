@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (platform) {
-    query = query.eq("platform", platform);
+    // Include platform-specific rules AND cross-platform rules (platform="all" or account_id IS NULL)
+    query = query.or(`platform.eq.${platform},platform.eq.all`);
   }
 
   if (type) {
@@ -105,12 +106,15 @@ export async function POST(req: NextRequest) {
     follow_up_messages: followUpMessages || []
   };
 
+  // If no specific account was resolved (cross-platform), set platform to "all"
+  const resolvedPlatform = resolvedAccountId ? platform : "all";
+
   const { data, error } = await supabase
     .from("automation_rules")
     .insert({
       user_id: userId,
       account_id: resolvedAccountId,
-      platform,          // ← was missing, caused NOT NULL violation
+      platform: resolvedPlatform,
       name,
       type,
       trigger_config,
