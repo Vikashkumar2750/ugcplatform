@@ -385,29 +385,15 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
         },
       };
     } else if (payload.quick_replies?.length) {
-      // Quick replies → Convert to Generic Template Postback Buttons (e.g., DONE button)
-      let title = payload.text;
-      let subtitle = "";
-      if (title.length > 80) {
-        title = payload.text.substring(0, 80);
-        subtitle = payload.text.substring(80, 160);
-      }
-      
-      (privateReplyBody.message as Record<string, unknown>).attachment = {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title,
-            ...(subtitle ? { subtitle } : {}),
-            buttons: payload.quick_replies.slice(0, 3).map(qr => ({
-              type: "postback",
-              title: qr.title.substring(0, 20),
-              payload: qr.payload,
-            })),
-          }],
-        },
-      };
+      // Send as actual quick_replies (suggestion chips) — Instagram supports these natively
+      // When tapped, they generate a message.quick_reply webhook event (NOT messaging_postbacks)
+      // This is the correct way to handle DONE buttons on Instagram
+      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
+      (privateReplyBody.message as Record<string, unknown>).quick_replies = payload.quick_replies.map(qr => ({
+        content_type: qr.content_type || "text",
+        title: qr.title.substring(0, 20),
+        payload: qr.payload,
+      }));
     } else {
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }
