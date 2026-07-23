@@ -428,7 +428,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
             accountId: rule.account_id || account.id,
             userId: rule.user_id,
             recipientId: senderId,
-            messagePayload: { text: dmText, link: dmLink },
+            messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
             messageType: "dm",
             automationRuleId: rule.id,
           });

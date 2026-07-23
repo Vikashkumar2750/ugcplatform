@@ -363,16 +363,29 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       message: {} as Record<string, unknown>,
     };
 
-    // Meta Private Replies to comments ONLY support plain text, no templates!
+    // Build message body — support Generic Template with web_url buttons for links
     if (payload.link) {
-      // Append the link to the text since we can't use buttons
-      (privateReplyBody.message as Record<string, unknown>).text = `${payload.text}\n\n${payload.link}`;
-    } else {
-      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
-    }
-
-    // Quick replies for Private Reply -> Convert to Generic Template Postback Buttons for Stylish Look!
-    if (payload.quick_replies?.length) {
+      // Use Generic Template with web_url button (same as standard DM path)
+      let title = payload.text;
+      let subtitle = "";
+      if (title.length > 80) {
+        title = payload.text.substring(0, 80);
+        subtitle = payload.text.substring(80, 160);
+      }
+      (privateReplyBody.message as Record<string, unknown>).attachment = {
+        type: "template",
+        payload: {
+          template_type: "generic",
+          elements: [{
+            title,
+            ...(subtitle ? { subtitle } : {}),
+            default_action: { type: "web_url", url: payload.link },
+            buttons: [{ type: "web_url", url: payload.link, title: (payload.button_label || "Open Link →").substring(0, 20) }],
+          }],
+        },
+      };
+    } else if (payload.quick_replies?.length) {
+      // Quick replies → Convert to Generic Template Postback Buttons (e.g., DONE button)
       let title = payload.text;
       let subtitle = "";
       if (title.length > 80) {
@@ -395,8 +408,8 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
           }],
         },
       };
-      // Remove text because generic template handles the text in the title
-      delete (privateReplyBody.message as Record<string, unknown>).text;
+    } else {
+      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
     }
 
     // Private Reply uses the Page ID as the sender endpoint (NOT the IG User ID)
