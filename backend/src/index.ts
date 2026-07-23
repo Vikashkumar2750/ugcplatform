@@ -309,9 +309,9 @@ app.post("/trigger/refresh-tokens", requireWorkerSecret, async (_req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// CRON 1: Publish scheduled posts every minute
+// CRON 1: Publish scheduled posts every 15 seconds
 // ─────────────────────────────────────────────
-cron.schedule("* * * * *", async () => {
+cron.schedule("*/15 * * * * *", async () => {
   const count = await publishScheduledPosts();
   if (count > 0) console.log(`[${new Date().toISOString()}] Published ${count} posts`);
 });

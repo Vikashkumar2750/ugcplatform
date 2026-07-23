@@ -98,8 +98,7 @@ export default function SchedulerV2Page() {
     try {
       const selectedAccounts = accounts.filter(a => selectedAccountIds.has(a.id));
       for (const acc of selectedAccounts) {
-        // We use the scheduling endpoint with the current time to bypass Vercel's 10s serverless timeout.
-        // The backend cron will pick it up and process the video container (which takes >30s) automatically.
+        // Save as scheduled post with current time — backend picks it up immediately
         const payload = {
           ...makePayload(acc),
           scheduled_at: new Date().toISOString(),
@@ -113,9 +112,14 @@ export default function SchedulerV2Page() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Publish failed");
       }
+
+      // Trigger backend to publish immediately (fire-and-forget)
+      // This bypasses the 15s cron interval for near-instant publishing
+      fetch("/api/automation/schedule/trigger", { method: "POST" }).catch(() => {});
+
       const hasInstagram = selectedAccounts.some(a => a.platform === "instagram");
       const note = hasInstagram ? "\n\nNote: Videos may take 1-2 minutes to process on Instagram." : "";
-      alert(`Post queued for immediate publishing to ${selectedAccounts.length} account(s)!${note}`);
+      alert(`Publishing to ${selectedAccounts.length} account(s)! Check history for status.${note}`);
       
       // Redirect back to schedule-v2
       router.push("/automation/schedule-v2?platform=" + (searchParams.get("platform") || "instagram"));
