@@ -996,16 +996,19 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         // ── STEP 1: Send Follow Prompt ──
+        // IMPORTANT: Instagram Private Reply only supports PLAIN TEXT.
+        // No quick_replies, no template buttons, no attachments.
+        // User must TYPE 'done' to trigger the DONE handler.
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        // Default text tells user to BOTH tap the button AND type "done" as backup
-        dmText = parseSpintax(randomMsg || "Please follow me, then tap 'DONE ✅' below or reply 'done' to get the link! 🔗");
+        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me and reply 'DONE' to get the link!");
         if (pageAccount?.platform_username) {
-          dmText += `\n\ninstagram.com/${pageAccount?.platform_username}`;
+          dmText += `\n\n👉 instagram.com/${pageAccount?.platform_username}`;
         }
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
+        // NO quick_replies — Instagram Private Reply doesn't support them
+        quickReplies = undefined;
         dmLink = undefined;
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT with DONE button (payload=DONE:${rule.id})`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, user must type DONE)`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
@@ -1032,7 +1035,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentId,          // comment_id — NOT the user's IG ID
-        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label, quick_replies: quickReplies },
+        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(dmDelayMs),
@@ -1046,7 +1049,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
             recipient: { comment_id: commentId },
             message: {
               text: dmText,
-              quick_replies: quickReplies
             },
           };
 
