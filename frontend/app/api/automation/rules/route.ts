@@ -35,8 +35,8 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (platform) {
-    // Include platform-specific rules AND cross-platform rules (platform="all" or account_id IS NULL)
-    query = query.or(`platform.eq.${platform},platform.eq.all`);
+    // Include platform-specific rules AND cross-platform rules (e.g., "instagram,facebook" matches both)
+    query = query.or(`platform.eq.${platform},platform.ilike.%${platform}%`);
   }
 
   if (type) {
@@ -106,8 +106,9 @@ export async function POST(req: NextRequest) {
     follow_up_messages: followUpMessages || []
   };
 
-  // If no specific account was resolved (cross-platform), set platform to "all"
-  const resolvedPlatform = resolvedAccountId ? platform : "all";
+  // Platform comes from frontend: either a single platform (e.g., "instagram") 
+  // or comma-separated for cross-platform (e.g., "instagram,facebook")
+  const resolvedPlatform = platform;
 
   const { data, error } = await supabase
     .from("automation_rules")

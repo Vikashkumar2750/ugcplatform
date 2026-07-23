@@ -252,8 +252,10 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
       const accountIdsToSave = isAll ? [null] : selectedAccountIds;
 
       for (const accId of accountIdsToSave) {
-        // If ALL accounts selected, this is a cross-platform rule → platform = "all"
-        const rulePlatform = isAll ? "all" : platform;
+        // If ALL accounts selected, determine actual platforms from accounts (e.g., "instagram,facebook")
+        const rulePlatform = isAll
+          ? [...new Set(accounts.map(a => a.platform))].sort().join(",")
+          : platform;
         const res = await fetch("/api/automation/rules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -895,14 +897,14 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
             {actions.reply && (
               <div className="rounded-lg border border-blue-500/15 bg-blue-500/5 p-3">
                 <p className="text-[10px] font-bold text-blue-400 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> PUBLIC REPLY</p>
-                <p className="text-sm">{rule.action_config?.reply_text || "—"}</p>
+                <p className="text-sm">{rule.action_config?.reply_text || rule.action_config?.reply_texts?.[0] || "—"}</p>
               </div>
             )}
             
             {actions.dm && (
               <div className="rounded-lg border border-violet-500/15 bg-violet-500/5 p-3">
                 <p className="text-[10px] font-bold text-violet-400 mb-1 flex items-center gap-1"><Send className="w-3 h-3" /> DM MESSAGE</p>
-                <p className="text-sm">{rule.action_config?.message || "—"}</p>
+                <p className="text-sm">{rule.action_config?.message || rule.action_config?.messages?.[0] || "—"}</p>
                 {rule.action_config?.link && (
                   <p className="text-xs text-amber-500 mt-1.5 flex items-center gap-1">
                     <LinkIcon className="w-3 h-3" /> {rule.action_config.link}

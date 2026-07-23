@@ -984,9 +984,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         const baseText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
         
         if (rule.action_config?.link) {
-          dmText = `${baseText}\n\nTap below to get the link! 👇`;
-          quickReplies = [{ content_type: "text", title: (rule.action_config?.button_label || "Get Link").substring(0, 20), payload: `LINK:${rule.id}` }];
-          dmLink = undefined;
+          // Pass the link directly — backend will render as URL button (web_url template)
+          // For private_reply: Meta only supports plain text, so link gets appended to text
+          // For standard DM: backend creates a proper clickable button
+          dmText = baseText;
+          dmLink = rule.action_config.link;
         } else {
           dmText = baseText;
         }
