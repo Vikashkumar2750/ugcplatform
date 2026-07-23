@@ -335,7 +335,7 @@ cron.schedule("*/30 * * * * *", async () => {
 // CRON 4: Process outbound message queue every 5 seconds
 // This is the ONLY code path that sends messages to Meta API.
 // ─────────────────────────────────────────────
-cron.schedule("*/5 * * * * *", async () => {
+cron.schedule("*/2 * * * * *", async () => {
   try {
     const sent = await processMessageQueue();
     if (sent > 0) console.log(`[${new Date().toISOString()}] SendQueue: processed ${sent} messages`);

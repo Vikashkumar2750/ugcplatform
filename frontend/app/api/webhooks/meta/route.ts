@@ -925,42 +925,16 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
-    // ── Check Follower Status ────────────────────────────────────────────
-    // PROBLEM: is_user_follow_business API requires the user to have an ACTIVE
-    // messaging thread with the business. Comment users often DON'T have one.
-    // SOLUTION: Multi-strategy follower detection:
-    //   1. is_user_follow_business API (works if they've DM'd before)
-    //   2. dm_conversations table (checks if they have prior DM history)
-    //   3. processed_comments table (checks if they've done this flow before)
+    // ── Follower check at COMMENT TIME ─────────────────────────────────
+    // Meta's is_user_follow_business API requires a MESSAGING THREAD to work.
+    // At comment time, there's no messaging thread → API always fails.
+    // So when require_follow=ON, we ALWAYS send the follow prompt at comment time.
+    // The real follower check happens in the DONE handler (after messaging thread exists).
     let isFollowing = false;
-    if (shouldDM && rule.action_config?.require_follow && commentorId && token) {
-      // Check follower status via Meta API (is_user_follow_business)
-      // NOTE: This API requires a messaging thread to work reliably.
-      // For first-time commenters (no prior DM), it will likely fail → safe default = not following.
-      // After DONE is tapped, messaging thread exists → API works reliably.
-      try {
-        const url = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        console.log(`[Webhook] 👤 Follower check API for ${commentorId}: ${JSON.stringify(data)}`);
-        
-        if (data.is_user_follow_business === true) {
-          isFollowing = true;
-          console.log(`[Webhook] 👤 User IS following (API confirmed)`);
-        } else if (data.error) {
-          // API failed (no messaging consent yet) → default to not following
-          console.warn(`[Webhook] 👤 Follower API failed: ${data.error.message} — defaulting to NOT following`);
-          isFollowing = false;
-        } else {
-          console.log(`[Webhook] 👤 is_user_follow_business = ${data.is_user_follow_business} — NOT following`);
-          isFollowing = false;
-        }
-      } catch (err: any) {
-        console.warn(`[Webhook] 👤 Follower check error: ${err.message} — defaulting to NOT following`);
-        isFollowing = false;
-      }
-
-      console.log(`[Webhook] 👤 Final follower status: isFollowing=${isFollowing}`);
+    if (shouldDM && rule.action_config?.require_follow) {
+      // Always NOT following at comment time — follower check happens in DONE handler
+      isFollowing = false;
+      console.log(`[Webhook] 👤 require_follow=ON → will send follow prompt (follower check deferred to DONE handler)`);
     }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
@@ -969,8 +943,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     const finalReplyText = randomReply || rule.action_config?.reply_text;
     
     if (shouldReply && finalReplyText) {
-      // Add a random 2-5 second delay to mimic human behavior without feeling broken
-      const replyDelayMs = randomGaussianDelayMs(2, 5) + getSleepCycleDelayMs(undefined, antiBotEnabled);
+      // Add a short 1-2 second delay — fast response
+      const replyDelayMs = randomGaussianDelayMs(1, 2) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       const spunReplyText = parseSpintax(finalReplyText);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
 
@@ -1050,9 +1024,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         console.log(`[Webhook] 📤 Sending DIRECT DM with content — text="${dmText?.substring(0, 50)}" link=${rule.action_config?.link || 'none'}`);
       }
       
-      // Add a random 3-8 second delay — DM comes AFTER the public reply
-      // This mimics: person sees comment → writes reply → then sends DM
-      const dmDelayMs = randomGaussianDelayMs(3, 8) + getSleepCycleDelayMs(undefined, antiBotEnabled);
+      // Add a short 1.5-3 second delay — DM comes right after the public reply
+      const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
       const enqueueResult = await enqueueViaBackend({
