@@ -995,20 +995,39 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── STEP 1: Send Follow Prompt ──
-        // IMPORTANT: Instagram Private Reply only supports PLAIN TEXT.
-        // No quick_replies, no template buttons, no attachments.
-        // User must TYPE 'done' to trigger the DONE handler.
+        // ── STEP 1: Send Follow Prompt (2-message approach) ──
+        // Instagram Private Reply only supports PLAIN TEXT (no buttons).
+        // So we send 2 messages:
+        //   1. Private Reply (plain text) → opens the conversation thread
+        //   2. Follow-up Standard DM (with DONE quick_reply chip) → tappable button
+        
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me and reply 'DONE' to get the link!");
+        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me to get the link!");
         if (pageAccount?.platform_username) {
           dmText += `\n\n👉 instagram.com/${pageAccount?.platform_username}`;
         }
-        // NO quick_replies — Instagram Private Reply doesn't support them
+        // NO quick_replies for private_reply — they'll be in the follow-up DM
         quickReplies = undefined;
         dmLink = undefined;
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, user must type DONE)`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text private reply + follow-up DM with DONE chip)`);
+        
+        // Schedule the follow-up standard DM with DONE quick_reply chip
+        // This is sent 3s AFTER the private reply so the thread is established
+        const followUpDelayMs = randomGaussianDelayMs(2.5, 4) + getSleepCycleDelayMs(undefined, antiBotEnabled);
+        const doneChipDm = await enqueueViaBackend({
+          accountId: rule.account_id || pageAccount?.id,
+          userId: rule.user_id,
+          recipientId: commentorId,  // commenter's IGSID — standard DM, NOT comment_id
+          messagePayload: { 
+            text: "Tap 'DONE ✅' below after following! 👇",
+            quick_replies: [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }]
+          },
+          messageType: "dm",   // Standard DM — supports quick_replies!
+          automationRuleId: rule.id,
+          scheduledSendAt: scheduledSendAt(followUpDelayMs + 2000), // 2s after the private reply
+        });
+        console.log(`[Webhook] 📤 DONE chip DM scheduled for ${followUpDelayMs / 1000 + 2}s later: ${JSON.stringify(doneChipDm)}`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
