@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { name, type, platform = "instagram", keywords, replyText, replyTexts, dmMessage, dmMessages, dmLink, dmLinkLabel, delay, matchType, mediaId, mediaThumb, mediaCaption, mediaIds, actionsEnabled, hide, account_id, requireFollow, followPromptMessages, followUpEnabled, followUpDelay, followUpMessages } = body;
+  const { name, type, platform = "instagram", keywords, replyText, replyTexts, dmMessage, dmMessages, dmLink, dmLinkLabel, delay, matchType, mediaId, mediaThumb, mediaCaption, mediaIds, actionsEnabled, hide, account_id, requireFollow, followPromptMessages, followUpEnabled, followUpDelay, followUpMessages, notFollowingMessages } = body;
 
   if (!name || !type) return NextResponse.json({ error: "name and type required" }, { status: 400 });
 
@@ -103,7 +103,8 @@ export async function POST(req: NextRequest) {
     follow_prompt_messages: followPromptMessages || [],
     follow_up_enabled: followUpEnabled || false,
     follow_up_delay: followUpDelay || 0,
-    follow_up_messages: followUpMessages || []
+    follow_up_messages: followUpMessages || [],
+    not_following_messages: notFollowingMessages || [],
   };
 
   // Platform comes from frontend: either a single platform (e.g., "instagram") 

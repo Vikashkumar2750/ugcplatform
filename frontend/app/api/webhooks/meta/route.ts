@@ -414,12 +414,75 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       } else {
         console.log(`[Webhook] ✅ DONE: Found rule "${rule.name}" (type=${rule.type}, require_follow=${rule.action_config?.require_follow})`);
         
-        // Send the main DM with actual content/link — works for both require_follow and non-require_follow
+        // ── Verify follower status before sending link ──
+        // After DONE is tapped, messaging thread exists → API is reliable now
+        let isFollowingNow = false;
+        let apiCheckFailed = false;
+        
+        if (rule.action_config?.require_follow && senderId && account?.access_token) {
+          try {
+            const followUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+            const followRes = await fetch(followUrl);
+            const followData = await followRes.json();
+            console.log(`[Webhook] 👤 DONE follower check: ${JSON.stringify(followData)}`);
+            
+            if (followData.is_user_follow_business === true) {
+              isFollowingNow = true;
+              console.log(`[Webhook] 👤 DONE: User IS following ✅`);
+            } else if (followData.error) {
+              console.warn(`[Webhook] 👤 DONE: Follower API error — ${followData.error.message}`);
+              apiCheckFailed = true;
+            } else {
+              console.log(`[Webhook] 👤 DONE: User is NOT following ❌`);
+              isFollowingNow = false;
+            }
+          } catch (e: any) {
+            console.warn(`[Webhook] 👤 DONE: Follower check failed — ${e.message}`);
+            apiCheckFailed = true;
+          }
+        } else {
+          // No require_follow → treat as following (skip check)
+          isFollowingNow = true;
+        }
+
+        // ── If NOT following → send reminder with DONE button ──
+        if (!isFollowingNow && !apiCheckFailed) {
+          const notFollowingMsgs = rule.action_config?.not_following_messages || [];
+          const randomReminder = notFollowingMsgs.length > 0 
+            ? notFollowingMsgs[Math.floor(Math.random() * notFollowingMsgs.length)] 
+            : undefined;
+          const reminderText = parseSpintax(randomReminder || "Oops! You haven't followed yet 😅\nFollow me first, then tap DONE again ✅");
+          
+          console.log(`[Webhook] 📤 DONE: User NOT following — sending reminder`);
+          
+          try {
+            await enqueueViaBackend({
+              accountId: rule.account_id || account.id,
+              userId: rule.user_id,
+              recipientId: senderId,
+              messagePayload: { 
+                text: reminderText,
+                quick_replies: [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }]
+              },
+              messageType: "dm",
+              automationRuleId: rule.id,
+            });
+            console.log(`[Webhook] ✅ DONE: Not-following reminder sent with DONE button`);
+          } catch (e: any) {
+            console.error(`[Webhook] ❌ DONE: Reminder send failed: ${e.message}`);
+          }
+          return; // Stop here — don't send link yet
+        }
+
+        // ── Following (or API failed → graceful fallback) → Send main DM with link ──
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
         let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
         const dmLink = rule.action_config?.link || undefined;
 
+        if (apiCheckFailed) {
+          console.log(`[Webhook] 📤 DONE: API check failed — sending link anyway (graceful fallback)`);
+        }
         console.log(`[Webhook] 📤 DONE: Sending main DM — text="${dmText?.substring(0, 50)}" link=${dmLink || 'none'}`);
 
         try {
@@ -845,7 +908,10 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     //   3. processed_comments table (checks if they've done this flow before)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId && token) {
-      // Strategy 1: Try Meta API (is_user_follow_business)
+      // Check follower status via Meta API (is_user_follow_business)
+      // NOTE: This API requires a messaging thread to work reliably.
+      // For first-time commenters (no prior DM), it will likely fail → safe default = not following.
+      // After DONE is tapped, messaging thread exists → API works reliably.
       try {
         const url = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
         const res = await fetch(url);
@@ -854,55 +920,18 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         
         if (data.is_user_follow_business === true) {
           isFollowing = true;
-          console.log(`[Webhook] 👤 Strategy 1: User IS following (API confirmed)`);
+          console.log(`[Webhook] 👤 User IS following (API confirmed)`);
         } else if (data.error) {
-          console.warn(`[Webhook] 👤 Strategy 1 FAILED: ${data.error.message} (code: ${data.error.code})`);
+          // API failed (no messaging consent yet) → default to not following
+          console.warn(`[Webhook] 👤 Follower API failed: ${data.error.message} — defaulting to NOT following`);
+          isFollowing = false;
         } else {
-          console.log(`[Webhook] 👤 Strategy 1: is_user_follow_business = ${data.is_user_follow_business}`);
+          console.log(`[Webhook] 👤 is_user_follow_business = ${data.is_user_follow_business} — NOT following`);
+          isFollowing = false;
         }
       } catch (err: any) {
-        console.warn(`[Webhook] 👤 Strategy 1 FAILED: ${err.message}`);
-      }
-
-      // Strategy 2: Check dm_conversations for prior DM history
-      // If user has messaged this account before, they likely follow
-      if (!isFollowing && pageAccount?.id) {
-        try {
-          const { data: existingConv } = await supabase
-            .from("dm_conversations")
-            .select("sender_id, message_count")
-            .eq("account_id", pageAccount.id)
-            .eq("sender_id", commentorId)
-            .maybeSingle();
-          
-          if (existingConv && (existingConv.message_count || 0) > 0) {
-            isFollowing = true;
-            console.log(`[Webhook] 👤 Strategy 2: User has prior DM history (${existingConv.message_count} msgs) — treating as follower`);
-          } else {
-            console.log(`[Webhook] 👤 Strategy 2: No DM history found for commentorId=${commentorId}`);
-          }
-        } catch (e: any) {
-          console.warn(`[Webhook] 👤 Strategy 2 FAILED: ${e.message}`);
-        }
-      }
-
-      // Strategy 3: Check if user has previously completed a DONE flow
-      if (!isFollowing) {
-        try {
-          const { data: prevDone } = await supabase
-            .from("processed_comments")
-            .select("id")
-            .eq("commentor_id", commentorId)
-            .limit(2);
-          
-          // If they have 2+ processed comments, they've done this before → likely follower
-          if (prevDone && prevDone.length > 1) {
-            isFollowing = true;
-            console.log(`[Webhook] 👤 Strategy 3: User has ${prevDone.length} prior processed comments — treating as follower`);
-          }
-        } catch (e: any) {
-          console.warn(`[Webhook] 👤 Strategy 3 FAILED: ${e.message}`);
-        }
+        console.warn(`[Webhook] 👤 Follower check error: ${err.message} — defaulting to NOT following`);
+        isFollowing = false;
       }
 
       console.log(`[Webhook] 👤 Final follower status: isFollowing=${isFollowing}`);

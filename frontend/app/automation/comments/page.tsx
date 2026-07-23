@@ -212,6 +212,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   const [followUpEnabled, setFollowUpEnabled] = useState(false);
   const [followUpDelay, setFollowUpDelay] = useState<number>(30);
   const [followUpMessages, setFollowUpMessages] = useState<string[]>([""]);
+  const [notFollowingMessages, setNotFollowingMessages] = useState<string[]>([""]); // Step 3: Not Following Reminder
 
   // Scope
   const [scope, setScope] = useState<"global" | "specific">("global");
@@ -275,6 +276,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             followUpEnabled: enableDM ? followUpEnabled : false,
             followUpDelay: (enableDM && followUpEnabled) ? followUpDelay : 0,
             followUpMessages: (enableDM && followUpEnabled) ? followUpMessages.filter(t => t.trim()) : [],
+            notFollowingMessages: (enableDM && requireFollow) ? notFollowingMessages.filter(t => t.trim()) : [],
             hide: enableHide,
             actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
             mediaIds: scope === "specific" ? selectedPosts : null,
@@ -601,6 +603,29 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                           className="w-2/3 px-4 py-2.5 rounded-xl border border-border text-sm bg-background focus:outline-none" />
                       </div>
                     </div>
+
+                    {/* Step 3: Not Following Reminder (only when requireFollow is ON) */}
+                    {requireFollow && (
+                      <div className="space-y-1.5 p-3 rounded-xl border border-red-400/20 bg-red-400/5">
+                        <label className="text-sm font-medium text-red-500 dark:text-red-400">⚠️ Step 3: Not Following Reminder</label>
+                        <p className="text-[10px] text-muted-foreground mb-2">If they tap DONE but haven&apos;t followed yet, this message is sent.</p>
+                        {notFollowingMessages.map((val, idx) => (
+                          <div key={idx} className="flex gap-2 mb-2">
+                            <textarea value={val} onChange={e => { const n = [...notFollowingMessages]; n[idx] = e.target.value; setNotFollowingMessages(n); }} rows={2}
+                              placeholder="Oops! You haven't followed yet 😅 Follow me first, then tap DONE again ✅"
+                              className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                            {notFollowingMessages.length > 1 && (
+                              <button onClick={() => setNotFollowingMessages(notFollowingMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                            )}
+                          </div>
+                        ))}
+                        {notFollowingMessages.length < 5 && (
+                          <button onClick={() => setNotFollowingMessages([...notFollowingMessages, ""])} className="text-xs text-red-500 hover:text-red-600 font-medium flex items-center gap-1">
+                            <Plus className="w-3 h-3" /> Add variation
+                          </button>
+                        )}
+                      </div>
+                    )}
                     
                     <div className="pt-2 border-t border-violet-500/10" />
 
