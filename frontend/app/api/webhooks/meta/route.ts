@@ -321,13 +321,41 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   }
 
   // ── 1. Follow requirement check — must run FIRST ───────────
-  // When user clicks DONE/custom button or types the trigger text, complete the pending require_follow flow.
-  // Matches: "done:<uuid>" (quick_reply payload), "done", "done ✅", or any custom done_button_text.
-  // Also matches "send me the access" and similar custom button texts.
+  // When user types the trigger text, complete the pending require_follow flow.
+  // Matches: "done:<uuid>" (quick_reply payload), "done", "done ✅", or custom done_button_text.
   const isDonePayload = messageText.startsWith("done:");
   const isDoneText = messageText === "done" || messageText === "done ✅" || messageText.includes("done");
-  // We'll also check against per-rule custom button text below (after rule lookup)
-  const isDoneMessage = isDonePayload || isDoneText;
+  
+  // Also check if the message matches any rule's custom done_button_text
+  // e.g., user types "send me the access" → matches rule with done_button_text="Send me the access ✅"
+  let isCustomDoneText = false;
+  let customDoneRuleId: string | undefined = undefined;
+  if (!isDonePayload && !isDoneText && account?.user_id) {
+    try {
+      const { data: followRules } = await supabase
+        .from("automation_rules")
+        .select("id, action_config")
+        .eq("user_id", account.user_id)
+        .eq("is_active", true)
+        .in("type", ["comment_automation", "comment_to_dm", "dm_keyword"])
+        .limit(20);
+      
+      for (const r of (followRules || [])) {
+        if (!r.action_config?.require_follow || !r.action_config?.done_button_text) continue;
+        const btnText = r.action_config.done_button_text.toLowerCase().replace(/[✅✓☑️\s]+$/g, "").trim();
+        if (btnText && (messageText.includes(btnText) || btnText.includes(messageText))) {
+          isCustomDoneText = true;
+          customDoneRuleId = r.id;
+          console.log(`[Webhook] 🔍 Custom DONE text matched! "${messageText}" ≈ "${btnText}" → ruleId=${r.id}`);
+          break;
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Webhook] Custom DONE text check failed: ${e.message}`);
+    }
+  }
+  
+  const isDoneMessage = isDonePayload || isDoneText || isCustomDoneText;
   
   if (isDoneMessage) {
     console.log(`[Webhook] 🔍 DONE detected! messageText="${messageText}" senderId=${senderId} pageId=${pageId}`);
@@ -339,6 +367,13 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       ruleId = messageText.split("done:")[1]?.trim();
       lookupSource = "postback_payload";
       console.log(`[Webhook] 🔍 DONE Method 1 (payload): ruleId=${ruleId}`);
+    }
+
+    // Method 1b: Custom done_button_text matched a rule directly
+    if (!ruleId && customDoneRuleId) {
+      ruleId = customDoneRuleId;
+      lookupSource = "custom_done_text";
+      console.log(`[Webhook] 🔍 DONE Method 1b (custom text): ruleId=${ruleId}`);
     }
 
     // Method 2: Check message_queue for recent private_reply sent TO this user
@@ -1025,36 +1060,19 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         // ── STEP 1: Send Follow Prompt (2-message approach) ──
         // Instagram Private Reply only supports PLAIN TEXT (no buttons).
-        // So we send 2 messages:
-        //   1. Private Reply (plain text) → opens the conversation thread
-        //   2. Follow-up Standard DM (with DONE quick_reply chip) → tappable button
+        // Instagram Private Reply ONLY supports plain text:
+        //   - NO quick_replies (buttons/chips)
+        //   - NO templates or attachments
+        //   - Can't send standard DM follow-up (user hasn't messaged us → 24h window closed)
+        // So we ask the user to TYPE the trigger text instead.
         
+        const customDoneBtnText = (rule.action_config?.done_button_text || "Send me the access").replace(/\s*[✅✓☑️]\s*$/, ""); // strip emoji for cleaner prompt
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me to get the link!");
-        // No instagram.com link — user already knows who they're talking to
-        // NO quick_replies for private_reply — they'll be in the follow-up DM
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and type "${customDoneBtnText}" to get the link!`);
         quickReplies = undefined;
         dmLink = undefined;
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text private reply + follow-up DM with DONE chip)`);
-        
-        // Schedule the follow-up standard DM with custom quick_reply chip
-        // This is sent 3s AFTER the private reply so the thread is established
-        const customDoneBtnText = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
-        const followUpDelayMs = randomGaussianDelayMs(2.5, 4) + getSleepCycleDelayMs(undefined, antiBotEnabled);
-        const doneChipDm = await enqueueViaBackend({
-          accountId: rule.account_id || pageAccount?.id,
-          userId: rule.user_id,
-          recipientId: commentorId,  // commenter's IGSID — standard DM, NOT comment_id
-          messagePayload: { 
-            text: `Tap '${customDoneBtnText}' below after following! 👇`,
-            quick_replies: [{ content_type: "text", title: customDoneBtnText, payload: `DONE:${rule.id}` }]
-          },
-          messageType: "dm",   // Standard DM — supports quick_replies!
-          automationRuleId: rule.id,
-          scheduledSendAt: scheduledSendAt(followUpDelayMs + 2000), // 2s after the private reply
-        });
-        console.log(`[Webhook] 📤 DONE chip DM scheduled for ${followUpDelayMs / 1000 + 2}s later: ${JSON.stringify(doneChipDm)}`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (single private reply — user must TYPE "${customDoneBtnText}")`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];

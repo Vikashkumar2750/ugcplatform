@@ -553,11 +553,11 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                     {requireFollow && (
                       <div className="space-y-1.5 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
                         <label className="text-sm font-medium text-amber-600 dark:text-amber-400">Step 1: Follow Prompt</label>
-                        <p className="text-[10px] text-muted-foreground mb-2">Since we can't check follows instantly, we ask them to reply 'DONE' once followed.</p>
+                        <p className="text-[10px] text-muted-foreground mb-2">User will be asked to follow you and type the trigger text (set below) to get the link.</p>
                         {followPromptMessages.map((val, idx) => (
                           <div key={idx} className="flex gap-2 mb-2">
                             <textarea value={val} onChange={e => { const n = [...followPromptMessages]; n[idx] = e.target.value; setFollowPromptMessages(n); }} rows={2}
-                              placeholder="Hey! 🎁 Please follow me and reply 'DONE' to receive the link!"
+                              placeholder={`Hey! 🎁 Follow me and type "${doneButtonText.replace(/[✅✓☑️\s]*$/g, '').trim()}" to get the link!`}
                               className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
                             {followPromptMessages.length > 1 && (
                               <button onClick={() => setFollowPromptMessages(followPromptMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
@@ -575,15 +575,15 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                     {/* Done Button Text Customization */}
                     {requireFollow && (
                       <div className="space-y-1.5 p-3 rounded-xl border border-blue-400/20 bg-blue-400/5">
-                        <label className="text-xs font-medium text-blue-500 dark:text-blue-400">✏️ Button Text (what user taps after following)</label>
+                        <label className="text-xs font-medium text-blue-500 dark:text-blue-400">✏️ Trigger Text (what user types after following)</label>
                         <input
                           value={doneButtonText}
-                          onChange={e => setDoneButtonText(e.target.value.substring(0, 20))}
-                          placeholder="Send me the access ✅"
-                          maxLength={20}
+                          onChange={e => setDoneButtonText(e.target.value.substring(0, 30))}
+                          placeholder="Send me the access"
+                          maxLength={30}
                           className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none"
                         />
-                        <p className="text-[10px] text-muted-foreground">Max 20 chars. This appears as a tappable button in the DM.</p>
+                        <p className="text-[10px] text-muted-foreground">User types this text in DM to confirm they followed. Case-insensitive.</p>
                       </div>
                     )}
 
