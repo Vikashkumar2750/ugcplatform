@@ -326,13 +326,15 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   }
 
   // ── 1. Follow requirement check — must run FIRST ───────────
-  // When user types the trigger text, complete the pending require_follow flow.
-  // Matches: "done:<uuid>" (quick_reply payload), "done", "done ✅", or custom done_button_text.
+  // When user types/taps the trigger text, complete the pending require_follow flow.
+  // Matches: "done:<uuid>" (postback payload), "done", "send me the access", or custom done_button_text.
   const isDonePayload = messageText.startsWith("done:");
-  const isDoneText = messageText === "done" || messageText === "done ✅" || messageText.includes("done");
+  const isDoneText = messageText === "done" || messageText === "done ✅" || messageText.includes("done")
+    || messageText.includes("send me the access")  // default trigger text
+    || messageText === "access";  // shorthand
   
   // Also check if the message matches any rule's custom done_button_text
-  // e.g., user types "send me the access" → matches rule with done_button_text="Send me the access ✅"
+  // e.g., user types "get my link" → matches rule with done_button_text="Get my link"
   let isCustomDoneText = false;
   let customDoneRuleId: string | undefined = undefined;
   if (!isDonePayload && !isDoneText && account?.user_id) {
@@ -346,8 +348,10 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         .limit(20);
       
       for (const r of (followRules || [])) {
-        if (!r.action_config?.require_follow || !r.action_config?.done_button_text) continue;
-        const btnText = r.action_config.done_button_text.toLowerCase().replace(/[✅✓☑️\s]+$/g, "").trim();
+        if (!r.action_config?.require_follow) continue;
+        // Use done_button_text if set, otherwise default to "send me the access"
+        const rawBtnText = r.action_config?.done_button_text || "Send me the access";
+        const btnText = rawBtnText.toLowerCase().replace(/[✅✓☑️\s]+$/g, "").trim();
         if (btnText && (messageText.includes(btnText) || btnText.includes(messageText))) {
           isCustomDoneText = true;
           customDoneRuleId = r.id;
