@@ -998,18 +998,15 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // Without instagram_manage_messages Advanced Access:
-    //   - is_user_follow_business API doesn't work
-    //   - DM webhooks aren't delivered (can't receive DONE messages)
-    //   - Standard DMs fail (can't send follow-up)
-    //   - ONLY Private Reply works (uses pages_messaging)
-    //
-    // STRATEGY: Check if this commenter already received a follow prompt
-    // from this rule (via processed_comments). If they're commenting AGAIN,
-    // they've likely followed → send the link directly via Private Reply.
+    // STRATEGY (with instagram_manage_messages permission):
+    //   - Try is_user_follow_business API → accurate follower status
+    // FALLBACK (without permission):
+    //   - First comment → always send follow prompt
+    //   - 2nd+ comment → send link (assume they followed since they came back)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId) {
-      // Check if we've already sent this user a follow prompt for this rule
+      // Step 1: Check if this is a returning commenter (got follow prompt before)
+      let isReturningCommenter = false;
       try {
         const { data: prevComments } = await supabase
           .from("processed_comments")
@@ -1018,20 +1015,46 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           .eq("commentor_id", commentorId)
           .limit(1);
         
-        if (prevComments && prevComments.length > 0) {
-          // Returning commenter — they commented before and got the follow prompt.
-          // Since they're commenting AGAIN, assume they followed → send link!
-          isFollowing = true;
-          console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} for rule "${rule.name}" — previously got follow prompt → sending link directly`);
-        } else {
-          // First time commenter — send follow prompt
-          isFollowing = false;
-          console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
-        }
+        isReturningCommenter = (prevComments && prevComments.length > 0);
       } catch (e: any) {
-        // If processed_comments table doesn't exist, default to NOT following
+        console.warn(`[Webhook] 👤 processed_comments check failed: ${e.message}`);
+      }
+      
+      if (!isReturningCommenter) {
+        // First time commenter — always send follow prompt
         isFollowing = false;
-        console.warn(`[Webhook] 👤 Follower check via processed_comments failed: ${e.message}`);
+        console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
+      } else {
+        // Returning commenter — they got the follow prompt before.
+        // Step 2: TRY the real follower check API (requires instagram_manage_messages)
+        let apiCheckDone = false;
+        try {
+          const followUrl = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
+          const followRes = await fetch(followUrl);
+          const followData = await followRes.json();
+          
+          if (followData.is_user_follow_business === true) {
+            isFollowing = true;
+            apiCheckDone = true;
+            console.log(`[Webhook] 👤 API CONFIRMED: commenter ${commentorId} IS following ✅`);
+          } else if (followData.is_user_follow_business === false) {
+            isFollowing = false;
+            apiCheckDone = true;
+            console.log(`[Webhook] 👤 API CONFIRMED: commenter ${commentorId} NOT following ❌ — sending follow prompt again`);
+          } else if (followData.error) {
+            console.log(`[Webhook] 👤 Follower API unavailable (${followData.error.code}): ${followData.error.message?.substring(0, 60)}`);
+            // API failed — fall through to fallback
+          }
+        } catch (e: any) {
+          console.warn(`[Webhook] 👤 Follower API fetch error: ${e.message}`);
+        }
+        
+        if (!apiCheckDone) {
+          // Fallback: API unavailable (no instagram_manage_messages permission)
+          // Returning commenter → assume they followed since they came back
+          isFollowing = true;
+          console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — follower API unavailable, assuming followed (fallback)`);
+        }
       }
     }
 
