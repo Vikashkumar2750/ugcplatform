@@ -461,8 +461,12 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     }));
   }
 
-  const endpoint = `https://graph.facebook.com/v21.0/me/messages`;
-  console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (igUserId=${igUserId})`);
+  // Use the IG business account ID (or page ID) as the sender endpoint
+  // Instagram API requires /{igUserId}/messages, NOT /me/messages
+  const senderId = igUserId || input.pageId || "me";
+  const endpoint = `https://graph.facebook.com/v21.0/${senderId}/messages`;
+  console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (sender=${senderId}, igUserId=${igUserId})`);
+
 
   const res = await fetch(
     `${endpoint}?access_token=${token}`,

@@ -639,7 +639,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
         dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
-        dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
+        dmLink = undefined;
         quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
         
         // Log to processed_comments so the "DONE" check can find this rule
@@ -725,9 +725,6 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
         dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
-        if (account.platform_username) {
-          dmText += `\n\ninstagram.com/${account.platform_username}`;
-        }
         dmLink = undefined;
         quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
       } else {
@@ -1035,9 +1032,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me to get the link!");
-        if (pageAccount?.platform_username) {
-          dmText += `\n\n👉 instagram.com/${pageAccount?.platform_username}`;
-        }
+        // No instagram.com link — user already knows who they're talking to
         // NO quick_replies for private_reply — they'll be in the follow-up DM
         quickReplies = undefined;
         dmLink = undefined;
