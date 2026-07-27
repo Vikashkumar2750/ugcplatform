@@ -998,15 +998,41 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // Meta's is_user_follow_business API requires a MESSAGING THREAD to work.
-    // At comment time, there's no messaging thread → API always fails.
-    // So when require_follow=ON, we ALWAYS send the follow prompt at comment time.
-    // The real follower check happens in the DONE handler (after messaging thread exists).
+    // Without instagram_manage_messages Advanced Access:
+    //   - is_user_follow_business API doesn't work
+    //   - DM webhooks aren't delivered (can't receive DONE messages)
+    //   - Standard DMs fail (can't send follow-up)
+    //   - ONLY Private Reply works (uses pages_messaging)
+    //
+    // STRATEGY: Check if this commenter already received a follow prompt
+    // from this rule (via processed_comments). If they're commenting AGAIN,
+    // they've likely followed → send the link directly via Private Reply.
     let isFollowing = false;
-    if (shouldDM && rule.action_config?.require_follow) {
-      // Always NOT following at comment time — follower check happens in DONE handler
-      isFollowing = false;
-      console.log(`[Webhook] 👤 require_follow=ON → will send follow prompt (follower check deferred to DONE handler)`);
+    if (shouldDM && rule.action_config?.require_follow && commentorId) {
+      // Check if we've already sent this user a follow prompt for this rule
+      try {
+        const { data: prevComments } = await supabase
+          .from("processed_comments")
+          .select("id")
+          .eq("rule_id", rule.id)
+          .eq("commentor_id", commentorId)
+          .limit(1);
+        
+        if (prevComments && prevComments.length > 0) {
+          // Returning commenter — they commented before and got the follow prompt.
+          // Since they're commenting AGAIN, assume they followed → send link!
+          isFollowing = true;
+          console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} for rule "${rule.name}" — previously got follow prompt → sending link directly`);
+        } else {
+          // First time commenter — send follow prompt
+          isFollowing = false;
+          console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
+        }
+      } catch (e: any) {
+        // If processed_comments table doesn't exist, default to NOT following
+        isFollowing = false;
+        console.warn(`[Webhook] 👤 Follower check via processed_comments failed: ${e.message}`);
+      }
     }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
