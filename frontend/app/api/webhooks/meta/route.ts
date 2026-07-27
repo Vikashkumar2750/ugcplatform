@@ -9,6 +9,23 @@ const META_APP_SECRET = process.env.META_APP_SECRET!;
 const BACKEND_URL = process.env.RENDER_WORKER_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
+// ── Decrypt access tokens (same algorithm as backend/src/services/crypto.ts) ──
+function decryptToken(data: string): string {
+  try {
+    const secret = process.env.API_KEY_SECRET;
+    if (!secret) return data; // No secret — token is plain text
+    const parts = data.split(":");
+    if (parts.length !== 3) return data; // Not encrypted format — use as-is
+    const [ivHex, tagHex, encryptedHex] = parts;
+    const key = crypto.scryptSync(secret, "contentiq_salt_v1", 32);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return decipher.update(Buffer.from(encryptedHex, "hex")).toString("utf8") + decipher.final("utf8");
+  } catch {
+    return data; // Decryption failed — token might be plain text (pre-migration)
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Keyword matching — use WORD BOUNDARY regex, not substring includes().
 // This prevents "test5" keyword matching "test55" comment ("test55".includes("test5") === true).
@@ -303,10 +320,14 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     return;
   }
 
-  // ── 1. Follow requirement check ("DONE") — must run FIRST ───────────
-  // When user clicks DONE button or types "done", complete the pending require_follow flow.
-  // This MUST run before keyword matching, otherwise "done" could match a keyword rule.
-  const isDoneMessage = messageText.startsWith("done:") || messageText === "done" || messageText === "done ✅" || messageText.includes("done");
+  // ── 1. Follow requirement check — must run FIRST ───────────
+  // When user clicks DONE/custom button or types the trigger text, complete the pending require_follow flow.
+  // Matches: "done:<uuid>" (quick_reply payload), "done", "done ✅", or any custom done_button_text.
+  // Also matches "send me the access" and similar custom button texts.
+  const isDonePayload = messageText.startsWith("done:");
+  const isDoneText = messageText === "done" || messageText === "done ✅" || messageText.includes("done");
+  // We'll also check against per-rule custom button text below (after rule lookup)
+  const isDoneMessage = isDonePayload || isDoneText;
   
   if (isDoneMessage) {
     console.log(`[Webhook] 🔍 DONE detected! messageText="${messageText}" senderId=${senderId} pageId=${pageId}`);
@@ -314,7 +335,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     let lookupSource = "none";
     
     // Method 1: Extract rule ID from postback/quick_reply payload (e.g. "done:<uuid>")
-    if (messageText.startsWith("done:")) {
+    if (isDonePayload) {
       ruleId = messageText.split("done:")[1]?.trim();
       lookupSource = "postback_payload";
       console.log(`[Webhook] 🔍 DONE Method 1 (payload): ruleId=${ruleId}`);
@@ -447,7 +468,9 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         
         if (rule.action_config?.require_follow && senderId && account?.access_token) {
           try {
-            const followUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+            // CRITICAL: Decrypt the token before using it for Meta API
+            const decryptedToken = decryptToken(account.access_token);
+            const followUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${decryptedToken}`;
             const followRes = await fetch(followUrl);
             const followData = await followRes.json();
             console.log(`[Webhook] 👤 DONE follower check: ${JSON.stringify(followData)}`);
@@ -471,15 +494,16 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
           isFollowingNow = true;
         }
 
-        // ── If NOT following → send reminder with DONE button ──
+        // ── If NOT following → send reminder with custom button ──
         if (!isFollowingNow && !apiCheckFailed) {
+          const customBtnText = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
           const notFollowingMsgs = rule.action_config?.not_following_messages || [];
           const randomReminder = notFollowingMsgs.length > 0 
             ? notFollowingMsgs[Math.floor(Math.random() * notFollowingMsgs.length)] 
             : undefined;
-          const reminderText = parseSpintax(randomReminder || "Oops! You haven't followed yet 😅\nFollow me first, then tap DONE again ✅");
+          const reminderText = parseSpintax(randomReminder || `Oops! You haven't followed yet 😅\nFollow me first, then tap '${customBtnText}' again!`);
           
-          console.log(`[Webhook] 📤 DONE: User NOT following — sending reminder`);
+          console.log(`[Webhook] 📤 DONE: User NOT following — sending reminder with button "${customBtnText}"`);
           
           try {
             await enqueueViaBackend({
@@ -488,12 +512,12 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
               recipientId: senderId,
               messagePayload: { 
                 text: reminderText,
-                quick_replies: [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }]
+                quick_replies: [{ content_type: "text", title: customBtnText, payload: `DONE:${rule.id}` }]
               },
               messageType: "dm",
               automationRuleId: rule.id,
             });
-            console.log(`[Webhook] ✅ DONE: Not-following reminder sent with DONE button`);
+            console.log(`[Webhook] ✅ DONE: Not-following reminder sent with button "${customBtnText}"`);
           } catch (e: any) {
             console.error(`[Webhook] ❌ DONE: Reminder send failed: ${e.message}`);
           }
@@ -591,7 +615,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       let isFollowing = false;
       if (rule.action_config?.require_follow && account?.access_token) {
         try {
-          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+          const decToken = decryptToken(account.access_token);
+          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${decToken}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data.is_user_follow_business === true) {
@@ -612,10 +637,10 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and click 'DONE' to get the link!");
+        const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
+        dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
         dmLink = account.platform_username ? `https://instagram.com/${account.platform_username}` : undefined;
-        // FIXED: Include rule.id in DONE payload so handler can find the correct rule
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
+        quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
         
         // Log to processed_comments so the "DONE" check can find this rule
         try {
@@ -676,7 +701,8 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       let isFollowing = false;
       if (rule.action_config?.require_follow && account?.access_token) {
         try {
-          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${account.access_token}`;
+          const decToken = decryptToken(account.access_token);
+          const url = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${decToken}`;
           const res = await fetch(url);
           const data = await res.json();
           if (data.is_user_follow_business === true) {
@@ -697,13 +723,13 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Please follow me and reply 'DONE' to get the link!");
+        const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
+        dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
         if (account.platform_username) {
           dmText += `\n\ninstagram.com/${account.platform_username}`;
         }
         dmLink = undefined;
-        // FIXED: Include rule.id in DONE payload
-        quickReplies = [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }];
+        quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
@@ -893,6 +919,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] Using pageAccount token as fallback for rule "${rule.name}"`);
     }
 
+    // CRITICAL: Decrypt the token — it's stored encrypted in DB
+    if (token) {
+      token = decryptToken(token);
+    }
+
     if (!token) {
       console.error(`[Webhook] ❌ No token available for rule "${rule.name}" — cannot execute`);
       continue;
@@ -1012,16 +1043,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         dmLink = undefined;
         console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text private reply + follow-up DM with DONE chip)`);
         
-        // Schedule the follow-up standard DM with DONE quick_reply chip
+        // Schedule the follow-up standard DM with custom quick_reply chip
         // This is sent 3s AFTER the private reply so the thread is established
+        const customDoneBtnText = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
         const followUpDelayMs = randomGaussianDelayMs(2.5, 4) + getSleepCycleDelayMs(undefined, antiBotEnabled);
         const doneChipDm = await enqueueViaBackend({
           accountId: rule.account_id || pageAccount?.id,
           userId: rule.user_id,
           recipientId: commentorId,  // commenter's IGSID — standard DM, NOT comment_id
           messagePayload: { 
-            text: "Tap 'DONE ✅' below after following! 👇",
-            quick_replies: [{ content_type: "text", title: "DONE ✅", payload: `DONE:${rule.id}` }]
+            text: `Tap '${customDoneBtnText}' below after following! 👇`,
+            quick_replies: [{ content_type: "text", title: customDoneBtnText, payload: `DONE:${rule.id}` }]
           },
           messageType: "dm",   // Standard DM — supports quick_replies!
           automationRuleId: rule.id,

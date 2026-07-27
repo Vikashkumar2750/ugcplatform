@@ -213,6 +213,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
   const [followUpDelay, setFollowUpDelay] = useState<number>(30);
   const [followUpMessages, setFollowUpMessages] = useState<string[]>([""]);
   const [notFollowingMessages, setNotFollowingMessages] = useState<string[]>([""]); // Step 3: Not Following Reminder
+  const [doneButtonText, setDoneButtonText] = useState("Send me the access ✅"); // Customizable DONE button text
 
   // Scope
   const [scope, setScope] = useState<"global" | "specific">("global");
@@ -277,6 +278,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
             followUpDelay: (enableDM && followUpEnabled) ? followUpDelay : 0,
             followUpMessages: (enableDM && followUpEnabled) ? followUpMessages.filter(t => t.trim()) : [],
             notFollowingMessages: (enableDM && requireFollow) ? notFollowingMessages.filter(t => t.trim()) : [],
+            doneButtonText: (enableDM && requireFollow) ? doneButtonText.trim() || "Send me the access ✅" : undefined,
             hide: enableHide,
             actionsEnabled: { reply: enableReply, dm: enableDM, hide: enableHide },
             mediaIds: scope === "specific" ? selectedPosts : null,
@@ -567,6 +569,21 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                             <Plus className="w-3 h-3" /> Add variation
                           </button>
                         )}
+                      </div>
+                    )}
+
+                    {/* Done Button Text Customization */}
+                    {requireFollow && (
+                      <div className="space-y-1.5 p-3 rounded-xl border border-blue-400/20 bg-blue-400/5">
+                        <label className="text-xs font-medium text-blue-500 dark:text-blue-400">✏️ Button Text (what user taps after following)</label>
+                        <input
+                          value={doneButtonText}
+                          onChange={e => setDoneButtonText(e.target.value.substring(0, 20))}
+                          placeholder="Send me the access ✅"
+                          maxLength={20}
+                          className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Max 20 chars. This appears as a tappable button in the DM.</p>
                       </div>
                     )}
 

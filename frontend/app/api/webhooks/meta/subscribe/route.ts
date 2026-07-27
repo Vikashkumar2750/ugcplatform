@@ -17,6 +17,24 @@ function getServiceClient() {
   );
 }
 
+// Decrypt access tokens (same algorithm as backend/src/services/crypto.ts)
+import crypto from "crypto";
+function decryptToken(data: string): string {
+  try {
+    const secret = process.env.API_KEY_SECRET;
+    if (!secret) return data;
+    const parts = data.split(":");
+    if (parts.length !== 3) return data;
+    const [ivHex, tagHex, encryptedHex] = parts;
+    const key = crypto.scryptSync(secret, "contentiq_salt_v1", 32);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return decipher.update(Buffer.from(encryptedHex, "hex")).toString("utf8") + decipher.final("utf8");
+  } catch {
+    return data;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { createClient: createServerClient } = await import("@/lib/supabase/server");
   const supabaseAuth = await createServerClient();
@@ -44,8 +62,9 @@ export async function GET(request: NextRequest) {
 
   for (const acc of (accounts || [])) {
     try {
+      const decToken = decryptToken(acc.access_token);
       const res = await fetch(
-        `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps?access_token=${acc.access_token}`
+        `https://graph.facebook.com/v21.0/${acc.page_id}/subscribed_apps?access_token=${decToken}`
       );
       const data = await res.json();
       results.push({
@@ -123,7 +142,7 @@ export async function POST(request: NextRequest) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               subscribed_fields: fields,
-              access_token: acc.access_token,
+              access_token: decryptToken(acc.access_token),
             }),
           }
         );
@@ -155,7 +174,7 @@ export async function POST(request: NextRequest) {
       console.log(`[Subscribe] Attempting page token fix for ${acc.page_name}...`);
       try {
         const pagesRes = await fetch(
-          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${acc.access_token}`
+          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${decryptToken(acc.access_token)}`
         );
         const pagesData = await pagesRes.json();
 

@@ -550,6 +550,34 @@ function PlatformTweakCard({ platform, tweaks, onChange, rules, isReel, useBaseC
               </div>
             </div>
           )}
+
+          {platform === "facebook" && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">First Comment (Hashtags)</label>
+                <input
+                  value={tweaks.firstComment || ""}
+                  onChange={e => onChange({ firstComment: e.target.value })}
+                  placeholder="#marketing #business"
+                  className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:border-amber-500/50 transition"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Bot className="w-3.5 h-3.5 text-violet-400" /> DM Automation
+                </label>
+                <select 
+                  value={tweaks.dmAutomationId || ""} 
+                  onChange={e => onChange({ dmAutomationId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-background focus:outline-none focus:border-violet-500/50 transition"
+                >
+                  <option value="">No automation</option>
+                  {rules.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
