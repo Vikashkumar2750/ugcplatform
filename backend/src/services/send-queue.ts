@@ -43,6 +43,10 @@ export interface MessagePayload {
     title: string;
     payload: string;
   }>;
+  postback_button?: {
+    title: string;
+    payload: string;
+  };
 }
 
 export interface EnqueueResult {
@@ -384,10 +388,33 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
           }],
         },
       };
+    } else if (payload.postback_button) {
+      // Generic Template with POSTBACK button — used for require_follow flows
+      // When tapped → messaging_postbacks webhook fires with the payload
+      let title = payload.text;
+      let subtitle = "";
+      if (title.length > 80) {
+        title = payload.text.substring(0, 80);
+        subtitle = payload.text.substring(80, 160);
+      }
+      (privateReplyBody.message as Record<string, unknown>).attachment = {
+        type: "template",
+        payload: {
+          template_type: "generic",
+          elements: [{
+            title,
+            ...(subtitle ? { subtitle } : {}),
+            buttons: [{
+              type: "postback",
+              title: payload.postback_button.title.substring(0, 20),
+              payload: payload.postback_button.payload,
+            }],
+          }],
+        },
+      };
+      console.log(`[SendQueue] Private Reply with POSTBACK button: "${payload.postback_button.title}" payload=${payload.postback_button.payload}`);
     } else if (payload.quick_replies?.length) {
-      // Send as actual quick_replies (suggestion chips) — Instagram supports these natively
-      // When tapped, they generate a message.quick_reply webhook event (NOT messaging_postbacks)
-      // This is the correct way to handle DONE buttons on Instagram
+      // Send as actual quick_replies (suggestion chips)
       (privateReplyBody.message as Record<string, unknown>).text = payload.text;
       (privateReplyBody.message as Record<string, unknown>).quick_replies = payload.quick_replies.map(qr => ({
         content_type: qr.content_type || "text",

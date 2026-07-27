@@ -1058,21 +1058,26 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── STEP 1: Send Follow Prompt (2-message approach) ──
-        // Instagram Private Reply only supports PLAIN TEXT (no buttons).
-        // Instagram Private Reply ONLY supports plain text:
-        //   - NO quick_replies (buttons/chips)
-        //   - NO templates or attachments
-        //   - Can't send standard DM follow-up (user hasn't messaged us → 24h window closed)
-        // So we ask the user to TYPE the trigger text instead.
+        // ── Send Follow Prompt with POSTBACK BUTTON ──
+        // Instagram Private Reply supports Generic Template with postback buttons.
+        // When user taps the button → messaging_postbacks webhook fires with payload.
         
-        const customDoneBtnText = (rule.action_config?.done_button_text || "Send me the access").replace(/\s*[✅✓☑️]\s*$/, ""); // strip emoji for cleaner prompt
+        const customDoneBtnText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and type "${customDoneBtnText}" to get the link!`);
+        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me to get the link!");
         quickReplies = undefined;
         dmLink = undefined;
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (single private reply — user must TYPE "${customDoneBtnText}")`);
+        
+        // Pass postback button info — send-queue will build Generic Template
+        // The postback payload "DONE:<ruleId>" will trigger the DONE handler
+        const postbackButton = {
+          type: "postback" as const,
+          title: customDoneBtnText,
+          payload: `DONE:${rule.id}`,
+        };
+        
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT with postback button "${customDoneBtnText}"`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
@@ -1095,11 +1100,23 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
+      // Build message payload — include postback button if require_follow is active
+      const msgPayload: any = { text: dmText, link: dmLink, button_label: rule.action_config?.button_label };
+      
+      // If require_follow and NOT bypassed, add postback button for Generic Template
+      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
+        const customBtnText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
+        msgPayload.postback_button = {
+          title: customBtnText,
+          payload: `DONE:${rule.id}`,
+        };
+      }
+
       const enqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
         recipientId: commentId,          // comment_id — NOT the user's IG ID
-        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
+        messagePayload: msgPayload,
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(dmDelayMs),
