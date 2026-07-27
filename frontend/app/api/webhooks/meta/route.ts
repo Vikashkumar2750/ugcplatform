@@ -257,17 +257,22 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   });
 
   // Find connected account for this page/IG account
-  const { data: account } = await supabase
+  const { data: account, error: accErr } = await supabase
     .from("connected_accounts")
     .select("id, user_id, access_token, platform_user_id, platform_username")
     .or(`platform_user_id.eq.${pageId},page_id.eq.${pageId}`)
     .eq("is_active", true)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
+  if (accErr) {
+    console.error(`[Webhook] Account lookup error for pageId=${pageId}: ${accErr.message}`);
+  }
   if (!account) {
     console.warn(`[Webhook] No connected account found for pageId=${pageId}`);
     return;
   }
+  console.log(`[Webhook] Account found: id=${account.id}, username=${account.platform_username}, igId=${account.platform_user_id}`);
 
   // Check opt-out
   const { data: conv } = await supabase
@@ -1194,7 +1199,7 @@ async function enqueueViaBackend(opts: {
   accountId: string;
   userId: string;
   recipientId: string;
-  messagePayload: { text: string; link?: string; button_label?: string; quick_replies?: any[] };
+  messagePayload: { text: string; link?: string; button_label?: string; quick_replies?: any[]; postback_button?: { title: string; payload: string } };
   messageType: string;
   automationRuleId?: string;
   scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)
