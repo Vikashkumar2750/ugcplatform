@@ -551,31 +551,71 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                       </div>
                     </div>
                     {requireFollow && (
-                      <div className="space-y-1.5 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                        <label className="text-sm font-medium text-amber-600 dark:text-amber-400">Step 1: Follow Prompt</label>
-                        <p className="text-[10px] text-muted-foreground mb-2">User will be asked to follow you and type the trigger text (set below) to get the link.</p>
-                        {followPromptMessages.map((val, idx) => (
-                          <div key={idx} className="flex gap-2 mb-2">
-                            <textarea value={val} onChange={e => { const n = [...followPromptMessages]; n[idx] = e.target.value; setFollowPromptMessages(n); }} rows={2}
-                              placeholder={`Hey! 🎁 Follow me and type "${doneButtonText.replace(/[✅✓☑️\s]*$/g, '').trim()}" to get the link!`}
-                              className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
-                            {followPromptMessages.length > 1 && (
-                              <button onClick={() => setFollowPromptMessages(followPromptMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
-                            )}
+                      <div className="space-y-3">
+                        {/* How it works guide */}
+                        <div className="p-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/5 to-orange-500/5">
+                          <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">📖 How Follow Gate Works</p>
+                          <div className="space-y-1.5 text-[11px] text-muted-foreground">
+                            <div className="flex gap-2 items-start">
+                              <span className="bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">1</span>
+                              <span>User comments keyword → receives your <strong>Follow Prompt</strong> as a Private Reply DM</span>
+                            </div>
+                            <div className="flex gap-2 items-start">
+                              <span className="bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">2</span>
+                              <span>User follows you, then <strong>types the Trigger Text</strong> in the DM chat</span>
+                            </div>
+                            <div className="flex gap-2 items-start">
+                              <span className="bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">3</span>
+                              <span>System verifies follow → sends the <strong>link/message</strong> automatically</span>
+                            </div>
                           </div>
-                        ))}
-                        {followPromptMessages.length < 5 && (
-                          <button onClick={() => setFollowPromptMessages([...followPromptMessages, ""])} className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
-                            <Plus className="w-3 h-3" /> Add variation
-                          </button>
-                        )}
+                          <p className="text-[10px] text-amber-600/70 dark:text-amber-500/70 mt-2 italic">
+                            ⚠️ Instagram Private Reply only supports plain text — no buttons. Your prompt must clearly tell users to TYPE the trigger text.
+                          </p>
+                        </div>
+
+                        {/* Follow Prompt with Sample Button */}
+                        <div className="space-y-1.5 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-amber-600 dark:text-amber-400">Step 1: Follow Prompt (Private Reply DM)</label>
+                            <button 
+                              onClick={() => {
+                                const triggerTxt = doneButtonText.replace(/[✅✓☑️\s]*$/g, '').trim() || "Send me the access";
+                                setFollowPromptMessages([
+                                  `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then type "${triggerTxt}" right here in this chat\n\nThat's it! You'll get instant access 🔥`,
+                                  `Hi there! 👋\n\nWant the link? Here's what to do:\n\n✅ Follow my page\n✅ Type "${triggerTxt}" in this chat\n\nI'll send it right away! 🚀`,
+                                  `Welcome! 🙌\n\nTo get your exclusive access:\n\n👉 Hit that Follow button\n👉 Come back here and type "${triggerTxt}"\n\nSimple! 💫`,
+                                ]);
+                              }}
+                              className="text-[10px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 font-medium border border-amber-500/20 transition-colors"
+                            >
+                              ✨ Use Samples (3 variations)
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mb-2">This is sent as a Private Reply DM when a non-follower comments. Must tell user to TYPE the trigger text below.</p>
+                          {followPromptMessages.map((val, idx) => (
+                            <div key={idx} className="flex gap-2 mb-2">
+                              <textarea value={val} onChange={e => { const n = [...followPromptMessages]; n[idx] = e.target.value; setFollowPromptMessages(n); }} rows={3}
+                                placeholder={`Hey! 🎁 Follow me and type "${doneButtonText.replace(/[✅✓☑️\\s]*$/g, '').trim()}" to get the link!`}
+                                className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
+                              {followPromptMessages.length > 1 && (
+                                <button onClick={() => setFollowPromptMessages(followPromptMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
+                              )}
+                            </div>
+                          ))}
+                          {followPromptMessages.length < 5 && (
+                            <button onClick={() => setFollowPromptMessages([...followPromptMessages, ""])} className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
+                              <Plus className="w-3 h-3" /> Add variation
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 
-                    {/* Done Button Text Customization */}
+                    {/* Trigger Text */}
                     {requireFollow && (
                       <div className="space-y-1.5 p-3 rounded-xl border border-blue-400/20 bg-blue-400/5">
-                        <label className="text-xs font-medium text-blue-500 dark:text-blue-400">✏️ Trigger Text (what user types after following)</label>
+                        <label className="text-xs font-medium text-blue-500 dark:text-blue-400">✏️ Trigger Text (what user types in DM after following)</label>
                         <input
                           value={doneButtonText}
                           onChange={e => setDoneButtonText(e.target.value.substring(0, 30))}
@@ -583,7 +623,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                           maxLength={30}
                           className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none"
                         />
-                        <p className="text-[10px] text-muted-foreground">User types this text in DM to confirm they followed. Case-insensitive.</p>
+                        <p className="text-[10px] text-muted-foreground">User types this exact text in the DM chat to confirm they followed. Case-insensitive. Must match the text in your Follow Prompt above.</p>
                       </div>
                     )}
 
@@ -591,7 +631,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
 
                     {/* 2. Main DM Message */}
                     <label className="text-sm font-medium flex items-center gap-2">
-                      <Send className="w-3.5 h-3.5 text-violet-500" /> {requireFollow ? "Step 2: Main DM Message (After 'DONE')" : "Main DM message to send"}
+                      <Send className="w-3.5 h-3.5 text-violet-500" /> {requireFollow ? "Step 2: Main DM Message (sent after user types trigger)" : "Main DM message to send"}
                     </label>
                     {dmMessages.map((val, idx) => (
                       <div key={idx} className="flex gap-2 mb-2">
@@ -621,15 +661,15 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                       </div>
                     </div>
 
-                    {/* Step 3: Not Following Reminder (only when requireFollow is ON) */}
+                    {/* Step 3: Not Following Reminder */}
                     {requireFollow && (
                       <div className="space-y-1.5 p-3 rounded-xl border border-red-400/20 bg-red-400/5">
                         <label className="text-sm font-medium text-red-500 dark:text-red-400">⚠️ Step 3: Not Following Reminder</label>
-                        <p className="text-[10px] text-muted-foreground mb-2">If they tap DONE but haven&apos;t followed yet, this message is sent.</p>
+                        <p className="text-[10px] text-muted-foreground mb-2">If they type the trigger text but haven&apos;t followed yet, this message is sent in DM.</p>
                         {notFollowingMessages.map((val, idx) => (
                           <div key={idx} className="flex gap-2 mb-2">
                             <textarea value={val} onChange={e => { const n = [...notFollowingMessages]; n[idx] = e.target.value; setNotFollowingMessages(n); }} rows={2}
-                              placeholder="Oops! You haven't followed yet 😅 Follow me first, then tap DONE again ✅"
+                              placeholder={`Oops! You haven't followed yet 😅\nFollow me first, then type "${doneButtonText.replace(/[✅✓☑️\\s]*$/g, '').trim()}" again!`}
                               className="w-full px-4 py-2 rounded-xl border border-border text-sm bg-background focus:outline-none resize-none" />
                             {notFollowingMessages.length > 1 && (
                               <button onClick={() => setNotFollowingMessages(notFollowingMessages.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-red-500 p-2 self-start"><Trash2 className="w-4 h-4" /></button>
@@ -643,7 +683,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                         )}
                       </div>
                     )}
-                    
+
                     <div className="pt-2 border-t border-violet-500/10" />
 
                     {/* 3. Follow-up DM */}
