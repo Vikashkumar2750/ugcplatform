@@ -936,46 +936,18 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // IMPORTANT: is_user_follow_business ONLY works on Instagram Scoped IDs (IGSIDs)
-    // obtained through the messaging API. At comment time, we only have the commenter's
-    // Instagram User ID (from comment webhook), which is NOT an IGSID.
-    // Therefore, we CANNOT check follower status at comment time.
+    // IMPORTANT: We CANNOT check follower status at comment time because
+    // is_user_follow_business requires an IGSID (only available in messaging context).
     //
-    // STRATEGY:
-    //   - First comment → always send follow prompt (CTA to comment again after following)
-    //   - Returning commenter (found in processed_comments with a DIFFERENT comment) → send link
-    //   - Follower check happens ONLY in DONE handler (messaging context has IGSID)
+    // STRATEGY: Always send follow prompt at comment time when require_follow is ON.
+    // The link is ONLY sent when user replies in DM → triggers the pending follow-gate
+    // handler (line ~425) which has the IGSID and can verify follower status.
+    //
+    // This also means the same user can test multiple times without issues.
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId) {
-      let isReturningCommenter = false;
-      try {
-        // CRITICAL: Exclude the CURRENT comment_id from the query.
-        // The dedup insert (line ~914 above) already added this comment to processed_comments.
-        // Without this filter, every first-time commenter looks like a "returning" commenter
-        // because their own just-inserted row is found.
-        const { data: prevComments } = await supabase
-          .from("processed_comments")
-          .select("id")
-          .eq("rule_id", rule.id)
-          .eq("commentor_id", commentorId)
-          .neq("comment_id", commentId)  // Exclude THIS comment
-          .limit(1);
-        
-        isReturningCommenter = (prevComments && prevComments.length > 0);
-      } catch (e: any) {
-        console.warn(`[Webhook] 👤 processed_comments check failed: ${e.message}`);
-      }
-      
-      if (!isReturningCommenter) {
-        isFollowing = false;
-        console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
-      } else {
-        // Returning commenter — they came back after getting follow prompt.
-        // Since we can't verify follower status at comment time (no IGSID),
-        // send the link directly. This is the only reliable approach.
-        isFollowing = true;
-        console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — sending link (commented again after follow prompt)`);
-      }
+      isFollowing = false;  // Always false at comment time — verified in DM handler
+      console.log(`[Webhook] 👤 require_follow=true — will send follow prompt (follower check happens when user replies in DM)`);
     }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
