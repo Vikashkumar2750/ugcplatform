@@ -936,18 +936,44 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // IMPORTANT: We CANNOT check follower status at comment time because
-    // is_user_follow_business requires an IGSID (only available in messaging context).
+    // CONSTRAINT: Standard DMs fail with (#3) — instagram_manage_messages needs Advanced Access.
+    // CONSTRAINT: Messaging webhooks don't fire without instagram_manage_messages.
+    // CONSTRAINT: is_user_follow_business needs IGSID (not available at comment time).
     //
-    // STRATEGY: Always send follow prompt at comment time when require_follow is ON.
-    // The link is ONLY sent when user replies in DM → triggers the pending follow-gate
-    // handler (line ~425) which has the IGSID and can verify follower status.
-    //
-    // This also means the same user can test multiple times without issues.
+    // STRATEGY (Comment-Based Follow Gate):
+    //   1. First comment → Private Reply: "Follow me, then comment [keyword] again!"
+    //   2. User follows → comments again → returning commenter detected
+    //   3. Second comment → Private Reply: sends the link directly
+    //   We trust returning commenters because they specifically came back.
+    //   This works entirely via Private Reply (no standard DM needed).
     let isFollowing = false;
+    let isReturningCommenter = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId) {
-      isFollowing = false;  // Always false at comment time — verified in DM handler
-      console.log(`[Webhook] 👤 require_follow=true — will send follow prompt (follower check happens when user replies in DM)`);
+      try {
+        // Check if this commenter has commented before for this rule
+        // CRITICAL: Exclude the CURRENT comment_id (just inserted by dedup above)
+        const { data: prevComments } = await supabase
+          .from("processed_comments")
+          .select("id")
+          .eq("rule_id", rule.id)
+          .eq("commentor_id", commentorId)
+          .neq("comment_id", commentId)  // Exclude THIS comment
+          .limit(1);
+        
+        isReturningCommenter = (prevComments && prevComments.length > 0);
+      } catch (e: any) {
+        console.warn(`[Webhook] 👤 processed_comments check failed: ${e.message}`);
+      }
+
+      if (isReturningCommenter) {
+        // Returning commenter — they came back after the follow prompt.
+        // Trust them and send the link directly via Private Reply.
+        isFollowing = true;
+        console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — sending link via Private Reply`);
+      } else {
+        isFollowing = false;
+        console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
+      }
     }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
@@ -1009,17 +1035,20 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         // ── Send Follow Prompt as PLAIN TEXT ──
-        // Instagram Private Reply only supports plain text (no buttons).
-        // ANY reply from the user will trigger the follower check.
-        // So the prompt just needs to say: follow + reply anything.
+        // Standard DMs and messaging webhooks don't work without instagram_manage_messages
+        // Advanced Access. So the flow is entirely comment-based:
+        //   → Follow me → comment [keyword] again → link delivered via Private Reply
+        const keywords: string[] = rule.trigger_config?.keywords || [];
+        const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
+        
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         
         // Use custom message if configured, otherwise generate a clear default
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then reply anything here (even just "hi")\n\nI'll send you the link instantly! 🔥`);
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then comment ${keywordHint} again on the post\n\nI'll send you the link right away! 🔥`);
         dmLink = undefined;
         
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, any-reply trigger)`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (comment-again flow, keyword=${keywordHint})`);
 
       } else {
         // ── Direct DM (no follow required or already following) ──
