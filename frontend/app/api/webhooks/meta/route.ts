@@ -1090,6 +1090,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     if (shouldDM && commentorId && commentId) {
       let dmText = "";
       let dmLink = undefined;
+      let msgPayload_quickReplies: any[] | undefined = undefined;
 
       // If require_follow is true BUT they are already following, act like it's a standard rule
       const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
@@ -1097,19 +1098,22 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Send Follow Prompt as PLAIN TEXT ──
-        // IMPORTANT: Private Reply is a ONE-MESSAGE feature.
-        // Postback buttons in Private Reply do NOT trigger messaging_postbacks webhook.
-        // Instead, send plain text asking user to follow + comment the keyword again.
-        const keywords: string[] = rule.trigger_config?.keywords || [];
-        const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
+        // ── Send Follow Prompt with Quick Reply ──
+        // Private Reply supports quick_replies. When user taps a quick reply,
+        // it sends the title text as a regular MESSAGE (not postback).
+        // The DONE handler at line ~328 catches this text and processes the flow.
+        const triggerText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
         
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n👉 Follow me first, then comment ${keywordHint} again to get instant access!\n\n(This ensures you don't miss any updates! 🙌)`);
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and type "${triggerText}" to get the link!`);
         dmLink = undefined;
         
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, no button — Private Reply limitation)`);
+        // Add quick reply so user can TAP instead of typing
+        // When tapped, it sends the triggerText as a regular message → DONE handler catches it
+        msgPayload_quickReplies = [{ content_type: "text", title: triggerText, payload: `DONE:${rule.id}` }];
+        
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT with Quick Reply "${triggerText}" (Private Reply)`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
@@ -1129,8 +1133,13 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
-      // Build message payload — plain text for follow prompt, link template for direct DM
-      const msgPayload: any = { text: dmText, link: dmLink, button_label: rule.action_config?.button_label };
+      // Build message payload — include quick_replies for follow prompt
+      const msgPayload: any = { 
+        text: dmText, 
+        link: dmLink, 
+        button_label: rule.action_config?.button_label,
+        quick_replies: msgPayload_quickReplies,
+      };
       // NOTE: No postback_button — Private Reply postbacks don't trigger webhooks
 
       // Generate idempotency key to prevent duplicate messages on webhook retries
