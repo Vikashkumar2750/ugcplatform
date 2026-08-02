@@ -56,6 +56,7 @@ router.post("/enqueue", async (req: Request, res: Response) => {
   const {
     accountId, recipientId, messagePayload,
     messageType, automationRuleId, messageTag, priority, scheduledSendAt,
+    idempotencyKey,
   } = req.body;
 
   if (!accountId || !recipientId || !messagePayload?.text) {
@@ -75,6 +76,7 @@ router.post("/enqueue", async (req: Request, res: Response) => {
       messageTag,
       priority,
       scheduledSendAt,
+      idempotencyKey,
     });
 
     return res.json(result);

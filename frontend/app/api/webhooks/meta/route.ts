@@ -50,11 +50,13 @@ function getServiceClient() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Webhook event deduplication (in-memory, per serverless instance)
-// Prevents processing the same event twice if Meta retries.
+// Webhook event deduplication
+// NOTE: In-memory dedup does NOT work in Vercel serverless (new instance per request).
+// Real dedup is handled by processed_comments table unique constraint.
+// We keep a lightweight per-invocation set only to prevent double-processing
+// within a single webhook payload that contains duplicate entries.
 // ─────────────────────────────────────────────────────────────
-const processedEvents = new Set<string>();
-const MAX_DEDUP_SIZE = 5000;
+const processedEntriesThisRequest = new Set<string>();
 
 function getEventFingerprint(entry: any): string {
   const id = entry.id || "";
@@ -137,18 +139,13 @@ export async function POST(request: NextRequest) {
 
 
     for (const entry of (body.entry || [])) {
-      // ── Deduplication: skip if we've already processed this entry ──
+      // ── Deduplication: skip if we've already processed this entry in THIS request ──
       const fingerprint = getEventFingerprint(entry);
-      if (processedEvents.has(fingerprint)) {
-        console.log(`[Webhook] Skipping duplicate entry: ${fingerprint}`);
+      if (processedEntriesThisRequest.has(fingerprint)) {
+        console.log(`[Webhook] Skipping duplicate entry within same request: ${fingerprint}`);
         continue;
       }
-      processedEvents.add(fingerprint);
-      // Prune dedup set to prevent memory leak
-      if (processedEvents.size > MAX_DEDUP_SIZE) {
-        const toDelete = [...processedEvents].slice(0, 1000);
-        toDelete.forEach(k => processedEvents.delete(k));
-      }
+      processedEntriesThisRequest.add(fingerprint);
 
       const pageId: string = entry.id;
       console.log(`[Webhook] Processing entry id=${pageId} | changes=${entry.changes?.length || 0} | messaging=${entry.messaging?.length || 0}`);
@@ -506,18 +503,18 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         console.log(`[Webhook] ✅ DONE: Found rule "${rule.name}" (type=${rule.type}, require_follow=${rule.action_config?.require_follow})`);
         
         // ── Verify follower status before sending link ──
-        // After DONE is tapped, messaging thread exists → API is reliable now
+        // In messaging context, senderId IS an Instagram Scoped ID (IGSID).
+        // is_user_follow_business works correctly here because user has messaging consent.
         let isFollowingNow = false;
         let apiCheckFailed = false;
         
         if (rule.action_config?.require_follow && senderId && account?.access_token) {
           try {
-            // CRITICAL: Decrypt the token before using it for Meta API
             const decryptedToken = decryptToken(account.access_token);
             const followUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${decryptedToken}`;
             const followRes = await fetch(followUrl);
             const followData = await followRes.json();
-            console.log(`[Webhook] 👤 DONE follower check: ${JSON.stringify(followData)}`);
+            console.log(`[Webhook] 👤 DONE follower check (IGSID=${senderId}): ${JSON.stringify(followData)}`);
             
             if (followData.is_user_follow_business === true) {
               isFollowingNow = true;
@@ -538,30 +535,31 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
           isFollowingNow = true;
         }
 
-        // ── If NOT following → send reminder with custom button ──
+        // ── If NOT following → send plain text reminder ──
+        // NOTE: We send plain text (no quick_replies/buttons) because standard DMs
+        // may fail with (#3) if instagram_manage_messages isn't fully approved.
+        // Plain text is the safest option.
         if (!isFollowingNow && !apiCheckFailed) {
-          const customBtnText = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
+          const keywords: string[] = rule.trigger_config?.keywords || [];
+          const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
           const notFollowingMsgs = rule.action_config?.not_following_messages || [];
           const randomReminder = notFollowingMsgs.length > 0 
             ? notFollowingMsgs[Math.floor(Math.random() * notFollowingMsgs.length)] 
             : undefined;
-          const reminderText = parseSpintax(randomReminder || `Oops! You haven't followed yet 😅\nFollow me first, then tap '${customBtnText}' again!`);
+          const reminderText = parseSpintax(randomReminder || `Oops! You haven't followed yet 😅\nFollow me first, then comment ${keywordHint} again on the post!`);
           
-          console.log(`[Webhook] 📤 DONE: User NOT following — sending reminder with button "${customBtnText}"`);
+          console.log(`[Webhook] 📤 DONE: User NOT following — sending plain text reminder`);
           
           try {
             await enqueueViaBackend({
               accountId: rule.account_id || account.id,
               userId: rule.user_id,
               recipientId: senderId,
-              messagePayload: { 
-                text: reminderText,
-                quick_replies: [{ content_type: "text", title: customBtnText, payload: `DONE:${rule.id}` }]
-              },
+              messagePayload: { text: reminderText },
               messageType: "dm",
               automationRuleId: rule.id,
             });
-            console.log(`[Webhook] ✅ DONE: Not-following reminder sent with button "${customBtnText}"`);
+            console.log(`[Webhook] ✅ DONE: Not-following reminder sent`);
           } catch (e: any) {
             console.error(`[Webhook] ❌ DONE: Reminder send failed: ${e.message}`);
           }
@@ -575,7 +573,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         const dmLink = rule.action_config?.link || undefined;
 
         if (apiCheckFailed) {
-          console.log(`[Webhook] 📤 DONE: API check failed — sending link anyway (graceful fallback)`);
+          console.log(`[Webhook] 📤 DONE: Follower API unavailable — sending link anyway (graceful fallback)`);
         }
         console.log(`[Webhook] 📤 DONE: Sending main DM — text="${dmText?.substring(0, 50)}" link=${dmLink || 'none'}`);
 
@@ -610,11 +608,13 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
             console.log(`[Webhook] 📤 DONE: Follow-up scheduled for ${scheduledAt}`);
           }
 
-          // Update trigger count
-          await supabase.from("automation_rules").update({
-            trigger_count: (rule.trigger_count || 0) + 1,
-            last_triggered: new Date().toISOString(),
-          }).eq("id", rule.id);
+          // Update trigger count — use SQL increment to avoid race condition
+          await supabase.rpc("increment_trigger_count", { rule_id: rule.id }).catch(() => {
+            supabase.from("automation_rules").update({
+              trigger_count: (rule.trigger_count || 0) + 1,
+              last_triggered: new Date().toISOString(),
+            }).eq("id", rule.id);
+          });
 
           console.log(`[Webhook] ✅ DONE flow completed for rule "${rule.name}"`);
           // Successfully handled DONE flow — stop here
@@ -998,14 +998,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // STRATEGY (with instagram_manage_messages permission):
-    //   - Try is_user_follow_business API → accurate follower status
-    // FALLBACK (without permission):
-    //   - First comment → always send follow prompt
-    //   - 2nd+ comment → send link (assume they followed since they came back)
+    // IMPORTANT: is_user_follow_business ONLY works on Instagram Scoped IDs (IGSIDs)
+    // obtained through the messaging API. At comment time, we only have the commenter's
+    // Instagram User ID (from comment webhook), which is NOT an IGSID.
+    // Therefore, we CANNOT check follower status at comment time.
+    //
+    // STRATEGY:
+    //   - First comment → always send follow prompt (CTA to comment again after following)
+    //   - Returning commenter (found in processed_comments) → send link directly
+    //   - Follower check happens ONLY in DONE handler (messaging context has IGSID)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId) {
-      // Step 1: Check if this is a returning commenter (got follow prompt before)
       let isReturningCommenter = false;
       try {
         const { data: prevComments } = await supabase
@@ -1021,40 +1024,14 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       }
       
       if (!isReturningCommenter) {
-        // First time commenter — always send follow prompt
         isFollowing = false;
         console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
       } else {
-        // Returning commenter — they got the follow prompt before.
-        // Step 2: TRY the real follower check API (requires instagram_manage_messages)
-        let apiCheckDone = false;
-        try {
-          const followUrl = `https://graph.facebook.com/v21.0/${commentorId}?fields=is_user_follow_business&access_token=${token}`;
-          const followRes = await fetch(followUrl);
-          const followData = await followRes.json();
-          
-          if (followData.is_user_follow_business === true) {
-            isFollowing = true;
-            apiCheckDone = true;
-            console.log(`[Webhook] 👤 API CONFIRMED: commenter ${commentorId} IS following ✅`);
-          } else if (followData.is_user_follow_business === false) {
-            isFollowing = false;
-            apiCheckDone = true;
-            console.log(`[Webhook] 👤 API CONFIRMED: commenter ${commentorId} NOT following ❌ — sending follow prompt again`);
-          } else if (followData.error) {
-            console.log(`[Webhook] 👤 Follower API unavailable (${followData.error.code}): ${followData.error.message?.substring(0, 60)}`);
-            // API failed — fall through to fallback
-          }
-        } catch (e: any) {
-          console.warn(`[Webhook] 👤 Follower API fetch error: ${e.message}`);
-        }
-        
-        if (!apiCheckDone) {
-          // Fallback: API unavailable (no instagram_manage_messages permission)
-          // Returning commenter → assume they followed since they came back
-          isFollowing = true;
-          console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — follower API unavailable, assuming followed (fallback)`);
-        }
+        // Returning commenter — they came back after getting follow prompt.
+        // Since we can't verify follower status at comment time (no IGSID),
+        // send the link directly. This is the only reliable approach.
+        isFollowing = true;
+        console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — sending link (commented again after follow prompt)`);
       }
     }
 
@@ -1108,7 +1085,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     if (shouldDM && commentorId && commentId) {
       let dmText = "";
       let dmLink = undefined;
-      let quickReplies = undefined;
 
       // If require_follow is true BUT they are already following, act like it's a standard rule
       const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
@@ -1116,26 +1092,19 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Send Follow Prompt with POSTBACK BUTTON ──
-        // Instagram Private Reply supports Generic Template with postback buttons.
-        // When user taps the button → messaging_postbacks webhook fires with payload.
+        // ── Send Follow Prompt as PLAIN TEXT ──
+        // IMPORTANT: Private Reply is a ONE-MESSAGE feature.
+        // Postback buttons in Private Reply do NOT trigger messaging_postbacks webhook.
+        // Instead, send plain text asking user to follow + comment the keyword again.
+        const keywords: string[] = rule.trigger_config?.keywords || [];
+        const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
         
-        const customDoneBtnText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || "Hey! 🎁 Follow me to get the link!");
-        quickReplies = undefined;
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n👉 Follow me first, then comment ${keywordHint} again to get instant access!\n\n(This ensures you don't miss any updates! 🙌)`);
         dmLink = undefined;
         
-        // Pass postback button info — send-queue will build Generic Template
-        // The postback payload "DONE:<ruleId>" will trigger the DONE handler
-        const postbackButton = {
-          type: "postback" as const,
-          title: customDoneBtnText,
-          payload: `DONE:${rule.id}`,
-        };
-        
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT with postback button "${customDoneBtnText}"`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, no button — Private Reply limitation)`);
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
@@ -1143,33 +1112,24 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         const baseText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
         
         if (rule.action_config?.link) {
-          // Pass the link directly — backend will render as URL button (web_url template)
-          // For private_reply: Meta only supports plain text, so link gets appended to text
-          // For standard DM: backend creates a proper clickable button
           dmText = baseText;
           dmLink = rule.action_config.link;
         } else {
           dmText = baseText;
         }
-        console.log(`[Webhook] 📤 Sending DIRECT DM with content — text="${dmText?.substring(0, 50)}" link=${rule.action_config?.link || 'none'}`);
+        console.log(`[Webhook] 📤 Sending DIRECT DM — text="${dmText?.substring(0, 50)}" link=${rule.action_config?.link || 'none'}`);
       }
       
       // Add a short 1.5-3 second delay — DM comes right after the public reply
       const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
-      // Build message payload — include postback button if require_follow is active
+      // Build message payload — plain text for follow prompt, link template for direct DM
       const msgPayload: any = { text: dmText, link: dmLink, button_label: rule.action_config?.button_label };
-      
-      // If require_follow and NOT bypassed, add postback button for Generic Template
-      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        const customBtnText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
-        msgPayload.postback_button = {
-          title: customBtnText,
-          payload: `DONE:${rule.id}`,
-        };
-      }
+      // NOTE: No postback_button — Private Reply postbacks don't trigger webhooks
 
+      // Generate idempotency key to prevent duplicate messages on webhook retries
+      const idempotencyKey = `pr_${commentId}_${rule.id}`;
       const enqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
@@ -1178,6 +1138,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
         scheduledSendAt: scheduledSendAt(dmDelayMs),
+        idempotencyKey,
       });
 
       // Fallback: if backend worker is down, send directly
@@ -1229,13 +1190,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       }
     }
 
-    // Update trigger count
-    await supabase.from("automation_rules").update({
-      trigger_count: (rule.trigger_count || 0) + 1,
-      last_triggered: new Date().toISOString(),
-    }).eq("id", rule.id);
+    // Update trigger count — use SQL increment to avoid race condition
+    // (reading old value then writing +1 loses increments under concurrency)
+    await supabase.rpc("increment_trigger_count", { rule_id: rule.id }).catch(() => {
+      // Fallback if RPC doesn't exist yet — still better than nothing
+      supabase.from("automation_rules").update({
+        trigger_count: (rule.trigger_count || 0) + 1,
+        last_triggered: new Date().toISOString(),
+      }).eq("id", rule.id);
+    });
 
-    console.log(`[Webhook] ✅ Rule "${rule.name}" executed. Trigger count: ${(rule.trigger_count || 0) + 1}`);
+    console.log(`[Webhook] ✅ Rule "${rule.name}" executed.`);
     
     // Successfully processed a rule for this comment.
     // Stop evaluating other rules to prevent multiple DMs/replies for the same comment.
@@ -1256,6 +1221,7 @@ async function enqueueViaBackend(opts: {
   messageType: string;
   automationRuleId?: string;
   scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)
+  idempotencyKey?: string;    // Prevents duplicate messages on webhook retries
 }) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/messaging/enqueue`, {

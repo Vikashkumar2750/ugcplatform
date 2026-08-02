@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { publishToInstagram, publishToFacebook } from "@/lib/meta-publisher";
+import crypto from "crypto";
+
+// ── Decrypt access tokens (same algorithm as backend/src/services/crypto.ts) ──
+function decryptToken(data: string): string {
+  try {
+    const secret = process.env.API_KEY_SECRET;
+    if (!secret) return data;
+    const parts = data.split(":");
+    if (parts.length !== 3) return data;
+    const [ivHex, tagHex, encryptedHex] = parts;
+    const key = crypto.scryptSync(secret, "contentiq_salt_v1", 32);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
+    decipher.setAuthTag(Buffer.from(tagHex, "hex"));
+    return decipher.update(Buffer.from(encryptedHex, "hex")).toString("utf8") + decipher.final("utf8");
+  } catch {
+    return data; // Decryption failed — token might be plain text (pre-migration)
+  }
+}
 
 // Parse Meta API error codes into user-friendly messages
 function parseMetaError(errorMsg: string): { message: string; retryAfterHours?: number } {
@@ -109,6 +127,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Decrypt token before publishing ──────────────────────────
+    const decryptedToken = decryptToken(account.access_token);
+
     console.log(`[Publish] Publishing to ${platform}/@${account.platform_username} | Type: ${content_type} | Post ID: ${post_id || "direct"}`);
 
     // ── Publish ───────────────────────────────────────────────────
@@ -117,7 +138,7 @@ export async function POST(request: NextRequest) {
     if (platform === "instagram") {
       result = await publishToInstagram({
         igUserId:    account.platform_user_id,
-        token:       account.access_token,
+        token:       decryptedToken,
         contentType: content_type as any,
         caption,
         mediaUrl:    media_url || undefined,
@@ -126,12 +147,11 @@ export async function POST(request: NextRequest) {
       });
     } else if (platform === "facebook") {
       // For Facebook, use page token if available (page_id stored during OAuth)
-      const fbToken = account.access_token;
       const fbPageId = account.page_id || account.platform_user_id;
 
       result = await publishToFacebook({
         pageId:      fbPageId,
-        token:       fbToken,
+        token:       decryptedToken,
         contentType: content_type as any,
         caption,
         mediaUrl:    media_url || undefined,

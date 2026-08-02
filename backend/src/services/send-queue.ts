@@ -28,6 +28,7 @@ export interface EnqueueInput {
   messageTag?: string;
   priority?: number;           // 1=highest, 10=lowest. Default: 5
   scheduledSendAt?: string;    // ISO8601 — delay sending until this time
+  idempotencyKey?: string;     // Prevents duplicate messages on webhook retries
 }
 
 export interface MessagePayload {
@@ -65,7 +66,24 @@ export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult
   const {
     accountId, userId, recipientId, messagePayload,
     messageType, automationRuleId, messageTag, priority, scheduledSendAt,
+    idempotencyKey,
   } = input;
+
+  // ── Step 0: Idempotency check (BUG-14 fix) ──────────────────────────────
+  // If an idempotency key is provided, check if this message was already enqueued.
+  // This prevents duplicate messages when Meta retries the same webhook event.
+  if (idempotencyKey) {
+    const { data: existing } = await supabase
+      .from("message_queue")
+      .select("id, status")
+      .eq("idempotency_key", idempotencyKey)
+      .maybeSingle();
+    
+    if (existing) {
+      console.log(`[SendQueue] Idempotency hit: key=${idempotencyKey} → existing queue=${existing.id} status=${existing.status}`);
+      return { queued: true, queueId: existing.id };
+    }
+  }
 
   // ── Step 1: Compliance check ─────────────────────────────────────────────
   const complianceInput: ComplianceCheckInput = {
@@ -126,7 +144,7 @@ export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult
   }
 
   // ── Step 3: Insert into queue ────────────────────────────────────────────
-  const { data, error } = await supabase.from("message_queue").insert({
+  const insertData: Record<string, unknown> = {
     account_id: accountId,
     user_id: userId,
     recipient_id: recipientId,
@@ -139,7 +157,15 @@ export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult
     status: initialStatus,
     priority: priority || 5,
     scheduled_send_at: scheduledSendAt || new Date().toISOString(),
-  }).select("id").single();
+  };
+  // Add idempotency key if provided
+  if (idempotencyKey) {
+    insertData.idempotency_key = idempotencyKey;
+  }
+
+  const { data, error } = await supabase.from("message_queue")
+    .insert(insertData)
+    .select("id").single();
 
   if (error) {
     console.error("[SendQueue] Failed to enqueue:", error.message);
