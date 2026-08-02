@@ -1007,29 +1007,18 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Follow Gate via Landing Page ──
-        // Same approach as ManyChat: honor-based follow confirmation.
-        // Private Reply sends a Generic Template with URL button → opens gate page.
-        // Gate page: Step 1 (Follow) → Step 2 (Confirm) → Reveals link.
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://contentengineer.techaasvik.in";
-        
-        const gateToken = createGateToken({
-          ruleId: rule.id,
-          username: pageAccount?.platform_username || "",
-          link: rule.action_config?.link || "",
-          message: rule.action_config?.message || "",
-          buttonLabel: rule.action_config?.button_label || "Get Access →",
-        });
-        const gateUrl = `${appUrl}/gate?t=${gateToken}`;
-        
+        // ── Follow Prompt — PLAIN TEXT ONLY ──
+        // Send text-only Private Reply. User reads it, follows, then replies anything.
+        // When user replies → messaging webhook fires → pending follow-gate handler
+        // checks follower status via IGSID → sends link if following, reminder if not.
+        // NO button, NO link in this message — just a clear follow CTA.
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         
-        // Follow prompt text + gate URL as button
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and tap below to get exclusive access!`);
-        dmLink = gateUrl;  // Gate URL as the button link
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then reply here with anything (even just "hi")\n\nI'll send you the link instantly! 🔥`);
+        dmLink = undefined;  // NO link — plain text only
         
-        console.log(`[Webhook] 📤 Sending FOLLOW GATE — gateUrl=${gateUrl.substring(0, 60)}...`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, no button)`);
 
       } else {
         // ── Direct DM (no follow required or already following) ──
