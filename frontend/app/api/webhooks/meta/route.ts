@@ -9,6 +9,13 @@ const META_APP_SECRET = process.env.META_APP_SECRET!;
 const BACKEND_URL = process.env.RENDER_WORKER_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
+// ── Gate token for follow-gate landing page ──
+function createGateToken(data: { ruleId: string; username: string; link: string; message?: string; buttonLabel?: string }): string {
+  const payload = JSON.stringify({ ...data, ts: Date.now() });
+  const sig = crypto.createHmac("sha256", META_APP_SECRET).update(payload).digest("hex").substring(0, 12);
+  return Buffer.from(`${sig}:${payload}`).toString("base64url");
+}
+
 // ── Decrypt access tokens (same algorithm as backend/src/services/crypto.ts) ──
 function decryptToken(data: string): string {
   try {
@@ -1004,13 +1011,11 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         // Same approach as ManyChat: honor-based follow confirmation.
         // Private Reply sends a Generic Template with URL button → opens gate page.
         // Gate page: Step 1 (Follow) → Step 2 (Confirm) → Reveals link.
-        // No re-commenting needed. No DM reply needed. Works without instagram_manage_messages.
-        const { createGateToken } = await import("@/app/api/gate/route");
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://contentengineer.techaasvik.in";
         
         const gateToken = createGateToken({
           ruleId: rule.id,
-          username: account.platform_username || "",
+          username: pageAccount?.platform_username || "",
           link: rule.action_config?.link || "",
           message: rule.action_config?.message || "",
           buttonLabel: rule.action_config?.button_label || "Get Access →",
