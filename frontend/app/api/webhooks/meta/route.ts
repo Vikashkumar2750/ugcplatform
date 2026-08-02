@@ -1026,7 +1026,6 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     if (shouldDM && commentorId && commentId) {
       let dmText = "";
       let dmLink = undefined;
-      let msgPayload_quickReplies: any[] | undefined = undefined;
 
       // If require_follow is true BUT they are already following, act like it's a standard rule
       const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
@@ -1034,21 +1033,31 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Send Follow Prompt as PLAIN TEXT ──
-        // Standard DMs and messaging webhooks don't work without instagram_manage_messages
-        // Advanced Access. So the flow is entirely comment-based:
-        //   → Follow me → comment [keyword] again → link delivered via Private Reply
-        const keywords: string[] = rule.trigger_config?.keywords || [];
-        const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
+        // ── Follow Gate via Landing Page ──
+        // Same approach as ManyChat: honor-based follow confirmation.
+        // Private Reply sends a Generic Template with URL button → opens gate page.
+        // Gate page: Step 1 (Follow) → Step 2 (Confirm) → Reveals link.
+        // No re-commenting needed. No DM reply needed. Works without instagram_manage_messages.
+        const { createGateToken } = await import("@/app/api/gate/route");
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://contentengineer.techaasvik.in";
+        
+        const gateToken = createGateToken({
+          ruleId: rule.id,
+          username: account.platform_username || "",
+          link: rule.action_config?.link || "",
+          message: rule.action_config?.message || "",
+          buttonLabel: rule.action_config?.button_label || "Get Access →",
+        });
+        const gateUrl = `${appUrl}/gate?t=${gateToken}`;
         
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         
-        // Use custom message if configured, otherwise generate a clear default
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then comment ${keywordHint} again on the post\n\nI'll send you the link right away! 🔥`);
-        dmLink = undefined;
+        // Follow prompt text + gate URL as button
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and tap below to get exclusive access!`);
+        dmLink = gateUrl;  // Gate URL as the button link
         
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (comment-again flow, keyword=${keywordHint})`);
+        console.log(`[Webhook] 📤 Sending FOLLOW GATE — gateUrl=${gateUrl.substring(0, 60)}...`);
 
       } else {
         // ── Direct DM (no follow required or already following) ──
@@ -1069,14 +1078,12 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
-      // Build message payload — include quick_replies for follow prompt
+      // Build message payload
       const msgPayload: any = { 
         text: dmText, 
         link: dmLink, 
         button_label: rule.action_config?.button_label,
-        quick_replies: msgPayload_quickReplies,
       };
-      // NOTE: No postback_button — Private Reply postbacks don't trigger webhooks
 
       // Generate idempotency key to prevent duplicate messages on webhook retries
       const idempotencyKey = `pr_${commentId}_${rule.id}`;
