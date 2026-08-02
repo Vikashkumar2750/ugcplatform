@@ -322,19 +322,84 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     return;
   }
 
-  // ── 1. Follow requirement check — must run FIRST ───────────
-  // When user types/taps the trigger text, complete the pending require_follow flow.
-  // Matches: "done:<uuid>" (postback payload), "done", "send me the access", or custom done_button_text.
-  const isDonePayload = messageText.startsWith("done:");
-  const isDoneText = messageText === "done" || messageText === "done ✅" || messageText.includes("done")
-    || messageText.includes("send me the access")  // default trigger text
-    || messageText === "access";  // shorthand
+  // ── 1. Pending follow-gate check — must run FIRST ───────────
+  // When a user sends ANY message, check if they have a pending require_follow flow.
+  // If they do, check follower status and complete the flow.
+  // This is much simpler than matching specific trigger texts — user just needs to
+  // follow + send any message (hi, emoji, anything).
+  let pendingFollowRuleId: string | undefined = undefined;
+  let pendingFollowLookupSource = "none";
   
-  // Also check if the message matches any rule's custom done_button_text
-  // e.g., user types "get my link" → matches rule with done_button_text="Get my link"
-  let isCustomDoneText = false;
-  let customDoneRuleId: string | undefined = undefined;
-  if (!isDonePayload && !isDoneText && account?.user_id) {
+  // Method 1: Check if message text matches a postback payload (legacy format "done:<uuid>")
+  if (messageText.startsWith("done:")) {
+    pendingFollowRuleId = messageText.split("done:")[1]?.trim();
+    pendingFollowLookupSource = "postback_payload";
+  }
+  
+  // Method 2: Check if this sender has ANY pending require_follow rule
+  // This is the primary method — ANY message from a pending user triggers the flow
+  if (!pendingFollowRuleId && account?.user_id) {
+    try {
+      // First: check processed_comments for this sender (comment-triggered flows)
+      const { data: recentComment } = await supabase
+        .from("processed_comments")
+        .select("rule_id")
+        .eq("commentor_id", senderId)
+        .order("processed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (recentComment?.rule_id) {
+        // Verify it's a require_follow rule
+        const { data: r } = await supabase
+          .from("automation_rules")
+          .select("id, action_config")
+          .eq("id", recentComment.rule_id)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (r?.action_config?.require_follow) {
+          pendingFollowRuleId = r.id;
+          pendingFollowLookupSource = "processed_comments";
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Webhook] Pending follow check (processed_comments) failed: ${e.message}`);
+    }
+  }
+
+  // Method 3: Check message_queue for recent private_reply sent by this account
+  if (!pendingFollowRuleId && account?.id) {
+    try {
+      const { data: recentQueue } = await supabase
+        .from("message_queue")
+        .select("automation_rule_id, message_type")
+        .eq("account_id", account.id)
+        .in("message_type", ["private_reply", "dm"])
+        .in("status", ["sent", "queued", "ready", "processing"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+      
+      for (const q of (recentQueue || [])) {
+        if (!q.automation_rule_id) continue;
+        const { data: r } = await supabase
+          .from("automation_rules")
+          .select("id, action_config")
+          .eq("id", q.automation_rule_id)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (r?.action_config?.require_follow) {
+          pendingFollowRuleId = r.id;
+          pendingFollowLookupSource = "message_queue";
+          break;
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Webhook] Pending follow check (message_queue) failed: ${e.message}`);
+    }
+  }
+
+  // Method 4: Direct fallback — find any active require_follow rule for this account
+  if (!pendingFollowRuleId && account?.user_id) {
     try {
       const { data: followRules } = await supabase
         .from("automation_rules")
@@ -342,151 +407,24 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
         .eq("user_id", account.user_id)
         .eq("is_active", true)
         .in("type", ["comment_automation", "comment_to_dm", "dm_keyword"])
-        .limit(20);
+        .order("last_triggered", { ascending: false })
+        .limit(5);
       
-      for (const r of (followRules || [])) {
-        if (!r.action_config?.require_follow) continue;
-        // Use done_button_text if set, otherwise default to "send me the access"
-        const rawBtnText = r.action_config?.done_button_text || "Send me the access";
-        const btnText = rawBtnText.toLowerCase().replace(/[✅✓☑️\s]+$/g, "").trim();
-        if (btnText && (messageText.includes(btnText) || btnText.includes(messageText))) {
-          isCustomDoneText = true;
-          customDoneRuleId = r.id;
-          console.log(`[Webhook] 🔍 Custom DONE text matched! "${messageText}" ≈ "${btnText}" → ruleId=${r.id}`);
-          break;
-        }
+      const matchingRule = followRules?.find((r: any) => r.action_config?.require_follow === true);
+      if (matchingRule) {
+        pendingFollowRuleId = matchingRule.id;
+        pendingFollowLookupSource = "direct_query";
       }
     } catch (e: any) {
-      console.warn(`[Webhook] Custom DONE text check failed: ${e.message}`);
+      console.warn(`[Webhook] Pending follow check (direct) failed: ${e.message}`);
     }
   }
+
+  const hasPendingFollowGate = !!pendingFollowRuleId;
   
-  const isDoneMessage = isDonePayload || isDoneText || isCustomDoneText;
-  
-  if (isDoneMessage) {
-    console.log(`[Webhook] 🔍 DONE detected! messageText="${messageText}" senderId=${senderId} pageId=${pageId}`);
-    let ruleId: string | undefined = undefined;
-    let lookupSource = "none";
-    
-    // Method 1: Extract rule ID from postback/quick_reply payload (e.g. "done:<uuid>")
-    if (isDonePayload) {
-      ruleId = messageText.split("done:")[1]?.trim();
-      lookupSource = "postback_payload";
-      console.log(`[Webhook] 🔍 DONE Method 1 (payload): ruleId=${ruleId}`);
-    }
-
-    // Method 1b: Custom done_button_text matched a rule directly
-    if (!ruleId && customDoneRuleId) {
-      ruleId = customDoneRuleId;
-      lookupSource = "custom_done_text";
-      console.log(`[Webhook] 🔍 DONE Method 1b (custom text): ruleId=${ruleId}`);
-    }
-
-    // Method 2: Check message_queue for recent private_reply sent TO this user
-    // This is the most reliable method — we look for the automation_rule_id from
-    // the private reply we previously sent to this user.
-    if (!ruleId) {
-      try {
-        const { data: recentQueue } = await supabase
-          .from("message_queue")
-          .select("automation_rule_id, recipient_id, message_type, created_at")
-          .eq("account_id", account.id)
-          .in("message_type", ["private_reply", "dm"])
-          .in("status", ["sent", "queued", "ready", "processing"])
-          .order("created_at", { ascending: false })
-          .limit(20);
-        
-        // Find a message that was sent to this sender (for DMs) or any recent automation
-        // Note: For private_reply, recipient_id is the comment_id, not the sender_id
-        // So we also check automation_rule_id existence
-        if (recentQueue?.length) {
-          console.log(`[Webhook] 🔍 DONE Method 2: Found ${recentQueue.length} recent queue entries`);
-          for (const q of recentQueue) {
-            if (q.automation_rule_id) {
-              ruleId = q.automation_rule_id;
-              lookupSource = "message_queue";
-              console.log(`[Webhook] 🔍 DONE Method 2: Found ruleId=${ruleId} from queue (type=${q.message_type})`);
-              break;
-            }
-          }
-        }
-      } catch (e: any) {
-        console.warn(`[Webhook] DONE Method 2 failed: ${e.message}`);
-      }
-    }
-    
-    // Method 3: Check processed_comments (for comment-triggered require_follow flows)
-    if (!ruleId) {
-      try {
-        const { data: recentLog } = await supabase
-          .from("processed_comments")
-          .select("rule_id, commentor_id, id")
-          .eq("commentor_id", senderId)
-          .order("processed_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (recentLog?.rule_id) {
-          ruleId = recentLog.rule_id;
-          lookupSource = "processed_comments";
-          console.log(`[Webhook] 🔍 DONE Method 3 (processed_comments): ruleId=${ruleId}`);
-        } else {
-          console.log(`[Webhook] 🔍 DONE Method 3: No match in processed_comments for commentor_id=${senderId}`);
-        }
-      } catch (e: any) {
-        console.warn(`[Webhook] DONE Method 3 failed: ${e.message}`);
-      }
-    }
-
-    // Method 4: Check dm_trigger_log (for DM-keyword-triggered require_follow flows)
-    if (!ruleId) {
-      try {
-        const { data: recentDmLog } = await supabase
-          .from("dm_trigger_log")
-          .select("automation_id")
-          .eq("sender_id", senderId)
-          .eq("page_id", pageId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (recentDmLog?.automation_id) {
-          ruleId = recentDmLog.automation_id;
-          lookupSource = "dm_trigger_log";
-          console.log(`[Webhook] 🔍 DONE Method 4 (dm_trigger_log): ruleId=${ruleId}`);
-        } else {
-          console.log(`[Webhook] 🔍 DONE Method 4: No match in dm_trigger_log for sender=${senderId} page=${pageId}`);
-        }
-      } catch (e: any) {
-        console.warn(`[Webhook] DONE Method 4 failed: ${e.message}`);
-      }
-    }
-
-    // Method 5: Direct query — find any active require_follow rule for this user
-    // This is the ultimate fallback when postback payload is stripped (standby mode)
-    if (!ruleId && account?.user_id) {
-      try {
-        const { data: requireFollowRules } = await supabase
-          .from("automation_rules")
-          .select("id, name, action_config")
-          .eq("user_id", account.user_id)
-          .eq("is_active", true)
-          .in("type", ["comment_automation", "comment_to_dm"])
-          .order("last_triggered", { ascending: false })
-          .limit(5);
-        
-        const matchingRule = requireFollowRules?.find((r: any) => r.action_config?.require_follow === true);
-        if (matchingRule) {
-          ruleId = matchingRule.id;
-          lookupSource = "direct_query_require_follow";
-          console.log(`[Webhook] 🔍 DONE Method 5 (direct query): Found require_follow rule "${matchingRule.name}" ruleId=${ruleId}`);
-        } else {
-          console.log(`[Webhook] 🔍 DONE Method 5: No active require_follow rules found for user`);
-        }
-      } catch (e: any) {
-        console.warn(`[Webhook] DONE Method 5 failed: ${e.message}`);
-      }
-    }
-
-    console.log(`[Webhook] 🔍 DONE ruleId resolution: ruleId=${ruleId || 'NOT FOUND'} via ${lookupSource}`);
+  if (hasPendingFollowGate) {
+    const ruleId = pendingFollowRuleId;
+    console.log(`[Webhook] 🔍 Pending follow-gate detected! messageText="${messageText}" senderId=${senderId} ruleId=${ruleId} via ${pendingFollowLookupSource}`);
 
     if (ruleId) {
       const { data: rule, error: ruleErr } = await supabase
@@ -1099,21 +1037,17 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         // ── Send Follow Prompt as PLAIN TEXT ──
-        // Instagram Private Reply silently strips quick_replies and postback buttons.
-        // The ONLY reliable format is plain text.
-        // The user must manually TYPE the trigger text in this chat to continue.
-        // When they type it → messaging webhook fires → DONE handler matches it.
-        const triggerText = rule.action_config?.done_button_text || "Send me the access";
-        
+        // Instagram Private Reply only supports plain text (no buttons).
+        // ANY reply from the user will trigger the follower check.
+        // So the prompt just needs to say: follow + reply anything.
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
         
         // Use custom message if configured, otherwise generate a clear default
-        // The default explicitly tells the user to TYPE the trigger text
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then type "${triggerText}" right here in this chat\n\nThat's it! You'll get instant access 🔥`);
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then reply anything here (even just "hi")\n\nI'll send you the link instantly! 🔥`);
         dmLink = undefined;
         
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, trigger="${triggerText}")`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, any-reply trigger)`);
 
       } else {
         // ── Direct DM (no follow required or already following) ──
