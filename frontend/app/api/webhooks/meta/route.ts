@@ -936,45 +936,12 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
     // ── Follower check at COMMENT TIME ─────────────────────────────────
-    // CONSTRAINT: Standard DMs fail with (#3) — instagram_manage_messages needs Advanced Access.
-    // CONSTRAINT: Messaging webhooks don't fire without instagram_manage_messages.
-    // CONSTRAINT: is_user_follow_business needs IGSID (not available at comment time).
-    //
-    // STRATEGY (Comment-Based Follow Gate):
-    //   1. First comment → Private Reply: "Follow me, then comment [keyword] again!"
-    //   2. User follows → comments again → returning commenter detected
-    //   3. Second comment → Private Reply: sends the link directly
-    //   We trust returning commenters because they specifically came back.
-    //   This works entirely via Private Reply (no standard DM needed).
+    // We use a landing page (gate) for follow-gating. The gate page handles:
+    //   Follow CTA → "I'm Following" confirm → reveals link
+    // So at comment time, we ALWAYS set isFollowing=false when require_follow is ON.
+    // This ensures every commenter gets the gate page URL in their Private Reply.
+    // No returning commenter bypass needed — gate page is the enforcement.
     let isFollowing = false;
-    let isReturningCommenter = false;
-    if (shouldDM && rule.action_config?.require_follow && commentorId) {
-      try {
-        // Check if this commenter has commented before for this rule
-        // CRITICAL: Exclude the CURRENT comment_id (just inserted by dedup above)
-        const { data: prevComments } = await supabase
-          .from("processed_comments")
-          .select("id")
-          .eq("rule_id", rule.id)
-          .eq("commentor_id", commentorId)
-          .neq("comment_id", commentId)  // Exclude THIS comment
-          .limit(1);
-        
-        isReturningCommenter = (prevComments && prevComments.length > 0);
-      } catch (e: any) {
-        console.warn(`[Webhook] 👤 processed_comments check failed: ${e.message}`);
-      }
-
-      if (isReturningCommenter) {
-        // Returning commenter — they came back after the follow prompt.
-        // Trust them and send the link directly via Private Reply.
-        isFollowing = true;
-        console.log(`[Webhook] 👤 RETURNING commenter ${commentorId} — sending link via Private Reply`);
-      } else {
-        isFollowing = false;
-        console.log(`[Webhook] 👤 FIRST TIME commenter ${commentorId} — will send follow prompt`);
-      }
-    }
 
     // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
     const replyTexts = rule.action_config?.reply_texts || [];
