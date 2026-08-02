@@ -1005,17 +1005,22 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     //
     // STRATEGY:
     //   - First comment → always send follow prompt (CTA to comment again after following)
-    //   - Returning commenter (found in processed_comments) → send link directly
+    //   - Returning commenter (found in processed_comments with a DIFFERENT comment) → send link
     //   - Follower check happens ONLY in DONE handler (messaging context has IGSID)
     let isFollowing = false;
     if (shouldDM && rule.action_config?.require_follow && commentorId) {
       let isReturningCommenter = false;
       try {
+        // CRITICAL: Exclude the CURRENT comment_id from the query.
+        // The dedup insert (line ~914 above) already added this comment to processed_comments.
+        // Without this filter, every first-time commenter looks like a "returning" commenter
+        // because their own just-inserted row is found.
         const { data: prevComments } = await supabase
           .from("processed_comments")
           .select("id")
           .eq("rule_id", rule.id)
           .eq("commentor_id", commentorId)
+          .neq("comment_id", commentId)  // Exclude THIS comment
           .limit(1);
         
         isReturningCommenter = (prevComments && prevComments.length > 0);
