@@ -1098,22 +1098,23 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
 
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Send Follow Prompt with Quick Reply ──
-        // Private Reply supports quick_replies. When user taps a quick reply,
-        // it sends the title text as a regular MESSAGE (not postback).
-        // The DONE handler at line ~328 catches this text and processes the flow.
-        const triggerText = (rule.action_config?.done_button_text || "Send me the access").substring(0, 20);
+        // ── Send Follow Prompt as PLAIN TEXT ──
+        // Instagram Private Reply silently strips quick_replies and postback buttons.
+        // The ONLY reliable format is plain text.
+        // The user must manually TYPE the trigger text in this chat to continue.
+        // When they type it → messaging webhook fires → DONE handler matches it.
+        const triggerText = rule.action_config?.done_button_text || "Send me the access";
         
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 Follow me and type "${triggerText}" to get the link!`);
+        
+        // Use custom message if configured, otherwise generate a clear default
+        // The default explicitly tells the user to TYPE the trigger text
+        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then type "${triggerText}" right here in this chat\n\nThat's it! You'll get instant access 🔥`);
         dmLink = undefined;
         
-        // Add quick reply so user can TAP instead of typing
-        // When tapped, it sends the triggerText as a regular message → DONE handler catches it
-        msgPayload_quickReplies = [{ content_type: "text", title: triggerText, payload: `DONE:${rule.id}` }];
-        
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT with Quick Reply "${triggerText}" (Private Reply)`);
+        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, trigger="${triggerText}")`);
+
       } else {
         // ── Direct DM (no follow required or already following) ──
         const msgs = rule.action_config?.messages || [];
