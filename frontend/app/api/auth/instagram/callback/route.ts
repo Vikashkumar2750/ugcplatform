@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
           }
 
           // Subscribe page to webhooks
-          for (const fields of ["feed,messages,messaging_postbacks,mention", "messages,messaging_postbacks"]) {
+          for (const fields of ["feed,messages,messaging_postbacks,mention,comments", "feed,messages,messaging_postbacks,mention", "messages,messaging_postbacks"]) {
             try {
               const subRes = await fetch(
                 `https://graph.facebook.com/v21.0/${page.id}/subscribed_apps`,
@@ -223,6 +223,7 @@ export async function GET(request: NextRequest) {
         // Without this, Meta never fires comment/DM webhooks!
         // Try full fields first, fallback to messages-only if permissions missing
         const fieldSets = [
+          "feed,messages,messaging_postbacks,mention,comments",
           "feed,messages,messaging_postbacks,mention",
           "messages,messaging_postbacks",
         ];

@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
   const results = [];
 
   const fieldSets = [
+    "feed,messages,messaging_postbacks,mention,comments",
     "feed,messages,messaging_postbacks,mention",
     "messages,messaging_postbacks",
   ];
