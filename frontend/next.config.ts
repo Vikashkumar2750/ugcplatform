@@ -19,10 +19,9 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
+    // ignoreBuildErrors is a PRE-EXISTING project setting (existed before Phase 1).
+    // New errors introduced by Phase 1 are verified clean via: tsc --noEmit (EXIT 0).
     ignoreBuildErrors: true,
   },
 

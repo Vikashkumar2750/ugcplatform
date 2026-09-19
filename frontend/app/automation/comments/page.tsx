@@ -408,7 +408,7 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Apply to</label>
                   <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => { setScope("global"); setSelectedPost(null); }}
+                    <button onClick={() => { setScope("global"); setSelectedPosts([]); }}
                       className={`flex items-center gap-2 p-3 rounded-xl border text-sm transition ${scope === "global" ? "border-amber-400/60 bg-amber-400/8 text-foreground" : "border-border text-muted-foreground hover:border-foreground/30"}`}>
                       <Globe className="w-4 h-4" />
                       <div className="text-left">
@@ -537,20 +537,44 @@ function NewRuleModal({ onClose, onSaved, platform, accounts }: {
                   <div className="space-y-3 p-4 rounded-xl border border-violet-500/20 bg-violet-500/5">
                     
                     {/* 1. Require Follow Flow */}
-                    <div className="flex items-center justify-between p-3 bg-background rounded-xl border border-border">
+                    <div className={`flex items-center justify-between p-3 rounded-xl border ${
+                      platform === "facebook"
+                        ? "border-border bg-muted/30 opacity-60"
+                        : "bg-background border-border"
+                    }`}>
                       <div>
-                        <p className="text-sm font-medium">Require Follower</p>
-                        <p className="text-[10px] text-muted-foreground">Only send link if they follow you</p>
+                        <p className="text-sm font-medium flex items-center gap-2">
+                          Require Follower
+                          {platform === "facebook" && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/30 font-semibold">
+                              Instagram only
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {platform === "facebook"
+                            ? "Not available — Facebook has no follower status API"
+                            : "Only send link if they follow you"}
+                        </p>
                       </div>
                       <div className="flex-shrink-0">
-                        {requireFollow ? (
-                          <button onClick={() => setRequireFollow(false)} className="text-violet-500"><ToggleRight className="w-7 h-7" /></button>
+                        {platform === "facebook" ? (
+                          // Locked toggle for Facebook
+                          <button disabled className="text-muted-foreground/40 cursor-not-allowed">
+                            <ToggleLeft className="w-7 h-7" />
+                          </button>
+                        ) : requireFollow ? (
+                          <button onClick={() => setRequireFollow(false)} className="text-violet-500">
+                            <ToggleRight className="w-7 h-7" />
+                          </button>
                         ) : (
-                          <button onClick={() => setRequireFollow(true)} className="text-muted-foreground"><ToggleLeft className="w-7 h-7" /></button>
+                          <button onClick={() => setRequireFollow(true)} className="text-muted-foreground">
+                            <ToggleLeft className="w-7 h-7" />
+                          </button>
                         )}
                       </div>
                     </div>
-                    {requireFollow && (
+                    {requireFollow && platform !== "facebook" && (
                       <div className="space-y-3">
                         {/* How it works guide */}
                         <div className="p-3 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/5 to-orange-500/5">
@@ -941,14 +965,14 @@ function RuleCard({ rule, onToggle, onDelete }: { rule: CommentRule; onToggle: (
             {actions.reply && (
               <div className="rounded-lg border border-blue-500/15 bg-blue-500/5 p-3">
                 <p className="text-[10px] font-bold text-blue-400 mb-1 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> PUBLIC REPLY</p>
-                <p className="text-sm">{rule.action_config?.reply_text || rule.action_config?.reply_texts?.[0] || "—"}</p>
+                <p className="text-sm">{rule.action_config?.reply_text || "—"}</p>
               </div>
             )}
             
             {actions.dm && (
               <div className="rounded-lg border border-violet-500/15 bg-violet-500/5 p-3">
                 <p className="text-[10px] font-bold text-violet-400 mb-1 flex items-center gap-1"><Send className="w-3 h-3" /> DM MESSAGE</p>
-                <p className="text-sm">{rule.action_config?.message || rule.action_config?.messages?.[0] || "—"}</p>
+                <p className="text-sm">{rule.action_config?.message || "—"}</p>
                 {rule.action_config?.link && (
                   <p className="text-xs text-amber-500 mt-1.5 flex items-center gap-1">
                     <LinkIcon className="w-3 h-3" /> {rule.action_config.link}
@@ -1093,7 +1117,7 @@ export default function CommentsAutomationPage() {
         </div>
       )}
 
-      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={allAccounts.filter(a => a.platform === "facebook" || a.platform === "instagram")} />}
+      {showModal && <NewRuleModal onClose={() => setShowModal(false)} onSaved={() => mutateRules()} platform={platform} accounts={allAccounts.filter((a: { platform: string }) => a.platform === "facebook" || a.platform === "instagram")} />}
     </div>
   );
 }

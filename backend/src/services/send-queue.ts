@@ -24,7 +24,9 @@ export interface EnqueueInput {
   messageType: "dm" | "comment_reply" | "private_reply" | "broadcast";
   // For private_reply, recipientId must be the COMMENT ID (not user ID)
   // Meta will resolve the commenter and deliver a DM scoped to that comment.
+  platform?: string;           // 'instagram' | 'facebook' — derived from account context
   automationRuleId?: string;
+  correlationId?: string;      // end-to-end tracing ID
   messageTag?: string;
   priority?: number;           // 1=highest, 10=lowest. Default: 5
   scheduledSendAt?: string;    // ISO8601 — delay sending until this time
@@ -65,7 +67,7 @@ export interface EnqueueResult {
 export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult> {
   const {
     accountId, userId, recipientId, messagePayload,
-    messageType, automationRuleId, messageTag, priority, scheduledSendAt,
+    messageType, platform, automationRuleId, correlationId, messageTag, priority, scheduledSendAt,
     idempotencyKey,
   } = input;
 
@@ -158,10 +160,10 @@ export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult
     priority: priority || 5,
     scheduled_send_at: scheduledSendAt || new Date().toISOString(),
   };
-  // Add idempotency key if provided
-  if (idempotencyKey) {
-    insertData.idempotency_key = idempotencyKey;
-  }
+  // Add optional fields
+  if (idempotencyKey) insertData.idempotency_key = idempotencyKey;
+  if (platform) insertData.platform = platform;
+  if (correlationId) insertData.correlation_id = correlationId;
 
   const { data, error } = await supabase.from("message_queue")
     .insert(insertData)
@@ -368,8 +370,16 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
   const { token, igUserId, recipientId, payload, messageType, platform } = input;
 
   // ── 1. Public comment reply ────────────────────────────────────────────────
+  // CRITICAL: Instagram uses /{comment-id}/replies
+  //           Facebook uses  /{comment-id}/comments
+  // Using the wrong endpoint causes a Meta API error and no reply is sent.
   if (messageType === "comment_reply") {
-    const res = await fetch(`https://graph.facebook.com/v21.0/${recipientId}/replies`, {
+    const replyEndpoint = platform === "facebook"
+      ? `https://graph.facebook.com/v21.0/${recipientId}/comments`
+      : `https://graph.facebook.com/v21.0/${recipientId}/replies`;
+    
+    console.log(`[SendQueue] Public comment reply → platform=${platform} endpoint=.../${recipientId}/${platform === "facebook" ? "comments" : "replies"}`);
+    const res = await fetch(replyEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -378,7 +388,7 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
       }),
     });
     const data = await res.json();
-    if (data.error) return { error: `Meta comment reply: ${data.error.message}` };
+    if (!res.ok || data.error) return { error: `Meta comment reply: ${data.error?.message || `HTTP ${res.status}`}` };
     return { messageId: data.id };
   }
 
@@ -514,11 +524,15 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     }));
   }
 
-  // Use the IG business account ID (or page ID) as the sender endpoint
-  // Instagram API requires /{igUserId}/messages, NOT /me/messages
-  const senderId = igUserId || input.pageId || "me";
+  // Sender endpoint differs by platform:
+  // Instagram: /{ig-user-id}/messages (platform_user_id)
+  // Facebook:  /{page-id}/messages    (page_id)
+  // Never use /me/messages — it is ambiguous and may resolve to the wrong identity.
+  const senderId = platform === "facebook"
+    ? (input.pageId || igUserId)   // Facebook DMs must use Page ID
+    : (igUserId || input.pageId);  // Instagram DMs use IG User ID
   const endpoint = `https://graph.facebook.com/v21.0/${senderId}/messages`;
-  console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (sender=${senderId}, igUserId=${igUserId})`);
+  console.log(`[SendQueue] Sending DM to ${recipientId} via platform=${platform} sender=${senderId}`);
 
 
   const res = await fetch(

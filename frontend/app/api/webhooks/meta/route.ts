@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { randomGaussianDelayMs, parseSpintax } from "@/lib/anti-bot";
@@ -9,35 +9,35 @@ const META_APP_SECRET = process.env.META_APP_SECRET!;
 const BACKEND_URL = process.env.RENDER_WORKER_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 const WORKER_SECRET = process.env.RENDER_WORKER_SECRET || process.env.WORKER_SECRET || "";
 
-// ── Gate token for follow-gate landing page ──
+// Ã¢â€â‚¬Ã¢â€â‚¬ Gate token for follow-gate landing page Ã¢â€â‚¬Ã¢â€â‚¬
 function createGateToken(data: { ruleId: string; username: string; link: string; message?: string; buttonLabel?: string }): string {
   const payload = JSON.stringify({ ...data, ts: Date.now() });
   const sig = crypto.createHmac("sha256", META_APP_SECRET).update(payload).digest("hex").substring(0, 12);
   return Buffer.from(`${sig}:${payload}`).toString("base64url");
 }
 
-// ── Decrypt access tokens (same algorithm as backend/src/services/crypto.ts) ──
+// Ã¢â€â‚¬Ã¢â€â‚¬ Decrypt access tokens (same algorithm as backend/src/services/crypto.ts) Ã¢â€â‚¬Ã¢â€â‚¬
 function decryptToken(data: string): string {
   try {
     const secret = process.env.API_KEY_SECRET;
-    if (!secret) return data; // No secret — token is plain text
+    if (!secret) return data; // No secret Ã¢â‚¬â€ token is plain text
     const parts = data.split(":");
-    if (parts.length !== 3) return data; // Not encrypted format — use as-is
+    if (parts.length !== 3) return data; // Not encrypted format Ã¢â‚¬â€ use as-is
     const [ivHex, tagHex, encryptedHex] = parts;
     const key = crypto.scryptSync(secret, "contentiq_salt_v1", 32);
     const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));
     decipher.setAuthTag(Buffer.from(tagHex, "hex"));
     return decipher.update(Buffer.from(encryptedHex, "hex")).toString("utf8") + decipher.final("utf8");
   } catch {
-    return data; // Decryption failed — token might be plain text (pre-migration)
+    return data; // Decryption failed Ã¢â‚¬â€ token might be plain text (pre-migration)
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Keyword matching — use WORD BOUNDARY regex, not substring includes().
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Keyword matching Ã¢â‚¬â€ use WORD BOUNDARY regex, not substring includes().
 // This prevents "test5" keyword matching "test55" comment ("test55".includes("test5") === true).
 // \btest5\b correctly rejects "test55" since "55" has no word boundary between the two digits.
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function keywordMatch(text: string, keyword: string): boolean {
   const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\b${escaped}\\b`, "i").test(text);
@@ -56,13 +56,31 @@ function getServiceClient() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Correlation ID Ã¢â‚¬â€ ties all steps of one automation execution
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+function newCorrelationId(): string {
+  return `corr_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Derive platform from Meta webhook object field
+// Meta sends: object="instagram" for IG, object="page" for FB
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+function derivePlatform(metaObject: string): "instagram" | "facebook" {
+  if (metaObject === "instagram") return "instagram";
+  if (metaObject === "page") return "facebook";
+  // Default to instagram for backward compat with older event types
+  return "instagram";
+}
+
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Webhook event deduplication
 // NOTE: In-memory dedup does NOT work in Vercel serverless (new instance per request).
 // Real dedup is handled by processed_comments table unique constraint.
 // We keep a lightweight per-invocation set only to prevent double-processing
 // within a single webhook payload that contains duplicate entries.
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 const processedEntriesThisRequest = new Set<string>();
 
 function getEventFingerprint(entry: any): string {
@@ -71,24 +89,24 @@ function getEventFingerprint(entry: any): string {
   return crypto.createHash("md5").update(`${id}:${time}`).digest("hex");
 }
 
-// ─────────────────────────────────────────────────────────────
-// GET — Meta webhook verification
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// GET Ã¢â‚¬â€ Meta webhook verification
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("[Webhook] Meta verified ✓");
+    console.log("[Webhook] Meta verified Ã¢Å“â€œ");
     return new NextResponse(challenge, { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
 }
 
-// ─────────────────────────────────────────────────────────────
-// POST — Receive Meta webhook events
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// POST Ã¢â‚¬â€ Receive Meta webhook events
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 export async function POST(request: NextRequest) {
   const supabase = getServiceClient();
 
@@ -96,8 +114,8 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
     const signature = request.headers.get("x-hub-signature-256") || "";
 
-    // ── Log EVERY raw webhook to DB FIRST (even before signature check) ──
-    // This is critical for debugging — we need to know if Meta is sending events at all
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Log EVERY raw webhook to DB FIRST (even before signature check) Ã¢â€â‚¬Ã¢â€â‚¬
+    // This is critical for debugging Ã¢â‚¬â€ we need to know if Meta is sending events at all
     let parsedBody: any = null;
     try {
       parsedBody = JSON.parse(rawBody);
@@ -107,11 +125,11 @@ export async function POST(request: NextRequest) {
         received_at: new Date().toISOString(),
       });
     } catch {
-      // JSON parse or DB insert failed — continue anyway
+      // JSON parse or DB insert failed Ã¢â‚¬â€ continue anyway
     }
 
     if (!verifySignature(rawBody, signature)) {
-      console.warn("[Webhook] Signature mismatch — rejecting");
+      console.warn("[Webhook] Signature mismatch Ã¢â‚¬â€ rejecting");
       console.warn("[Webhook] Received signature:", signature?.substring(0, 20) + "...");
       // Calculate expected for debugging
       const expected = process.env.META_APP_SECRET 
@@ -144,9 +162,14 @@ export async function POST(request: NextRequest) {
     console.log("[Webhook] Received:", JSON.stringify(body).substring(0, 800));
     console.log("[Webhook] Object:", body.object, "| Entries:", body.entry?.length);
 
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Derive platform from Meta object field Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // object="instagram" Ã¢â€ â€™ Instagram Graph API events
+    // object="page"      Ã¢â€ â€™ Facebook Page events (comments, Messenger)
+    const platform = derivePlatform(body.object || "");
+    console.log(`[Webhook] Platform derived: ${platform} (object=${body.object})`);
 
     for (const entry of (body.entry || [])) {
-      // ── Deduplication: skip if we've already processed this entry in THIS request ──
+      // Ã¢â€â‚¬Ã¢â€â‚¬ Deduplication: skip if we've already processed this entry in THIS request Ã¢â€â‚¬Ã¢â€â‚¬
       const fingerprint = getEventFingerprint(entry);
       if (processedEntriesThisRequest.has(fingerprint)) {
         console.log(`[Webhook] Skipping duplicate entry within same request: ${fingerprint}`);
@@ -155,23 +178,26 @@ export async function POST(request: NextRequest) {
       processedEntriesThisRequest.add(fingerprint);
 
       const pageId: string = entry.id;
-      console.log(`[Webhook] Processing entry id=${pageId} | changes=${entry.changes?.length || 0} | messaging=${entry.messaging?.length || 0}`);
+      console.log(`[Webhook] Processing entry id=${pageId} | platform=${platform} | changes=${entry.changes?.length || 0} | messaging=${entry.messaging?.length || 0}`);
 
-      // ── Standard change events (comments, mentions, follow) ──
+      // Ã¢â€â‚¬Ã¢â€â‚¬ Standard change events (comments, mentions, follow) Ã¢â€â‚¬Ã¢â€â‚¬
       for (const change of (entry.changes || [])) {
         console.log(`[Webhook] Change: field="${change.field}" value_keys=${Object.keys(change.value || {}).join(",")}`);
         
         await processChangeEvent(supabase, {
           object: body.object,
+          platform,
           field: change.field,
           value: change.value,
           pageId,
         });
 
-        // ── Handle "feed" field which may contain Instagram comments ──
-        // When subscribed to Page "feed", comments come as field="feed" with value.item="comment"
-        if (change.field === "feed" && change.value?.item === "comment" && change.value?.verb === "add") {
-          console.log(`[Webhook] Feed comment detected! Converting to comment event format`);
+        // Ã¢â€â‚¬Ã¢â€â‚¬ Handle "feed" field which may contain Facebook comments Ã¢â€â‚¬Ã¢â€â‚¬
+        // Facebook: field="feed" with value.item="comment" is how FB page comment webhooks arrive.
+        // Instagram: uses field="comments" directly Ã¢â‚¬â€ never "feed".
+        // So this block is FB-only (platform guard added for safety).
+        if (change.field === "feed" && change.value?.item === "comment" && change.value?.verb === "add" && platform === "facebook") {
+          console.log(`[Webhook] FB feed comment detected Ã¢â‚¬â€ converting to comment event format`);
           const feedComment = {
             id: change.value.comment_id,
             text: change.value.message,
@@ -179,14 +205,14 @@ export async function POST(request: NextRequest) {
             media: { id: change.value.post_id },
             parent_id: change.value.parent_id || null,
           };
-          await processCommentEvent(supabase, feedComment, pageId);
+          await processCommentEvent(supabase, feedComment, pageId, platform);
         }
       }
 
-      // ── Messaging events (DMs) ──────────────────────────────
+      // Ã¢â€â‚¬Ã¢â€â‚¬ Messaging events (DMs, postbacks, quick replies) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
       const allMessages = [...(entry.messaging || []), ...(entry.standby || [])];
       for (const msg of allMessages) {
-        await processMessagingEvent(supabase, msg, pageId);
+        await processMessagingEvent(supabase, msg, pageId, platform);
       }
     }
 
@@ -197,19 +223,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Change events dispatcher
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function processChangeEvent(
   supabase: any,
-  ctx: { object: string; field: string; value: any; pageId: string }
+  ctx: { object: string; platform: "instagram" | "facebook"; field: string; value: any; pageId: string }
 ) {
-  const { field, value, pageId } = ctx;
-  console.log(`[Webhook] Change event: field=${field} pageId=${pageId}`);
+  const { field, value, pageId, platform } = ctx;
+  console.log(`[Webhook] Change event: field=${field} pageId=${pageId} platform=${platform}`);
 
   // Log to DB
   await supabase.from("webhook_events").insert({
-    platform: ctx.object,
+    platform,
     event_type: field,
     sender_id: value?.from?.id || null,
     recipient_id: pageId,
@@ -218,7 +244,7 @@ async function processChangeEvent(
   }).select().single();
 
   if (field === "comments") {
-    await processCommentEvent(supabase, value, pageId);
+    await processCommentEvent(supabase, value, pageId, platform);
   }
   if (field === "mentions") {
     console.log("[Webhook] Mention event:", JSON.stringify(value).substring(0, 200));
@@ -227,11 +253,11 @@ async function processChangeEvent(
   // New-follower DM is handled in processMessagingEvent via first-contact detection.
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // DM / Messaging events
-// ─────────────────────────────────────────────────────────────
-async function processMessagingEvent(supabase: any, messaging: any, pageId: string) {
-  // Skip delivery receipts, reads etc.
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+async function processMessagingEvent(supabase: any, messaging: any, pageId: string, platform: "instagram" | "facebook") {
+  // Skip delivery receipts, reads, etc.
   if (!messaging.message && !messaging.follow && !messaging.postback) return;
 
   const senderId: string = messaging.sender?.id;
@@ -248,11 +274,11 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   // Priority: quick_reply payload > postback payload > message text > postback title
   const messageText: string = (quickReplyPayload || postbackPayload || rawText || messaging.postback?.title || "").toLowerCase();
 
-  console.log(`[Webhook] DM from ${senderId} to page ${pageId}: "${messageText.substring(0, 80)}" (qr=${quickReplyPayload ? 'yes' : 'no'}, pb=${postbackPayload ? 'yes' : 'no'}, text=${rawText ? 'yes' : 'no'})`);
+  console.log(`[Webhook] DM from ${senderId} to page ${pageId} platform=${platform}: "${messageText.substring(0, 80)}" (qr=${quickReplyPayload ? 'yes' : 'no'}, pb=${postbackPayload ? 'yes' : 'no'}, text=${rawText ? 'yes' : 'no'})`);
 
-  // Log DM event
+  // Log DM event with correct platform
   await supabase.from("webhook_events").insert({
-    platform: "instagram",
+    platform,
     event_type: "message",
     sender_id: senderId,
     recipient_id: pageId,
@@ -287,7 +313,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     .single();
 
   if (conv?.opted_out) {
-    console.log(`[Webhook] Sender ${senderId} opted out — skipping`);
+    console.log(`[Webhook] Sender ${senderId} opted out Ã¢â‚¬â€ skipping`);
     return;
   }
 
@@ -329,251 +355,268 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     return;
   }
 
-  // ── 1. Pending follow-gate check — must run FIRST ───────────
-  // When a user sends ANY message, check if they have a pending require_follow flow.
-  // If they do, check follower status and complete the flow.
-  // This is much simpler than matching specific trigger texts — user just needs to
-  // follow + send any message (hi, emoji, anything).
-  let pendingFollowRuleId: string | undefined = undefined;
-  let pendingFollowLookupSource = "none";
-  
-  // Method 1: Check if message text matches a postback payload (legacy format "done:<uuid>")
-  if (messageText.startsWith("done:")) {
-    pendingFollowRuleId = messageText.split("done:")[1]?.trim();
-    pendingFollowLookupSource = "postback_payload";
-  }
-  
-  // Method 2: Check if this sender has ANY pending require_follow rule
-  // This is the primary method — ANY message from a pending user triggers the flow
-  if (!pendingFollowRuleId && account?.user_id) {
-    try {
-      // First: check processed_comments for this sender (comment-triggered flows)
-      const { data: recentComment } = await supabase
-        .from("processed_comments")
-        .select("rule_id")
-        .eq("commentor_id", senderId)
-        .order("processed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (recentComment?.rule_id) {
-        // Verify it's a require_follow rule
-        const { data: r } = await supabase
-          .from("automation_rules")
-          .select("id, action_config")
-          .eq("id", recentComment.rule_id)
-          .eq("is_active", true)
-          .maybeSingle();
-        if (r?.action_config?.require_follow) {
-          pendingFollowRuleId = r.id;
-          pendingFollowLookupSource = "processed_comments";
-        }
-      }
-    } catch (e: any) {
-      console.warn(`[Webhook] Pending follow check (processed_comments) failed: ${e.message}`);
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Automation context resolution Ã¢â‚¬â€ DETERMINISTIC TOKEN LOOKUP Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+  // The quick_reply payload is "AUTO:<token_uuid>" where the UUID maps to
+  // an exact row in automation_context_tokens containing the full context.
+  // This is the ONLY supported correlation mechanism for commentÃ¢â€ â€™DM flows.
+  // Methods 2/3/4 (probabilistic fallbacks) have been REMOVED per Blocker 1-4.
+  // If token is missing, expired, invalid, or wrong-tenant: STOP. Never guess.
+
+  const rawPayload: string = quickReplyPayload || postbackPayload;
+
+  if (rawPayload.toLowerCase().startsWith("auto:")) {
+    const tokenId = rawPayload.substring(5).trim(); // strip "AUTO:" prefix
+    console.log(`[Webhook] AUTO token received: token=${tokenId} sender=${senderId} platform=${platform}`);
+
+    const { data: ctxToken, error: ctxErr } = await supabase
+      .from("automation_context_tokens")
+      .select("*")
+      .eq("id", tokenId)
+      .maybeSingle();
+
+    const now = new Date();
+
+    if (ctxErr || !ctxToken) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_NOT_FOUND: token=${tokenId} sender=${senderId}`);
+      return;
     }
-  }
-
-  // Method 3: Check message_queue for recent private_reply sent by this account
-  if (!pendingFollowRuleId && account?.id) {
-    try {
-      const { data: recentQueue } = await supabase
-        .from("message_queue")
-        .select("automation_rule_id, message_type")
-        .eq("account_id", account.id)
-        .in("message_type", ["private_reply", "dm"])
-        .in("status", ["sent", "queued", "ready", "processing"])
-        .order("created_at", { ascending: false })
-        .limit(20);
-      
-      for (const q of (recentQueue || [])) {
-        if (!q.automation_rule_id) continue;
-        const { data: r } = await supabase
-          .from("automation_rules")
-          .select("id, action_config")
-          .eq("id", q.automation_rule_id)
-          .eq("is_active", true)
-          .maybeSingle();
-        if (r?.action_config?.require_follow) {
-          pendingFollowRuleId = r.id;
-          pendingFollowLookupSource = "message_queue";
-          break;
-        }
-      }
-    } catch (e: any) {
-      console.warn(`[Webhook] Pending follow check (message_queue) failed: ${e.message}`);
+    if (ctxToken.account_id !== account.id) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_REJECTED: token=${tokenId} Ã¢â‚¬â€ account mismatch`);
+      return;
     }
-  }
-
-  // Method 4: Direct fallback — find any active require_follow rule for this account
-  if (!pendingFollowRuleId && account?.user_id) {
-    try {
-      const { data: followRules } = await supabase
-        .from("automation_rules")
-        .select("id, action_config")
-        .eq("user_id", account.user_id)
-        .eq("is_active", true)
-        .in("type", ["comment_automation", "comment_to_dm", "dm_keyword"])
-        .order("last_triggered", { ascending: false })
-        .limit(5);
-      
-      const matchingRule = followRules?.find((r: any) => r.action_config?.require_follow === true);
-      if (matchingRule) {
-        pendingFollowRuleId = matchingRule.id;
-        pendingFollowLookupSource = "direct_query";
-      }
-    } catch (e: any) {
-      console.warn(`[Webhook] Pending follow check (direct) failed: ${e.message}`);
+    if (ctxToken.platform !== platform) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_REJECTED: token=${tokenId} Ã¢â‚¬â€ platform mismatch (token=${ctxToken.platform} webhook=${platform})`);
+      return;
     }
-  }
+    if (ctxToken.user_id !== account.user_id) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_REJECTED: token=${tokenId} Ã¢â‚¬â€ tenant mismatch`);
+      return;
+    }
+    if (new Date(ctxToken.expires_at) < now) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_REJECTED: token=${tokenId} Ã¢â‚¬â€ expired at ${ctxToken.expires_at}`);
+      await supabase.from("automation_context_tokens").update({ status: "expired" }).eq("id", tokenId);
+      return;
+    }
+    if (ctxToken.status === "access_sent") {
+      console.log(`[Webhook] AUTOMATION_CONTEXT_ALREADY_CONSUMED: token=${tokenId} Ã¢â‚¬â€ access already delivered`);
+      return;
+    }
+    if (ctxToken.status === "rejected" || ctxToken.status === "expired") {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_REJECTED: token=${tokenId} Ã¢â‚¬â€ status=${ctxToken.status}`);
+      return;
+    }
 
-  const hasPendingFollowGate = !!pendingFollowRuleId;
-  
-  if (hasPendingFollowGate) {
-    const ruleId = pendingFollowRuleId;
-    console.log(`[Webhook] 🔍 Pending follow-gate detected! messageText="${messageText}" senderId=${senderId} ruleId=${ruleId} via ${pendingFollowLookupSource}`);
+    console.log(`[Webhook] AUTO token resolved: ruleId=${ctxToken.rule_id} commentId=${ctxToken.comment_id} attempt=${ctxToken.recheck_attempts + 1}`);
 
-    if (ruleId) {
-      const { data: rule, error: ruleErr } = await supabase
-        .from("automation_rules")
-        .select("*")
-        .eq("id", ruleId)
-        .single();
+    // Store IGSID Ã¢â‚¬â€ authoritative messaging identity (NOT comment.from.id)
+    await supabase
+      .from("automation_context_tokens")
+      .update({ igsid: senderId, status: "interacted", interacted_at: now.toISOString() })
+      .eq("id", tokenId);
 
-      if (ruleErr) {
-        console.error(`[Webhook] ❌ DONE: Rule lookup failed for ruleId=${ruleId}: ${ruleErr.message}`);
-      } else if (!rule) {
-        console.error(`[Webhook] ❌ DONE: Rule not found for ruleId=${ruleId}`);
-      } else {
-        console.log(`[Webhook] ✅ DONE: Found rule "${rule.name}" (type=${rule.type}, require_follow=${rule.action_config?.require_follow})`);
-        
-        // ── Verify follower status before sending link ──
-        // In messaging context, senderId IS an Instagram Scoped ID (IGSID).
-        // is_user_follow_business works correctly here because user has messaging consent.
-        let isFollowingNow = false;
-        let apiCheckFailed = false;
-        
-        if (rule.action_config?.require_follow && senderId && account?.access_token) {
-          try {
-            const decryptedToken = decryptToken(account.access_token);
-            const followUrl = `https://graph.facebook.com/v21.0/${senderId}?fields=is_user_follow_business&access_token=${decryptedToken}`;
-            const followRes = await fetch(followUrl);
-            const followData = await followRes.json();
-            console.log(`[Webhook] 👤 DONE follower check (IGSID=${senderId}): ${JSON.stringify(followData)}`);
-            
-            if (followData.is_user_follow_business === true) {
-              isFollowingNow = true;
-              console.log(`[Webhook] 👤 DONE: User IS following ✅`);
-            } else if (followData.error) {
-              console.warn(`[Webhook] 👤 DONE: Follower API error — ${followData.error.message}`);
-              apiCheckFailed = true;
-            } else {
-              console.log(`[Webhook] 👤 DONE: User is NOT following ❌`);
-              isFollowingNow = false;
-            }
-          } catch (e: any) {
-            console.warn(`[Webhook] 👤 DONE: Follower check failed — ${e.message}`);
-            apiCheckFailed = true;
-          }
-        } else {
-          // No require_follow → treat as following (skip check)
-          isFollowingNow = true;
-        }
+    const { data: rule, error: ruleErr } = await supabase
+      .from("automation_rules")
+      .select("*")
+      .eq("id", ctxToken.rule_id)
+      .single();
 
-        // ── If NOT following → send plain text reminder ──
-        // NOTE: We send plain text (no quick_replies/buttons) because standard DMs
-        // may fail with (#3) if instagram_manage_messages isn't fully approved.
-        // Plain text is the safest option.
-        if (!isFollowingNow && !apiCheckFailed) {
-          const keywords: string[] = rule.trigger_config?.keywords || [];
-          const keywordHint = keywords.length > 0 ? `"${keywords[0]}"` : "the keyword";
-          const notFollowingMsgs = rule.action_config?.not_following_messages || [];
-          const randomReminder = notFollowingMsgs.length > 0 
-            ? notFollowingMsgs[Math.floor(Math.random() * notFollowingMsgs.length)] 
-            : undefined;
-          const reminderText = parseSpintax(randomReminder || `Oops! You haven't followed yet 😅\nFollow me first, then comment ${keywordHint} again on the post!`);
-          
-          console.log(`[Webhook] 📤 DONE: User NOT following — sending plain text reminder`);
-          
-          try {
-            await enqueueViaBackend({
-              accountId: rule.account_id || account.id,
-              userId: rule.user_id,
-              recipientId: senderId,
-              messagePayload: { text: reminderText },
-              messageType: "dm",
-              automationRuleId: rule.id,
-            });
-            console.log(`[Webhook] ✅ DONE: Not-following reminder sent`);
-          } catch (e: any) {
-            console.error(`[Webhook] ❌ DONE: Reminder send failed: ${e.message}`);
-          }
-          return; // Stop here — don't send link yet
-        }
+    if (ruleErr || !rule) {
+      console.error(`[Webhook] AUTOMATION_CONTEXT_NOT_FOUND: token=${tokenId} Ã¢â‚¬â€ rule not found (ruleId=${ctxToken.rule_id})`);
+      return;
+    }
 
-        // ── Following (or API failed → graceful fallback) → Send main DM with link ──
-        const msgs = rule.action_config?.messages || [];
-        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        let dmText = parseSpintax(randomMsg || rule.action_config?.message || "Here is your link!");
-        const dmLink = rule.action_config?.link || undefined;
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Follower check Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // -- Follower check: THREE DISTINCT STATES (Correction 2) ----------------------
+    // FOLLOWER_TRUE:         user is following -> deliver access
+    // FOLLOWER_FALSE:        user is NOT following -> send [I followed]
+    // FOLLOWER_CHECK_FAILED: API error -> stop, do NOT send anything, do NOT assume false
+    // These states are MUTUALLY EXCLUSIVE. Never combine FALSE + API_ERROR.
+    const correlationId = ctxToken.correlation_id || newCorrelationId();
+    const requiresFollow = rule.action_config?.require_follow === true;
 
-        if (apiCheckFailed) {
-          console.log(`[Webhook] 📤 DONE: Follower API unavailable — sending link anyway (graceful fallback)`);
-        }
-        console.log(`[Webhook] 📤 DONE: Sending main DM — text="${dmText?.substring(0, 50)}" link=${dmLink || 'none'}`);
+    // Follower state: null = not yet determined, will be set to one of three strings
+    type FollowerState = "FOLLOWER_TRUE" | "FOLLOWER_FALSE" | "FOLLOWER_CHECK_FAILED" | "NOT_REQUIRED" | "FB_BYPASS";
+    let followerState: FollowerState;
+    let followerCheckErrorMsg = "";
 
-        try {
-          // Send Main DM with the actual content/link
-          const enqResult = await enqueueViaBackend({
-            accountId: rule.account_id || account.id,
-            userId: rule.user_id,
-            recipientId: senderId,
-            messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
-            messageType: "dm",
-            automationRuleId: rule.id,
-          });
-          console.log(`[Webhook] 📤 DONE: Enqueue result = ${JSON.stringify(enqResult)}`);
+    if (!requiresFollow) {
+      // require_follow=false: no follower check needed, deliver directly
+      followerState = "NOT_REQUIRED";
+      console.log("[Webhook] FOLLOWER_CHECK: not required for this rule (token=" + tokenId + ")");
 
-          // Schedule Follow-up DM if enabled
-          if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
-            const followMsgs = rule.action_config?.follow_up_messages || [];
-            const randomFollow = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-            let followupText = parseSpintax(randomFollow || "Did you check it out?");
-            
-            const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
-            await enqueueViaBackend({
-              accountId: rule.account_id || account.id,
-              userId: rule.user_id,
-              recipientId: senderId,
-              messagePayload: { text: followupText },
-              messageType: "dm",
-              automationRuleId: rule.id,
-              scheduledSendAt: scheduledAt,
-            });
-            console.log(`[Webhook] 📤 DONE: Follow-up scheduled for ${scheduledAt}`);
-          }
+    } else if (platform === "facebook") {
+      // Facebook: is_user_follow_business not available â€” deliver directly
+      followerState = "FB_BYPASS";
+      console.log("[Webhook] FOLLOWER_CHECK: FB platform â€” skipped, delivering directly (token=" + tokenId + ")");
 
-          // Update trigger count — use SQL increment to avoid race condition
-          await supabase.rpc("increment_trigger_count", { rule_id: rule.id }).catch(() => {
-            supabase.from("automation_rules").update({
-              trigger_count: (rule.trigger_count || 0) + 1,
-              last_triggered: new Date().toISOString(),
-            }).eq("id", rule.id);
-          });
-
-          console.log(`[Webhook] ✅ DONE flow completed for rule "${rule.name}"`);
-          // Successfully handled DONE flow — stop here
-          return;
-        } catch (e: any) {
-          console.error(`[Webhook] ❌ DONE handling failed: ${e.message}`);
-        }
-      }
     } else {
-      console.warn(`[Webhook] ⚠️ DONE message received but no matching rule found. senderId=${senderId} pageId=${pageId}`);
+      // Instagram: enforce max recheck first
+      const MAX_RECHECK = ctxToken.max_recheck_attempts || rule.action_config?.max_recheck_attempts || 3;
+      if (ctxToken.recheck_attempts >= MAX_RECHECK) {
+        console.log("[Webhook] FOLLOW_VERIFICATION_LIMIT_REACHED: token=" + tokenId + " attempts=" + ctxToken.recheck_attempts);
+        await supabase.from("automation_context_tokens").update({ status: "rejected" }).eq("id", tokenId);
+        return;
+      }
+
+      if (!account?.access_token) {
+        console.error("[Webhook] FOLLOWER_CHECK_FAILED: no access_token on account (token=" + tokenId + ")");
+        followerState = "FOLLOWER_CHECK_FAILED";
+        followerCheckErrorMsg = "no access_token";
+      } else {
+        console.log("[Webhook] FOLLOWER_CHECK_STARTED: IGSID=" + senderId + " token=" + tokenId + " corr=" + correlationId);
+        try {
+          const decryptedToken = decryptToken(account.access_token);
+          const followRes = await fetch(
+            "https://graph.facebook.com/v21.0/" + senderId + "?fields=is_user_follow_business&access_token=" + decryptedToken
+          );
+          const followData = await followRes.json();
+          console.log("[Webhook] Follower API response:", JSON.stringify(followData).substring(0, 300));
+
+          if (!followRes.ok || followData.error) {
+            // State: FOLLOWER_CHECK_FAILED â€” do NOT treat as false
+            const metaErr = followData.error || {};
+            followerCheckErrorMsg = "HTTP " + followRes.status + " code=" + metaErr.code + " msg=" + metaErr.message;
+            console.error("[Webhook] FOLLOWER_CHECK_FAILED token=" + tokenId + " IGSID=" + senderId + ": " + followerCheckErrorMsg);
+            followerState = "FOLLOWER_CHECK_FAILED";
+
+          } else if (followData.is_user_follow_business === true) {
+            // State: FOLLOWER_TRUE
+            followerState = "FOLLOWER_TRUE";
+            console.log("[Webhook] FOLLOWER_TRUE: IS following (token=" + tokenId + ")");
+
+          } else {
+            // State: FOLLOWER_FALSE â€” user is confirmed NOT following
+            followerState = "FOLLOWER_FALSE";
+            console.log("[Webhook] FOLLOWER_FALSE: NOT following (token=" + tokenId + ")");
+          }
+        } catch (e: any) {
+          // Network/parse error: FOLLOWER_CHECK_FAILED, NOT FOLLOWER_FALSE
+          followerCheckErrorMsg = e.message;
+          console.error("[Webhook] FOLLOWER_CHECK_FAILED (network) token=" + tokenId + ": " + e.message);
+          followerState = "FOLLOWER_CHECK_FAILED";
+        }
+      }
     }
+
+    // -- State dispatch: exhaustive, mutually exclusive --
+    if (followerState === "FOLLOWER_CHECK_FAILED") {
+      // Do NOT send access. Do NOT send follow message. Log and stop.
+      // Token stays "interacted" â€” user can tap [I followed] again to retry.
+      console.error("[Webhook] FOLLOWER_CHECK_FAILED â€” NOT delivering. IGSID=" + senderId + 
+                    " token=" + tokenId + " error=" + followerCheckErrorMsg);
+      return;
+    }
+
+    if (followerState === "FOLLOWER_FALSE") {
+      // User is confirmed NOT following. Send [I followed] with SAME token.
+      const notFollowingMsgs = rule.action_config?.not_following_messages || [];
+      const randomNF = notFollowingMsgs.length > 0 ? notFollowingMsgs[Math.floor(Math.random() * notFollowingMsgs.length)] : undefined;
+      const reminderText = parseSpintax(randomNF || "You are almost there! Please follow our account and then tap the button below.");
+      const iFollowedBtnText = (rule.action_config?.done_button_text || "I followed!").substring(0, 20);
+
+      console.log("[Webhook] FOLLOWER_FALSE: sending [" + iFollowedBtnText + "] to " + senderId + " token=" + tokenId + " attempt=" + ctxToken.recheck_attempts);
+
+      await supabase
+        .from("automation_context_tokens")
+        .update({ recheck_attempts: ctxToken.recheck_attempts + 1 })
+        .eq("id", tokenId);
+
+      await enqueueViaBackend({
+        accountId: rule.account_id || account.id,
+        userId: rule.user_id,
+        platform,
+        recipientId: senderId,
+        messagePayload: {
+          text: reminderText,
+          quick_replies: [{
+            content_type: "text",
+            title: iFollowedBtnText,
+            payload: "AUTO:" + tokenId, // SAME token â€” scoped to exact execution
+          }],
+        },
+        messageType: "dm",
+        automationRuleId: rule.id,
+        correlationId,
+      }).catch((e: any) => console.error("[Webhook] FOLLOWER_FALSE enqueue failed:", e.message));
+      return;
+    }
+
+    // FOLLOWER_TRUE | NOT_REQUIRED | FB_BYPASS: all lead to access delivery
+    const msgs = rule.action_config?.messages || [];
+    const randomMsg3 = msgs[Math.floor(Math.random() * msgs.length)];
+    const dmText = parseSpintax(randomMsg3 || rule.action_config?.message || "Here is your link!");
+    const dmLink: string | undefined = rule.action_config?.link || undefined;
+
+    console.log(`[Webhook] ACCESS_SENT: to ${senderId} text="${dmText?.substring(0, 50)}" link=${dmLink || 'none'} token=${tokenId}`);
+
+    try {
+      // Mark token consumed Ã¢â‚¬â€ single-use, prevents double delivery
+      await supabase
+        .from("automation_context_tokens")
+        .update({
+          status: "access_sent",
+          consumed_at: now.toISOString(),
+          igsid: senderId,
+        } as Record<string, unknown>)
+        .eq("id", tokenId);
+
+      // Sync to processed_comments for reporting dashboard
+      await supabase
+        .from("processed_comments")
+        .update({
+          igsid: senderId,
+          follower_check_result: (followerState === "FB_BYPASS" || followerState === "NOT_REQUIRED") ? "skipped" : "following",
+          follower_check_at: now.toISOString(),
+          access_sent: true,
+          access_sent_at: now.toISOString(),
+        })
+        .eq("comment_id", ctxToken.comment_id)
+        .eq("rule_id", ctxToken.rule_id);
+
+      await enqueueViaBackend({
+        accountId: rule.account_id || account.id,
+        userId: rule.user_id,
+        platform,
+        recipientId: senderId,
+        messagePayload: { text: dmText, link: dmLink, button_label: rule.action_config?.button_label },
+        messageType: "dm",
+        automationRuleId: rule.id,
+        correlationId,
+      });
+
+      if (rule.action_config?.follow_up_enabled && rule.action_config?.follow_up_delay > 0) {
+        const fuMsgs = rule.action_config?.follow_up_messages || [];
+        const fuText = parseSpintax(fuMsgs[Math.floor(Math.random() * fuMsgs.length)] || "Did you check it out?");
+        const scheduledAt = new Date(Date.now() + rule.action_config.follow_up_delay * 60000).toISOString();
+        await enqueueViaBackend({
+          accountId: rule.account_id || account.id,
+          userId: rule.user_id,
+          platform,
+          recipientId: senderId,
+          messagePayload: { text: fuText },
+          messageType: "dm",
+          automationRuleId: rule.id,
+          scheduledSendAt: scheduledAt,
+          correlationId,
+        });
+      }
+
+      await supabase.rpc("increment_trigger_count", { rule_id: rule.id }).catch(() => {
+        supabase.from("automation_rules").update({
+          trigger_count: (rule.trigger_count || 0) + 1,
+          last_triggered: now.toISOString(),
+        }).eq("id", rule.id);
+      });
+
+      console.log(`[Webhook] AUTO flow complete: rule="${rule.name}" token=${tokenId}`);
+    } catch (e: any) {
+      console.error(`[Webhook] AUTO access delivery failed: ${e.message}`);
+    }
+    return;
   }
 
-  // ── 2. dm_keyword: fires when message matches keywords ───────────────
+
+  // Ã¢â€â‚¬Ã¢â€â‚¬ 2. dm_keyword: fires when message matches keywords Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   // This runs BEFORE dm_new_follower so that if a first-time user sends a keyword,
   // the keyword rule fires instead of the generic welcome message.
   let keywordRuleMatched = false;
@@ -587,7 +630,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     .eq("is_active", true);
 
   for (const rule of (keywordRules || [])) {
-    // Keyword match — use word-boundary regex (not substring includes)
+    // Keyword match Ã¢â‚¬â€ use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];
     const matchType: string = rule.trigger_config?.match_type || "any";
 
@@ -598,7 +641,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       : keywords.some(k => keywordMatch(messageText, k));
 
     if (matched) {
-      console.log(`[Webhook] Keyword match — rule: ${rule.name}`);
+      console.log(`[Webhook] Keyword match Ã¢â‚¬â€ rule: ${rule.name}`);
       keywordRuleMatched = true;
 
       let isFollowing = false;
@@ -626,7 +669,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
+        const customBtn = (rule.action_config?.done_button_text || "DONE Ã¢Å“â€¦").substring(0, 20);
         dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
         dmLink = undefined;
         quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
@@ -646,7 +689,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! 🙏");
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || rule.action_config?.reply_text || "Namaste! Ã°Å¸â„¢Â");
         dmLink = rule.action_config?.link || undefined;
       }
 
@@ -670,7 +713,7 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
     }
   }
 
-  // ── 3. dm_new_follower: fires on FIRST message if no keyword matched ──
+  // Ã¢â€â‚¬Ã¢â€â‚¬ 3. dm_new_follower: fires on FIRST message if no keyword matched Ã¢â€â‚¬Ã¢â€â‚¬
   // Only triggers if no keyword rule was already matched above.
   // This ensures keyword intent is always respected over generic welcome.
   if (!keywordRuleMatched && isFirstMessage) {
@@ -712,14 +755,14 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
       if (rule.action_config?.require_follow && !bypassFollowPrompt) {
         const followMsgs = rule.action_config?.follow_prompt_messages || [];
         const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        const customBtn = (rule.action_config?.done_button_text || "DONE ✅").substring(0, 20);
+        const customBtn = (rule.action_config?.done_button_text || "DONE Ã¢Å“â€¦").substring(0, 20);
         dmText = parseSpintax(randomMsg || `Please follow me and tap '${customBtn}' to get the link!`);
         dmLink = undefined;
         quickReplies = [{ content_type: "text", title: customBtn, payload: `DONE:${rule.id}` }];
       } else {
         const msgs = rule.action_config?.messages || [];
         const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
+        dmText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! Ã°Å¸â„¢Â");
         dmLink = rule.action_config?.link || undefined;
       }
 
@@ -744,10 +787,10 @@ async function processMessagingEvent(supabase: any, messaging: any, pageId: stri
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Comment events
-// ─────────────────────────────────────────────────────────────
-async function processCommentEvent(supabase: any, payload: any, pageId: string) {
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+async function processCommentEvent(supabase: any, payload: any, pageId: string, platform: "instagram" | "facebook" = "instagram") {
   const commentText = payload?.text?.toLowerCase() || "";
   const commentId = payload?.id;
   const mediaId = payload?.media?.id;
@@ -767,7 +810,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     return;
   }
 
-  // ── Find the connected account for this pageId ──────────────────────────
+  // ── Find the connected account for this pageId ────────────────────────
   // This is the MASTER token lookup — used as fallback for any rule without account_id
   const { data: pageAccount } = await supabase
     .from("connected_accounts")
@@ -787,7 +830,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
     }
   }
 
-  // ── Get ALL active comment rules ───────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ Get ALL active comment rules Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   // Query by BOTH account_id match AND rules with null account_id (for this user)
   let rulesQuery = supabase
     .from("automation_rules")
@@ -813,7 +856,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   // Log each rule for debugging
   for (const r of (rules || [])) {
     const kw = r.trigger_config?.keywords || [];
-    console.log(`[Webhook]   → Rule "${r.name}" type=${r.type} keywords=[${kw.join(',')}] require_follow=${r.action_config?.require_follow} active=${r.is_active}`);
+    console.log(`[Webhook]   Ã¢â€ â€™ Rule "${r.name}" type=${r.type} keywords=[${kw.join(',')}] require_follow=${r.action_config?.require_follow} active=${r.is_active}`);
   }
 
   if (!rules?.length) {
@@ -822,7 +865,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   }
 
   for (const rule of rules) {
-    // Media filter — skip if rule is for a specific post and this isn't it
+    // Media filter Ã¢â‚¬â€ skip if rule is for a specific post and this isn't it
     const ruleMediaId = rule.trigger_config?.media_id;
     const ruleMediaIds: any[] = rule.trigger_config?.media_ids || [];
     
@@ -832,14 +875,14 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       if (ruleMediaId !== mediaId) continue;
     }
 
-    // Keyword match — use word-boundary regex (not substring includes)
+    // Keyword match Ã¢â‚¬â€ use word-boundary regex (not substring includes)
     const keywords: string[] = rule.trigger_config?.keywords || [];
     const matchType: string = rule.trigger_config?.match_type || "any";
 
     // IMPORTANT: Skip rules with NO keywords for comment_automation type.
     // An empty keywords array would match EVERY comment, causing false triggers.
     if (keywords.length === 0 && rule.type === "comment_automation") {
-      console.log(`[Webhook] Skipping rule "${rule.name}" — no keywords defined (would match everything)`);
+      console.log(`[Webhook] Skipping rule "${rule.name}" Ã¢â‚¬â€ no keywords defined (would match everything)`);
       continue;
     }
 
@@ -854,9 +897,9 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       continue;
     }
 
-    console.log(`[Webhook] ✅ Rule "${rule.name}" matched! Processing...`);
+    console.log(`[Webhook] Ã¢Å“â€¦ Rule "${rule.name}" matched! Processing...`);
 
-    // ── Dedup: try processed_comments (graceful if table doesn't exist) ───
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Dedup: try processed_comments (graceful if table doesn't exist) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let skipDueToDuplicate = false;
     try {
       const { error: dedupError } = await supabase
@@ -871,22 +914,22 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       if (dedupError) {
         if (dedupError.code === "23505") {
-          console.log(`[Webhook] Comment ${commentId} already processed for rule "${rule.name}" — skipping`);
+          console.log(`[Webhook] Comment ${commentId} already processed for rule "${rule.name}" Ã¢â‚¬â€ skipping`);
           skipDueToDuplicate = true;
         } else if (dedupError.code === "42P01") {
-          // Table doesn't exist — just log and continue (don't block automation!)
-          console.warn(`[Webhook] processed_comments table missing — continuing without dedup`);
+          // Table doesn't exist Ã¢â‚¬â€ just log and continue (don't block automation!)
+          console.warn(`[Webhook] processed_comments table missing Ã¢â‚¬â€ continuing without dedup`);
         } else {
-          console.warn(`[Webhook] Dedup insert error (${dedupError.code}): ${dedupError.message} — continuing anyway`);
+          console.warn(`[Webhook] Dedup insert error (${dedupError.code}): ${dedupError.message} Ã¢â‚¬â€ continuing anyway`);
         }
       }
     } catch (e: any) {
-      console.warn(`[Webhook] Dedup check failed: ${e.message} — continuing anyway`);
+      console.warn(`[Webhook] Dedup check failed: ${e.message} Ã¢â‚¬â€ continuing anyway`);
     }
 
     if (skipDueToDuplicate) continue;
 
-    // ── Get access token — with FALLBACK to pageAccount ──────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Get access token Ã¢â‚¬â€ with FALLBACK to pageAccount Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     let token: string | null = null;
 
     // Try 1: Get from rule's account_id
@@ -905,23 +948,23 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       console.log(`[Webhook] Using pageAccount token as fallback for rule "${rule.name}"`);
     }
 
-    // CRITICAL: Decrypt the token — it's stored encrypted in DB
+    // CRITICAL: Decrypt the token Ã¢â‚¬â€ it's stored encrypted in DB
     if (token) {
       token = decryptToken(token);
     }
 
     if (!token) {
-      console.error(`[Webhook] ❌ No token available for rule "${rule.name}" — cannot execute`);
+      console.error(`[Webhook] Ã¢ÂÅ’ No token available for rule "${rule.name}" Ã¢â‚¬â€ cannot execute`);
       continue;
     }
     
     // Anti-ban check: Rate Limit
     if (!checkDailyLimit(rule.account_id || pageAccount?.id, 100)) {
-      console.warn(`[Webhook] ⚠️ Daily outbound limit reached for account ${rule.account_id || pageAccount?.id}`);
+      console.warn(`[Webhook] Ã¢Å¡Â Ã¯Â¸Â Daily outbound limit reached for account ${rule.account_id || pageAccount?.id}`);
       continue;
     }
 
-    // ── Determine which actions to run ───────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Determine which actions to run Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     const actionsEnabled = rule.action_config?.actions_enabled;
     const isUnified = rule.type === "comment_automation";
 
@@ -942,21 +985,21 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
     console.log(`[Webhook] Actions: reply=${shouldReply}, dm=${shouldDM}, hide=${shouldHide} (actions_enabled=${JSON.stringify(actionsEnabled)})`);
 
-    // ── Follower check at COMMENT TIME ─────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Follower check at COMMENT TIME Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     // We use a landing page (gate) for follow-gating. The gate page handles:
-    //   Follow CTA → "I'm Following" confirm → reveals link
+    //   Follow CTA Ã¢â€ â€™ "I'm Following" confirm Ã¢â€ â€™ reveals link
     // So at comment time, we ALWAYS set isFollowing=false when require_follow is ON.
     // This ensures every commenter gets the gate page URL in their Private Reply.
-    // No returning commenter bypass needed — gate page is the enforcement.
+    // No returning commenter bypass needed Ã¢â‚¬â€ gate page is the enforcement.
     let isFollowing = false;
 
-    // ── AUTO-REPLY to comment (public reply) ─────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ AUTO-REPLY to comment (public reply) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     const replyTexts = rule.action_config?.reply_texts || [];
     const randomReply = replyTexts.length > 0 ? replyTexts[Math.floor(Math.random() * replyTexts.length)] : undefined;
     const finalReplyText = randomReply || rule.action_config?.reply_text;
     
     if (shouldReply && finalReplyText) {
-      // Add a short 1-2 second delay — fast response
+      // Add a short 1-2 second delay Ã¢â‚¬â€ fast response
       const replyDelayMs = randomGaussianDelayMs(1, 2) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       const spunReplyText = parseSpintax(finalReplyText);
       console.log(`[Webhook] Scheduling public reply in ${replyDelayMs / 1000}s`);
@@ -965,6 +1008,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const replyEnqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
+        platform,
         recipientId: commentId,          // comment_id for comment_reply type
         messagePayload: { text: spunReplyText },
         messageType: "comment_reply",
@@ -974,7 +1018,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       // Fallback: if backend unreachable, send directly after delay
       if (replyEnqueueResult.error && !replyEnqueueResult.queued) {
-        console.warn(`[Webhook] Backend unreachable — will send reply directly after delay`);
+        console.warn(`[Webhook] Backend unreachable Ã¢â‚¬â€ will send reply directly after delay`);
         try {
           await new Promise(r => setTimeout(r, Math.min(replyDelayMs, 5000))); // cap at 5s for serverless
           const replyRes = await fetch(`https://graph.facebook.com/v21.0/${commentId}/replies`, {
@@ -984,58 +1028,73 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           });
           const replyData = await replyRes.json();
           if (!replyRes.ok) {
-            console.error(`[Webhook] ❌ Reply failed: ${JSON.stringify(replyData)}`);
+            console.error(`[Webhook] Ã¢ÂÅ’ Reply failed: ${JSON.stringify(replyData)}`);
           } else {
-            console.log(`[Webhook] ✅ Comment reply sent directly`);
+            console.log(`[Webhook] Ã¢Å“â€¦ Comment reply sent directly`);
           }
         } catch (e: any) {
-          console.error(`[Webhook] ❌ Reply error: ${e.message}`);
+          console.error(`[Webhook] Ã¢ÂÅ’ Reply error: ${e.message}`);
         }
       } else {
-        console.log(`[Webhook] ✅ Reply queued with ${replyDelayMs / 1000}s delay`);
+        console.log(`[Webhook] Ã¢Å“â€¦ Reply queued with ${replyDelayMs / 1000}s delay`);
       }
     }
 
-    // ── SEND Private Reply DM to commenter ──────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ SEND Private Reply DM to commenter Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    // -- SEND Private Reply DM (Mode B: ALL flows create context token) ----------------
+    // Token created BEFORE enqueue for all Mode B CTA flows, regardless of require_follow.
+    // require_follow=false: token resolved -> send access directly (no follower API)
+    // require_follow=true:  token resolved -> follower check -> TRUE/FALSE/FAIL
     if (shouldDM && commentorId && commentId) {
-      let dmText = "";
-      let dmLink = undefined;
-
-      // If require_follow is true BUT they are already following, act like it's a standard rule
-      const bypassFollowPrompt = rule.action_config?.require_follow && isFollowing;
-      
-      console.log(`[Webhook] 📋 DM Decision: require_follow=${rule.action_config?.require_follow}, isFollowing=${isFollowing}, bypass=${bypassFollowPrompt}`);
-
-      if (rule.action_config?.require_follow && !bypassFollowPrompt) {
-        // ── Follow Prompt — PLAIN TEXT ONLY ──
-        // Send text-only Private Reply. User reads it, follows, then replies anything.
-        // When user replies → messaging webhook fires → pending follow-gate handler
-        // checks follower status via IGSID → sends link if following, reminder if not.
-        // NO button, NO link in this message — just a clear follow CTA.
-        const followMsgs = rule.action_config?.follow_prompt_messages || [];
-        const randomMsg = followMsgs.length > 0 ? followMsgs[Math.floor(Math.random() * followMsgs.length)] : undefined;
-        
-        dmText = parseSpintax(randomMsg || `Hey! 🎁 I have something special for you!\n\n1️⃣ Follow me first\n2️⃣ Then reply here with anything (even just "hi")\n\nI'll send you the link instantly! 🔥`);
-        dmLink = undefined;  // NO link — plain text only
-        
-        console.log(`[Webhook] 📤 Sending FOLLOW PROMPT (plain text, no button)`);
-
-      } else {
-        // ── Direct DM (no follow required or already following) ──
-        const msgs = rule.action_config?.messages || [];
-        const randomMsg = msgs.length > 0 ? msgs[Math.floor(Math.random() * msgs.length)] : undefined;
-        const baseText = parseSpintax(randomMsg || rule.action_config?.message || "Namaste! 🙏");
-        
-        if (rule.action_config?.link) {
-          dmText = baseText;
-          dmLink = rule.action_config.link;
-        } else {
-          dmText = baseText;
+      // Step 1: Create context token (mandatory for ALL Mode B flows)
+      const ctaCorrelationId = newCorrelationId();
+      let ctaTokenId: string | null = null;
+      {
+        const ins = await supabase
+          .from("automation_context_tokens")
+          .insert({
+            user_id: rule.user_id,
+            account_id: rule.account_id || pageAccount?.id,
+            platform,
+            rule_id: rule.id,
+            comment_id: commentId,
+            commentor_id: commentorId,
+            correlation_id: ctaCorrelationId,
+            max_recheck_attempts: rule.action_config?.max_recheck_attempts || 3,
+          })
+          .select("id")
+          .single();
+        if (ins.error || !ins.data) {
+          console.error("[Webhook] CRITICAL: token creation failed:", ins.error?.message, "-- aborting Mode B");
+          break;
         }
-        console.log(`[Webhook] 📤 Sending DIRECT DM — text="${dmText?.substring(0, 50)}" link=${rule.action_config?.link || 'none'}`);
+        ctaTokenId = ins.data.id;
+        console.log("[Webhook] AUTO token created:", ctaTokenId, "require_follow=" + (rule.action_config?.require_follow || false));
       }
+
+      // Step 2: Build CTA message (quick_reply captures IGSID via messaging webhook)
+      const ctaMsgs = rule.action_config?.follow_prompt_messages || [];
+      const ctaRandomMsg = ctaMsgs.length > 0 ? ctaMsgs[Math.floor(Math.random() * ctaMsgs.length)] : undefined;
+      const ctaBtnText = (rule.action_config?.cta_button_text || rule.action_config?.done_button_text || "Click here").substring(0, 20);
+      const directMsgs = rule.action_config?.messages || [];
+      const directRandomMsg = directMsgs.length > 0 ? directMsgs[Math.floor(Math.random() * directMsgs.length)] : undefined;
+      const dmText = parseSpintax(
+        ctaRandomMsg ||
+        directRandomMsg ||
+        rule.action_config?.message ||
+        "Hey! Tap the button below and I will share the link in just a moment."
+      );
+      const dmLink: string | undefined = undefined;
+      const msgPayloadExtras: Record<string, unknown> = {
+        quick_replies: [{
+          content_type: "text",
+          title: ctaBtnText,
+          payload: ("AUTO:" + ctaTokenId),
+        }],
+      };
+      console.log("[Webhook] Mode B CTA:", ctaBtnText, "token=" + ctaTokenId, "require_follow=" + (rule.action_config?.require_follow || false));
       
-      // Add a short 1.5-3 second delay — DM comes right after the public reply
+      // Add a short 1.5-3 second delay Ã¢â‚¬â€ DM comes right after the public reply
       const dmDelayMs = randomGaussianDelayMs(1.5, 3) + getSleepCycleDelayMs(undefined, antiBotEnabled);
       console.log(`[Webhook] Scheduling private reply DM in ${dmDelayMs / 1000}s for comment ${commentId}`);
 
@@ -1044,6 +1103,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
         text: dmText, 
         link: dmLink, 
         button_label: rule.action_config?.button_label,
+        ...(msgPayloadExtras || {}),
       };
 
       // Generate idempotency key to prevent duplicate messages on webhook retries
@@ -1051,7 +1111,8 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
       const enqueueResult = await enqueueViaBackend({
         accountId: rule.account_id || pageAccount?.id,
         userId: rule.user_id,
-        recipientId: commentId,          // comment_id — NOT the user's IG ID
+        platform,
+        recipientId: commentId,          // comment_id Ã¢â‚¬â€ NOT the user's IG ID
         messagePayload: msgPayload,
         messageType: "private_reply",    // Uses recipient: { comment_id } format
         automationRuleId: rule.id,
@@ -1061,7 +1122,7 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
 
       // Fallback: if backend worker is down, send directly
       if (enqueueResult.error && !enqueueResult.queued) {
-        console.warn(`[Webhook] Backend enqueue failed — sending Private Reply directly via Meta API`);
+        console.warn(`[Webhook] Backend enqueue failed Ã¢â‚¬â€ sending Private Reply directly via Meta API`);
         try {
           const privateReplyBody: any = {
             recipient: { comment_id: commentId },
@@ -1082,19 +1143,19 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           );
           const dmData = await dmRes.json();
           if (!dmRes.ok) {
-            console.error(`[Webhook] ❌ Direct Private Reply failed: ${JSON.stringify(dmData)}`);
+            console.error(`[Webhook] Ã¢ÂÅ’ Direct Private Reply failed: ${JSON.stringify(dmData)}`);
           } else {
-            console.log(`[Webhook] ✅ Private Reply sent directly`);
+            console.log(`[Webhook] Ã¢Å“â€¦ Private Reply sent directly`);
           }
         } catch (e: any) {
-          console.error(`[Webhook] ❌ Direct Private Reply error: ${e.message}`);
+          console.error(`[Webhook] Ã¢ÂÅ’ Direct Private Reply error: ${e.message}`);
         }
       } else {
-        console.log(`[Webhook] ✅ Private Reply DM queued with ${dmDelayMs / 1000}s delay`);
+        console.log(`[Webhook] Ã¢Å“â€¦ Private Reply DM queued with ${dmDelayMs / 1000}s delay`);
       }
     }
 
-    // ── HIDE comment ─────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ HIDE comment Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
     if (shouldHide) {
       try {
         console.log(`[Webhook] Hiding comment ${commentId}`);
@@ -1104,21 +1165,21 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
           body: JSON.stringify({ is_hidden: true, access_token: token }),
         });
       } catch (e: any) {
-        console.error(`[Webhook] ❌ Hide comment error: ${e.message}`);
+        console.error(`[Webhook] Ã¢ÂÅ’ Hide comment error: ${e.message}`);
       }
     }
 
-    // Update trigger count — use SQL increment to avoid race condition
+    // Update trigger count Ã¢â‚¬â€ use SQL increment to avoid race condition
     // (reading old value then writing +1 loses increments under concurrency)
     await supabase.rpc("increment_trigger_count", { rule_id: rule.id }).catch(() => {
-      // Fallback if RPC doesn't exist yet — still better than nothing
+      // Fallback if RPC doesn't exist yet Ã¢â‚¬â€ still better than nothing
       supabase.from("automation_rules").update({
         trigger_count: (rule.trigger_count || 0) + 1,
         last_triggered: new Date().toISOString(),
       }).eq("id", rule.id);
     });
 
-    console.log(`[Webhook] ✅ Rule "${rule.name}" executed.`);
+    console.log(`[Webhook] Ã¢Å“â€¦ Rule "${rule.name}" executed.`);
     
     // Successfully processed a rule for this comment.
     // Stop evaluating other rules to prevent multiple DMs/replies for the same comment.
@@ -1126,19 +1187,21 @@ async function processCommentEvent(supabase: any, payload: any, pageId: string) 
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Enqueue message via Backend Send Queue (Compliance Pipeline)
 // Replaces direct Meta API calls. All messages now go through:
-// Compliance Check → Rate Limiter → Send Queue → Meta API
-// ─────────────────────────────────────────────────────────────
+// Compliance Check Ã¢â€ â€™ Rate Limiter Ã¢â€ â€™ Send Queue Ã¢â€ â€™ Meta API
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 async function enqueueViaBackend(opts: {
   accountId: string;
   userId: string;
+  platform?: string;
   recipientId: string;
   messagePayload: { text: string; link?: string; button_label?: string; quick_replies?: any[]; postback_button?: { title: string; payload: string } };
   messageType: string;
   automationRuleId?: string;
-  scheduledSendAt?: string;   // ISO8601 — when to actually send (enables delays)
+  correlationId?: string;
+  scheduledSendAt?: string;   // ISO8601 Ã¢â‚¬â€ when to actually send (enables delays)
   idempotencyKey?: string;    // Prevents duplicate messages on webhook retries
 }) {
   try {
@@ -1156,7 +1219,7 @@ async function enqueueViaBackend(opts: {
     if (data.blocked) {
       console.log(`[Webhook] Message blocked by compliance: ${data.blockReason}`);
     } else if (data.queued) {
-      console.log(`[Webhook] ✅ Message enqueued: queue=${data.queueId}`);
+      console.log(`[Webhook] Ã¢Å“â€¦ Message enqueued: queue=${data.queueId}`);
     } else {
       console.warn(`[Webhook] Enqueue returned unexpected result:`, data);
     }
@@ -1169,9 +1232,9 @@ async function enqueueViaBackend(opts: {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Signature verification
-// ─────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 function verifySignature(body: string, signature: string): boolean {
   // SECURITY: Signature verification is mandatory in production.
   const secrets = [
@@ -1180,14 +1243,14 @@ function verifySignature(body: string, signature: string): boolean {
   ].filter(Boolean) as string[];
 
   if (secrets.length === 0) {
-    console.warn("[Webhook] No META_APP_SECRET set — REJECTING webhook (set META_APP_SECRET in env)");
+    console.warn("[Webhook] No META_APP_SECRET set Ã¢â‚¬â€ REJECTING webhook (set META_APP_SECRET in env)");
     if (process.env.NODE_ENV === "production") return false;
     console.warn("[Webhook] Allowing unsigned webhook in development mode ONLY");
     return true;
   }
 
   if (!signature) {
-    console.warn("[Webhook] No signature header received — rejecting");
+    console.warn("[Webhook] No signature header received Ã¢â‚¬â€ rejecting");
     return false;
   }
 
@@ -1210,4 +1273,38 @@ function verifySignature(body: string, signature: string): boolean {
   }
 
   return false; // No secret matched
+}
+
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// Automation step logger Ã¢â‚¬â€ writes to automation_executions table.
+// Never throws Ã¢â‚¬â€ observability must not break the automation.
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+async function logAutomationStep(
+  supabase: any,
+  params: {
+    correlationId: string;
+    accountId: string;
+    ruleId: string;
+    platform: string;
+    step: string;
+    status: "ok" | "error" | "skipped";
+    detail?: Record<string, unknown>;
+    errorMessage?: string;
+  }
+): Promise<void> {
+  try {
+    await supabase.from("automation_executions").insert({
+      correlation_id: params.correlationId,
+      account_id: params.accountId,
+      rule_id: params.ruleId,
+      platform: params.platform,
+      step: params.step,
+      status: params.status,
+      detail: params.detail || null,
+      error_message: params.errorMessage || null,
+    });
+  } catch (e: any) {
+    // Log to console but never throw Ã¢â‚¬â€ observability must not break automation
+    console.warn(`[Webhook] logAutomationStep failed for step=${params.step}: ${e.message}`);
+  }
 }
