@@ -164,12 +164,12 @@ async function persistState(accountId, state) {
 function getTypingDelay(messageText) {
     const len = messageText.length;
     if (len < 150)
-        return 1000; // 1s for short messages
+        return 500; // 0.5s for short messages
     if (len < 300)
-        return 2000; // 2s for medium messages
+        return 1000; // 1s for medium messages
     if (len < 500)
-        return 3000; // 3s for longer messages
-    return Math.min(5000, 3000 + Math.floor((len - 500) / 100) * 500); // Max 5s
+        return 1500; // 1.5s for longer messages
+    return Math.min(2000, 1500 + Math.floor((len - 500) / 200) * 250); // Max 2s
 }
 // ─── Update account rate limit config ────────────────────────────────────────
 // Called from admin/settings UI.

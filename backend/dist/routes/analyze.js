@@ -317,6 +317,8 @@ Return JSON:
   "engagementRate": "${realData?.engagementRate || 0}%",
   "benchmark": "Is this ER actually good for the current algorithm in the ${niche} niche? Be honest.",
   "followerCount": "${realData?.followers?.toLocaleString() || "Unknown"}",
+  "followingCount": "${realData?.following?.toLocaleString() || "Unknown"}",
+  "mediaCount": "${realData?.mediaCount?.toLocaleString() || "Unknown"}",
   "avgLikes": "${realData?.avgLikes || "Unknown"}",
   "avgComments": "${realData?.avgComments || "Unknown"}",
   "postsAnalyzed": ${realData?.posts?.length || 0},
@@ -337,7 +339,19 @@ Return JSON:
   "content_gaps": ["Highly specific topic gap in their niche they aren't covering", "Another gap"],
   "viral_hook_suggestions": ["Exact script for Hook 1 (Hinglish/English depending on language)", "Exact script for Hook 2", "Exact script for Hook 3"],
   "overallScore": 75,
-  "topRecommendation": "The single most brutal, actionable change they need to make right now."
+  "topRecommendation": "The single most brutal, actionable change they need to make right now.",
+  "profileMakeover": {
+    "before": {
+      "name": "Current generic or bad name example (e.g., Karan)",
+      "bio": "Their current bio or a generic bad bio example (e.g., Foodie 🍔 | Dreamer ✨ | Traveller ✈️\\nLiving my best life ❤️)",
+      "flaws": ["Generic", "No Value", "No Reason To Follow"]
+    },
+    "after": {
+      "name": "Optimized Name | Niche (e.g., Aditya | Instagram Growth Coach)",
+      "bio": "Optimized Bio line 1\\nOptimized Bio line 2\\nOptimized Bio line 3",
+      "benefits": ["Clear", "Valuable", "Follow-Worthy"]
+    }
+  }
 }`;
         const llmResult = await (0, llm_1.callLLM)({ userId, endpoint: "audit", prompt, systemPrompt });
         const auditData = extractJSON(llmResult.text) || { raw: llmResult.text };
@@ -1060,7 +1074,7 @@ Return ONLY a valid JSON object. No explanation, no markdown wrappers.`;
                 "Thursday": "9:00 AM IST", "Friday": "6:30 PM IST", "Saturday": "10:00 AM IST",
                 "Sunday": "11:00 AM IST",
             };
-            return `Generate exactly 1 highly realistic, publication-ready post (#${postNumber}/28) for ${platform} in the niche "${effectiveNiche}".
+            return `Generate exactly 1 highly realistic, publication-ready post (#${postNumber}/7) for ${platform} in the niche "${effectiveNiche}".
       
 CREATOR PROFILE: ${userContext}
 WEEK ${wd.week} THEME: "${wd.theme}"
@@ -1074,20 +1088,12 @@ ${compContext}
 
 CRITICAL RULES:
 1. NO PLACEHOLDERS — every word must be real, usable content. No [brackets] allowed.
-2. STRICT UNIQUE ANGLE: You MUST use the exact Required Angle/Framework ("${angle}"). Do not use generic lists like "3 tools" unless the angle specifically calls for it.
-3. BAN GENERIC ADVICE: Do NOT suggest extremely basic, outdated tools or advice that everyone knows (e.g., Canva, Hootsuite, Google Analytics, "post consistently", "use hashtags"). Suggest highly specific, modern, 2026-relevant tools, AI software, or hyper-niche strategies.
-4. Caption must be 100+ words with a strong hook opening, specific value points, and a clear CTA.
-5. Script must be word-for-word what the creator says to camera — natural spoken ${lang}.
-6. Hook must stop the scroll in under 2 seconds — use curiosity, controversy, or relatable pain.
-7. Each tip/point in the script must be SPECIFIC — not generic advice.
-
-FEW-SHOT EXAMPLE of a GOOD hook (${lang}):
-${isHindi
-                ? '"Mujhe 3 saal lage ye samajhne mein ki Instagram pe followers se zyada important hai engagement rate"'
-                : '"I spent 3 years figuring out why my 50K followers were getting less reach than accounts with 5K"'}
-
-FEW-SHOT EXAMPLE of a BAD hook (REJECTED):
-"[Your Name] shares [Number] tips about [Topic]" ← THIS WILL BE REJECTED
+2. STRICT UNIQUE ANGLE: You MUST use the exact Required Angle/Framework ("${angle}").
+3. BAN GENERIC ADVICE: Do NOT suggest extremely basic, outdated tools or advice that everyone knows. Provide DIRECT VALUABLE ANSWERS to specific problems. Do not waste the user's time.
+4. DYNAMIC & ENGAGING STRUCTURE: Do NOT use a generic 'firstly, secondly, thirdly' (pehle, doosra, teesra) format every time. Vary the script structure based on the Required Angle. Use storytelling, rapid-fire facts, contrarian statements, or direct problem-solving. The script must feel natural, highly engaging, and not like a boring list.
+5. 20-SECOND SCRIPT LIMIT: The spoken script must take exactly 20 seconds to speak at a normal pace (around 50-60 words total). Keep it punchy, fast-paced, and zero fluff.
+6. SCROLL-STOPPING HOOK: The hook MUST evoke strong FOMO, extreme curiosity, or agitate a painful problem. No generic "Hello guys".
+7. The CTA must be very specific, offering a lead magnet or detailed guide in DMs to drive follows and engagement.
 
 Your output must be a single JSON object:
 {
@@ -1105,10 +1111,10 @@ Your output must be a single JSON object:
   "b_roll_suggestions": ["Specific B-roll shot 1 needed", "B-roll shot 2", "B-roll shot 3"],
   "music_suggestion": "Specific trending audio name or type of background music for this post",
   "script": {
-    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — what creator says to camera, word for word",
-    "scene2_problem": "Exact spoken words in ${lang} explaining the problem/pain point [0:03-0:15] — relatable, emotional",
-    "scene3_solution": "Exact spoken words in ${lang} delivering 3 specific actionable tips [0:15-0:45] — concrete, not generic",
-    "scene4_cta": "Exact spoken words in ${lang} for the CTA [0:45-0:60] — compelling reason to follow/save/share",
+    "scene1_hook": "Exact spoken words in ${lang} for the first 3 seconds — direct FOMO or extreme curiosity hook related to ${effectiveNiche}",
+    "scene2_problem": "Add 1 line of context or agitate the problem further (optional, keep it brief)",
+    "scene3_solution": "Exact spoken words in ${lang} delivering the core value/solution. Use a dynamic structure (story, rapid-fire, contrarian fact) — concrete, hyper-specific to the angle '${angle}', NOT generic",
+    "scene4_cta": "Exact spoken words in ${lang} for the CTA — compelling lead magnet offer in DMs",
     "voiceover_notes": "Detailed instructions: tone (excited/serious/casual), speed (fast/medium), energy level, emotional shifts, pauses",
     "text_overlays": ["Bold text for hook scene", "Tip 1 text overlay", "Tip 2 text overlay", "CTA text overlay"],
     "visual_directions": ["Scene 1: Close-up face, surprised expression", "Scene 2: Screen recording showing the problem", "Scene 3: Split screen with examples", "Scene 4: Point at camera + text overlay"]
@@ -1192,7 +1198,7 @@ CRITICAL REMINDER: Zero [brackets]. Every word real and ready to record.`;
         const rawTargetER = ownData ? (ownData.engagementRate ?? 0) * 1.3 : 3.5;
         const targetER = Math.min(30, Math.max(3, rawTargetER)).toFixed(1);
         const metaPrompt = `Return ONLY valid JSON for ${effectiveNiche} ${platform} content strategy (replace placeholders with real values):
-{"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":30,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":25,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":15,"examples":["idea1"]},{"pillar":"ACTUAL pillar 5 - Community/BTS","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 28 posts in 3 days for ${effectiveNiche} creator - equipment, outfit changes, shooting order, location changes","postingSchedule":{"frequency":"7 posts/week (daily posting)","bestDays":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"bestTimes":{"Monday":"8:30 AM IST","Tuesday":"12:30 PM IST","Wednesday":"7:00 PM IST","Thursday":"9:00 AM IST","Friday":"6:30 PM IST","Saturday":"10:00 AM IST","Sunday":"11:00 AM IST"},"reason":"Why these specific times work for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"7/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}","savesTarget":"Target save rate per post","shareTarget":"Target shares per week"}}`;
+"contentPillars":[{"pillar":"ACTUAL pillar 1 for ${effectiveNiche}","percentage":30,"examples":["idea1","idea2","idea3"]},{"pillar":"ACTUAL pillar 2","percentage":25,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 3","percentage":20,"examples":["idea1","idea2"]},{"pillar":"ACTUAL pillar 4","percentage":15,"examples":["idea1"]},{"pillar":"ACTUAL pillar 5 - Community/BTS","percentage":10,"examples":["idea1"]}],"batchingStrategy":"How to shoot all 7 posts in 1 day for ${effectiveNiche} creator - equipment, outfit changes, shooting order, location changes","postingSchedule":{"frequency":"7 posts/week (daily posting)","bestDays":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],"bestTimes":{"Monday":"8:30 AM IST","Tuesday":"12:30 PM IST","Wednesday":"7:00 PM IST","Thursday":"9:00 AM IST","Friday":"6:30 PM IST","Saturday":"10:00 AM IST","Sunday":"11:00 AM IST"},"reason":"Why these specific times work for Indian ${effectiveNiche} audience"},"kpis":{"targetER":"${targetER}%","postingFrequency":"7/week","growthTarget":"Realistic 30-day target for ${effectiveNiche}","savesTarget":"Target save rate per post","shareTarget":"Target shares per week"}}`;
         let metaData = { contentPillars: [], postingSchedule: { bestDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], bestTimes: { "Monday": "8:30 AM IST" } }, kpis: { targetER: targetER + "%", postingFrequency: "7/week", growthTarget: "1000+ followers/month" } };
         try {
             const metaRes = await (0, llm_1.callLLM)({ userId, endpoint: "pipeline_meta", prompt: metaPrompt, systemPrompt });

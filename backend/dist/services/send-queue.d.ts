@@ -14,14 +14,18 @@ export interface EnqueueInput {
     recipientId: string;
     messagePayload: MessagePayload;
     messageType: "dm" | "comment_reply" | "private_reply" | "broadcast";
+    platform?: string;
     automationRuleId?: string;
+    correlationId?: string;
     messageTag?: string;
     priority?: number;
     scheduledSendAt?: string;
+    idempotencyKey?: string;
 }
 export interface MessagePayload {
     text: string;
     link?: string;
+    button_label?: string;
     attachment?: {
         type: string;
         payload: Record<string, unknown>;
@@ -31,6 +35,10 @@ export interface MessagePayload {
         title: string;
         payload: string;
     }>;
+    postback_button?: {
+        title: string;
+        payload: string;
+    };
 }
 export interface EnqueueResult {
     queued: boolean;

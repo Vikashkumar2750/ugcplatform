@@ -20,6 +20,7 @@ const send_queue_1 = require("./services/send-queue");
 const rate_limiter_1 = require("./services/rate-limiter");
 const publish_youtube_1 = require("./services/publish-youtube");
 const publish_linkedin_1 = require("./services/publish-linkedin");
+const crypto_1 = require("./services/crypto");
 // ─────────────────────────────────────────────
 // Config validation
 // ─────────────────────────────────────────────
@@ -294,9 +295,9 @@ app.post("/trigger/refresh-tokens", requireWorkerSecret, async (_req, res) => {
     res.json({ refreshed: count });
 });
 // ─────────────────────────────────────────────
-// CRON 1: Publish scheduled posts every minute
+// CRON 1: Publish scheduled posts every 15 seconds
 // ─────────────────────────────────────────────
-node_cron_1.default.schedule("* * * * *", async () => {
+node_cron_1.default.schedule("*/15 * * * * *", async () => {
     const count = await publishScheduledPosts();
     if (count > 0)
         console.log(`[${new Date().toISOString()}] Published ${count} posts`);
@@ -316,14 +317,21 @@ node_cron_1.default.schedule("*/30 * * * * *", async () => {
     await processUnhandledWebhookEvents();
 });
 // ─────────────────────────────────────────────
-// CRON 4: Process outbound message queue every 5 seconds
+// CRON 4: Process outbound message queue every 2 seconds
 // This is the ONLY code path that sends messages to Meta API.
 // ─────────────────────────────────────────────
-node_cron_1.default.schedule("*/5 * * * * *", async () => {
+console.log(`[SendQueue] ✅ scheduler started — processMessageQueue runs every 2 seconds`);
+let queueCycleCount = 0;
+node_cron_1.default.schedule("*/2 * * * * *", async () => {
     try {
+        queueCycleCount++;
         const sent = await (0, send_queue_1.processMessageQueue)();
         if (sent > 0)
             console.log(`[${new Date().toISOString()}] SendQueue: processed ${sent} messages`);
+        // DIAGNOSTIC: heartbeat every ~30 seconds (15 cycles × 2s = 30s)
+        if (queueCycleCount % 15 === 0) {
+            console.log(`[SendQueue] 💓 heartbeat — cycle=${queueCycleCount} time=${new Date().toISOString()}`);
+        }
     }
     catch (err) {
         console.error(`[SendQueue] Cron error: ${err.message}`);
@@ -361,9 +369,8 @@ async function publishScheduledPosts() {
     const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { data: posts, error } = await supabase
         .from("scheduled_posts")
-        .select("*, connected_accounts(access_token, platform_user_id, page_id)")
+        .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
         .or(`and(status.eq.scheduled,scheduled_at.lte.${now}),and(status.eq.publishing,updated_at.lte.${tenMinsAgo})`)
-        .order("scheduled_at", { ascending: true })
         .order("scheduled_at", { ascending: true })
         .limit(10);
     if (error || !posts?.length)
@@ -423,9 +430,16 @@ async function publishScheduledPosts() {
     return publishedCount;
 }
 async function publishPost(post) {
-    const token = post.connected_accounts?.access_token;
+    let token = post.connected_accounts?.access_token;
     if (!token)
         throw new Error("No access token found for account");
+    // Decrypt token if it's encrypted
+    try {
+        token = (0, crypto_1.decrypt)(token);
+    }
+    catch {
+        // Token might not be encrypted yet (pre-migration) — use as-is
+    }
     switch (post.platform) {
         case "instagram":
             return publishInstagramPost(post, token);
@@ -495,12 +509,14 @@ async function waitForVideoUpload(containerId, token, maxAttempts = 12) {
     throw new Error("Video upload timed out");
 }
 async function publishFacebookPost(post, token) {
-    const pageId = post.connected_accounts?.page_id;
+    // Use page_id, fallback to platform_user_id (for Facebook, they're the same from OAuth callback)
+    const pageId = post.connected_accounts?.page_id || post.connected_accounts?.platform_user_id;
+    if (!pageId)
+        throw new Error("No Facebook Page ID found for account");
     const isVideo = post.content_type === "reel" || post.content_type === "video";
-    const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : undefined;
-    if (!mediaUrl)
-        throw new Error("Media URL is required");
-    if (isVideo) {
+    const mediaUrl = post.media_urls?.length > 0 ? post.media_urls[0] : (post.media_url || undefined);
+    // Video / Reel
+    if (isVideo && mediaUrl) {
         const body = {
             description: post.caption || "",
             file_url: mediaUrl,
@@ -512,11 +528,14 @@ async function publishFacebookPost(post, token) {
             body: JSON.stringify(body),
         });
         const data = await res.json();
+        if (data.error)
+            throw new Error(`Facebook video post failed: ${data.error.message}`);
         if (!data.id)
             throw new Error(`Facebook video post failed: ${JSON.stringify(data)}`);
         return data.id;
     }
-    else {
+    // Photo post
+    if (mediaUrl) {
         const body = {
             message: post.caption || "",
             url: mediaUrl,
@@ -528,10 +547,28 @@ async function publishFacebookPost(post, token) {
             body: JSON.stringify(body),
         });
         const data = await res.json();
-        if (!data.id)
+        if (data.error)
+            throw new Error(`Facebook photo post failed: ${data.error.message}`);
+        if (!data.id && !data.post_id)
             throw new Error(`Facebook photo post failed: ${JSON.stringify(data)}`);
-        return data.id;
+        return data.post_id || data.id;
     }
+    // Text-only post (no media required)
+    const body = {
+        message: post.caption || "",
+        access_token: token,
+    };
+    const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (data.error)
+        throw new Error(`Facebook text post failed: ${data.error.message}`);
+    if (!data.id)
+        throw new Error(`Facebook text post failed: ${JSON.stringify(data)}`);
+    return data.id;
 }
 // ─────────────────────────────────────────────
 // Core: Refresh Expiring Tokens
@@ -850,7 +887,11 @@ async function handleCommentDMTrigger(event) {
 }
 async function handleMessageDMTrigger(event) {
     const payload = event.event_data || {};
-    const messageText = (payload.text || payload.message || "").toLowerCase();
+    // Check all possible payload locations (matching frontend webhook handler):
+    // quick_reply.payload > postback.payload > text > message
+    const qrPayload = payload.quick_reply?.payload || payload.message?.quick_reply?.payload || "";
+    const pbPayload = payload.postback?.payload || "";
+    const messageText = (qrPayload || pbPayload || payload.text || payload.message || "").toLowerCase();
     const senderId = payload.sender?.id || payload.sender_id;
     const pageId = payload.recipient?.id || payload.recipient_id;
     if (!messageText || !senderId || !pageId)
@@ -862,28 +903,49 @@ async function handleMessageDMTrigger(event) {
             return arr;
         return "";
     };
-    // 1. Check for 2-step follower workaround ("DONE" reply)
+    // ── 1. Check for "DONE" reply (require_follow completion) ──────────
+    // Must run FIRST before keyword matching.
     if (messageText.includes("done")) {
-        const { data: recentLog } = await supabase
-            .from("dm_trigger_log")
-            .select("automation_id, id")
-            .eq("sender_id", senderId)
-            .eq("page_id", pageId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (recentLog) {
+        let ruleId;
+        // Check if message contains rule ID (from postback button: "done:<rule_id>")
+        if (messageText.startsWith("done:")) {
+            ruleId = messageText.split("done:")[1]?.trim();
+        }
+        // Fallback: check dm_trigger_log for the most recent rule for this sender
+        if (!ruleId) {
+            const { data: recentLog } = await supabase
+                .from("dm_trigger_log")
+                .select("automation_id, id")
+                .eq("sender_id", senderId)
+                .eq("page_id", pageId)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            ruleId = recentLog?.automation_id;
+        }
+        // Fallback 2: check processed_comments (for comment-triggered flows)
+        if (!ruleId) {
+            const { data: recentComment } = await supabase
+                .from("processed_comments")
+                .select("rule_id")
+                .eq("commentor_id", senderId)
+                .order("processed_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            ruleId = recentComment?.rule_id;
+        }
+        if (ruleId) {
             const { data: rule } = await supabase
                 .from("automation_rules")
                 .select("*")
-                .eq("id", recentLog.automation_id)
+                .eq("id", ruleId)
                 .single();
             if (rule && rule.action_config?.require_follow) {
                 let dmText = pickRandom(rule.action_config?.messages) || rule.action_config?.message || "Here is your link!";
                 if (dmText && !dmText.includes("STOP"))
                     dmText += "\n\n[Reply STOP to opt-out]";
                 try {
-                    // Send Main DM
+                    // Send Main DM with the actual content/link
                     await (0, send_queue_2.enqueueMessage)({
                         accountId: rule.account_id,
                         userId: rule.user_id,
@@ -908,11 +970,16 @@ async function handleMessageDMTrigger(event) {
                             scheduledSendAt: scheduledAt,
                         });
                     }
+                    // Update trigger count
+                    await supabase.from("automation_rules").update({
+                        trigger_count: (rule.trigger_count || 0) + 1,
+                        last_triggered: new Date().toISOString(),
+                    }).eq("id", rule.id);
                 }
                 catch (err) {
                     console.error(`[DM Follower Workaround] Failed: ${err.message}`);
                 }
-                return; // Workaround successfully executed, skip standard DM rules
+                return; // DONE flow handled, skip standard DM rules
             }
         }
     }

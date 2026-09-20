@@ -48,12 +48,13 @@ router.post("/enqueue", async (req, res) => {
         }
         userId = data.user.id;
     }
-    const { accountId, recipientId, messagePayload, messageType, automationRuleId, messageTag, priority, scheduledSendAt, } = req.body;
+    const { accountId, recipientId, messagePayload, messageType, platform, automationRuleId, messageTag, priority, scheduledSendAt, idempotencyKey, } = req.body;
     if (!accountId || !recipientId || !messagePayload?.text) {
         return res.status(400).json({
             error: "accountId, recipientId, and messagePayload.text are required",
         });
     }
+    console.log(`[/api/messaging/enqueue] type=${messageType} platform=${platform || 'null'} account=${accountId} recipient=${recipientId.substring(0, 20)}...`);
     try {
         const result = await (0, send_queue_1.enqueueMessage)({
             accountId,
@@ -61,10 +62,12 @@ router.post("/enqueue", async (req, res) => {
             recipientId,
             messagePayload,
             messageType: messageType || "dm",
+            platform,
             automationRuleId,
             messageTag,
             priority,
             scheduledSendAt,
+            idempotencyKey,
         });
         return res.json(result);
     }

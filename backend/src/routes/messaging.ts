@@ -55,7 +55,7 @@ router.post("/enqueue", async (req: Request, res: Response) => {
 
   const {
     accountId, recipientId, messagePayload,
-    messageType, automationRuleId, messageTag, priority, scheduledSendAt,
+    messageType, platform, automationRuleId, messageTag, priority, scheduledSendAt,
     idempotencyKey,
   } = req.body;
 
@@ -65,6 +65,8 @@ router.post("/enqueue", async (req: Request, res: Response) => {
     });
   }
 
+  console.log(`[/api/messaging/enqueue] type=${messageType} platform=${platform || 'null'} account=${accountId} recipient=${recipientId.substring(0, 20)}...`);
+
   try {
     const result = await enqueueMessage({
       accountId,
@@ -72,6 +74,7 @@ router.post("/enqueue", async (req: Request, res: Response) => {
       recipientId,
       messagePayload,
       messageType: messageType || "dm",
+      platform,
       automationRuleId,
       messageTag,
       priority,

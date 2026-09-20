@@ -21,7 +21,21 @@ const crypto_1 = require("./crypto");
 // ─── Enqueue a message ───────────────────────────────────────────────────────
 // This is the ONLY way automated messages should be sent.
 async function enqueueMessage(input) {
-    const { accountId, userId, recipientId, messagePayload, messageType, automationRuleId, messageTag, priority, scheduledSendAt, } = input;
+    const { accountId, userId, recipientId, messagePayload, messageType, platform, automationRuleId, correlationId, messageTag, priority, scheduledSendAt, idempotencyKey, } = input;
+    // ── Step 0: Idempotency check (BUG-14 fix) ──────────────────────────────
+    // If an idempotency key is provided, check if this message was already enqueued.
+    // This prevents duplicate messages when Meta retries the same webhook event.
+    if (idempotencyKey) {
+        const { data: existing } = await supabase_1.supabase
+            .from("message_queue")
+            .select("id, status")
+            .eq("idempotency_key", idempotencyKey)
+            .maybeSingle();
+        if (existing) {
+            console.log(`[SendQueue] Idempotency hit: key=${idempotencyKey} → existing queue=${existing.id} status=${existing.status}`);
+            return { queued: true, queueId: existing.id };
+        }
+    }
     // ── Step 1: Compliance check ─────────────────────────────────────────────
     const complianceInput = {
         accountId,
@@ -74,7 +88,7 @@ async function enqueueMessage(input) {
         initialStatus = isFuture ? "queued" : "ready";
     }
     // ── Step 3: Insert into queue ────────────────────────────────────────────
-    const { data, error } = await supabase_1.supabase.from("message_queue").insert({
+    const insertData = {
         account_id: accountId,
         user_id: userId,
         recipient_id: recipientId,
@@ -87,7 +101,17 @@ async function enqueueMessage(input) {
         status: initialStatus,
         priority: priority || 5,
         scheduled_send_at: scheduledSendAt || new Date().toISOString(),
-    }).select("id").single();
+    };
+    // Add optional fields
+    if (idempotencyKey)
+        insertData.idempotency_key = idempotencyKey;
+    if (platform)
+        insertData.platform = platform;
+    if (correlationId)
+        insertData.correlation_id = correlationId;
+    const { data, error } = await supabase_1.supabase.from("message_queue")
+        .insert(insertData)
+        .select("id").single();
     if (error) {
         console.error("[SendQueue] Failed to enqueue:", error.message);
         return { queued: false, blockReason: `Queue insertion failed: ${error.message}` };
@@ -104,6 +128,7 @@ async function enqueueMessage(input) {
 }
 // ─── Process message queue (called by cron every 5 seconds) ──────────────────
 async function processMessageQueue() {
+    const nowISO = new Date().toISOString();
     // First, fetch messages that are explicitly "ready" (no rate limit delay)
     const { data: readyMessages, error: readyError } = await supabase_1.supabase
         .from("message_queue")
@@ -112,16 +137,34 @@ async function processMessageQueue() {
         .order("priority", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(10);
+    // DIAGNOSTIC: Log query errors that were previously swallowed silently
+    if (readyError) {
+        console.error(`[SendQueue] ❌ readyMessages query FAILED — code=${readyError.code} message=${readyError.message} details=${readyError.details} hint=${readyError.hint}`);
+    }
     // Then fetch "queued" messages that have reached their scheduled time
     const { data: queuedMessages, error: queuedError } = await supabase_1.supabase
         .from("message_queue")
         .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
         .eq("status", "queued")
-        .lte("scheduled_send_at", new Date().toISOString())
+        .lte("scheduled_send_at", nowISO)
         .order("priority", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(10);
+    // DIAGNOSTIC: Log query errors that were previously swallowed silently
+    if (queuedError) {
+        console.error(`[SendQueue] ❌ queuedMessages query FAILED — code=${queuedError.code} message=${queuedError.message} details=${queuedError.details} hint=${queuedError.hint}`);
+    }
     const messages = [...(readyMessages || []), ...(queuedMessages || [])].slice(0, 10);
+    // DIAGNOSTIC: Log queue state every cycle (helps identify silent failures)
+    if (messages.length > 0) {
+        console.log(`[SendQueue] 📬 Found ${messages.length} messages to process (ready=${readyMessages?.length || 0}, queued=${queuedMessages?.length || 0}, now=${nowISO})`);
+        // Log each message's key fields (no tokens/secrets)
+        for (const m of messages) {
+            const hasAccount = !!m.connected_accounts;
+            const hasToken = !!(Array.isArray(m.connected_accounts) ? m.connected_accounts[0]?.access_token : m.connected_accounts?.access_token);
+            console.log(`[SendQueue]   → id=${m.id} type=${m.message_type} status=${m.status} platform=${m.platform || 'null'} account_id=${m.account_id || 'null'} scheduled=${m.scheduled_send_at} retry=${m.retry_count} has_account=${hasAccount} has_token=${hasToken}`);
+        }
+    }
     if (!messages.length)
         return 0;
     let sentCount = 0;
@@ -243,8 +286,15 @@ async function recoverStaleMessages() {
 async function sendViaMetaAPI(input) {
     const { token, igUserId, recipientId, payload, messageType, platform } = input;
     // ── 1. Public comment reply ────────────────────────────────────────────────
+    // CRITICAL: Instagram uses /{comment-id}/replies
+    //           Facebook uses  /{comment-id}/comments
+    // Using the wrong endpoint causes a Meta API error and no reply is sent.
     if (messageType === "comment_reply") {
-        const res = await fetch(`https://graph.facebook.com/v21.0/${recipientId}/replies`, {
+        const replyEndpoint = platform === "facebook"
+            ? `https://graph.facebook.com/v21.0/${recipientId}/comments`
+            : `https://graph.facebook.com/v21.0/${recipientId}/replies`;
+        console.log(`[SendQueue] Public comment reply → platform=${platform} endpoint=.../${recipientId}/${platform === "facebook" ? "comments" : "replies"}`);
+        const res = await fetch(replyEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -253,8 +303,8 @@ async function sendViaMetaAPI(input) {
             }),
         });
         const data = await res.json();
-        if (data.error)
-            return { error: `Meta comment reply: ${data.error.message}` };
+        if (!res.ok || data.error)
+            return { error: `Meta comment reply: ${data.error?.message || `HTTP ${res.status}`}` };
         return { messageId: data.id };
     }
     // ── 2. Private Reply (DM to commenter via comment_id) ─────────────────────
@@ -267,10 +317,62 @@ async function sendViaMetaAPI(input) {
             recipient: { comment_id: recipientId }, // recipientId IS the comment_id here
             message: {},
         };
-        // Meta Private Replies to comments ONLY support plain text, no templates!
+        // Build message body — support Generic Template with web_url buttons for links
         if (payload.link) {
-            // Append the link to the text since we can't use buttons
-            privateReplyBody.message.text = `${payload.text}\n\n${payload.link}`;
+            // Use Generic Template with web_url button (same as standard DM path)
+            let title = payload.text;
+            let subtitle = "";
+            if (title.length > 80) {
+                title = payload.text.substring(0, 80);
+                subtitle = payload.text.substring(80, 160);
+            }
+            privateReplyBody.message.attachment = {
+                type: "template",
+                payload: {
+                    template_type: "generic",
+                    elements: [{
+                            title,
+                            ...(subtitle ? { subtitle } : {}),
+                            default_action: { type: "web_url", url: payload.link },
+                            buttons: [{ type: "web_url", url: payload.link, title: (payload.button_label || "Open Link →").substring(0, 20) }],
+                        }],
+                },
+            };
+        }
+        else if (payload.postback_button) {
+            // Generic Template with POSTBACK button — used for require_follow flows
+            // When tapped → messaging_postbacks webhook fires with the payload
+            let title = payload.text;
+            let subtitle = "";
+            if (title.length > 80) {
+                title = payload.text.substring(0, 80);
+                subtitle = payload.text.substring(80, 160);
+            }
+            privateReplyBody.message.attachment = {
+                type: "template",
+                payload: {
+                    template_type: "generic",
+                    elements: [{
+                            title,
+                            ...(subtitle ? { subtitle } : {}),
+                            buttons: [{
+                                    type: "postback",
+                                    title: payload.postback_button.title.substring(0, 20),
+                                    payload: payload.postback_button.payload,
+                                }],
+                        }],
+                },
+            };
+            console.log(`[SendQueue] Private Reply with POSTBACK button: "${payload.postback_button.title}" payload=${payload.postback_button.payload}`);
+        }
+        else if (payload.quick_replies?.length) {
+            // Send as actual quick_replies (suggestion chips)
+            privateReplyBody.message.text = payload.text;
+            privateReplyBody.message.quick_replies = payload.quick_replies.map(qr => ({
+                content_type: qr.content_type || "text",
+                title: qr.title.substring(0, 20),
+                payload: qr.payload,
+            }));
         }
         else {
             privateReplyBody.message.text = payload.text;
@@ -301,15 +403,22 @@ async function sendViaMetaAPI(input) {
     };
     // Build message body
     if (payload.link) {
+        let title = payload.text;
+        let subtitle = "";
+        if (title.length > 80) {
+            title = payload.text.substring(0, 80);
+            subtitle = payload.text.substring(80, 160);
+        }
         // Template with button (for Instagram, use generic template)
         dmBody.message.attachment = {
             type: "template",
             payload: {
                 template_type: "generic",
                 elements: [{
-                        title: payload.text.substring(0, 80),
+                        title,
+                        ...(subtitle ? { subtitle } : {}),
                         default_action: { type: "web_url", url: payload.link },
-                        buttons: [{ type: "web_url", url: payload.link, title: "Open Link →" }],
+                        buttons: [{ type: "web_url", url: payload.link, title: payload.button_label || "Open Link →" }],
                     }],
             },
         };
@@ -325,8 +434,15 @@ async function sendViaMetaAPI(input) {
             payload: qr.payload,
         }));
     }
-    const endpoint = `https://graph.facebook.com/v21.0/me/messages`;
-    console.log(`[SendQueue] Sending DM to ${recipientId} via ${platform} (igUserId=${igUserId})`);
+    // Sender endpoint differs by platform:
+    // Instagram: /{ig-user-id}/messages (platform_user_id)
+    // Facebook:  /{page-id}/messages    (page_id)
+    // Never use /me/messages — it is ambiguous and may resolve to the wrong identity.
+    const senderId = platform === "facebook"
+        ? (input.pageId || igUserId) // Facebook DMs must use Page ID
+        : (igUserId || input.pageId); // Instagram DMs use IG User ID
+    const endpoint = `https://graph.facebook.com/v21.0/${senderId}/messages`;
+    console.log(`[SendQueue] Sending DM to ${recipientId} via platform=${platform} sender=${senderId}`);
     const res = await fetch(`${endpoint}?access_token=${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

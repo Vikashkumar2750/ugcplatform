@@ -332,13 +332,21 @@ cron.schedule("*/30 * * * * *", async () => {
 });
 
 // ─────────────────────────────────────────────
-// CRON 4: Process outbound message queue every 5 seconds
+// CRON 4: Process outbound message queue every 2 seconds
 // This is the ONLY code path that sends messages to Meta API.
 // ─────────────────────────────────────────────
+console.log(`[SendQueue] ✅ scheduler started — processMessageQueue runs every 2 seconds`);
+
+let queueCycleCount = 0;
 cron.schedule("*/2 * * * * *", async () => {
   try {
+    queueCycleCount++;
     const sent = await processMessageQueue();
     if (sent > 0) console.log(`[${new Date().toISOString()}] SendQueue: processed ${sent} messages`);
+    // DIAGNOSTIC: heartbeat every ~30 seconds (15 cycles × 2s = 30s)
+    if (queueCycleCount % 15 === 0) {
+      console.log(`[SendQueue] 💓 heartbeat — cycle=${queueCycleCount} time=${new Date().toISOString()}`);
+    }
   } catch (err: any) {
     console.error(`[SendQueue] Cron error: ${err.message}`);
   }

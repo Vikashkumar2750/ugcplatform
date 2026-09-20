@@ -189,6 +189,8 @@ export async function enqueueMessage(input: EnqueueInput): Promise<EnqueueResult
 // ─── Process message queue (called by cron every 5 seconds) ──────────────────
 
 export async function processMessageQueue(): Promise<number> {
+  const nowISO = new Date().toISOString();
+
   // First, fetch messages that are explicitly "ready" (no rate limit delay)
   const { data: readyMessages, error: readyError } = await supabase
     .from("message_queue")
@@ -198,17 +200,38 @@ export async function processMessageQueue(): Promise<number> {
     .order("created_at", { ascending: true })
     .limit(10);
 
+  // DIAGNOSTIC: Log query errors that were previously swallowed silently
+  if (readyError) {
+    console.error(`[SendQueue] ❌ readyMessages query FAILED — code=${readyError.code} message=${readyError.message} details=${readyError.details} hint=${readyError.hint}`);
+  }
+
   // Then fetch "queued" messages that have reached their scheduled time
   const { data: queuedMessages, error: queuedError } = await supabase
     .from("message_queue")
     .select("*, connected_accounts(access_token, platform_user_id, page_id, platform)")
     .eq("status", "queued")
-    .lte("scheduled_send_at", new Date().toISOString())
+    .lte("scheduled_send_at", nowISO)
     .order("priority", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(10);
 
+  // DIAGNOSTIC: Log query errors that were previously swallowed silently
+  if (queuedError) {
+    console.error(`[SendQueue] ❌ queuedMessages query FAILED — code=${queuedError.code} message=${queuedError.message} details=${queuedError.details} hint=${queuedError.hint}`);
+  }
+
   const messages = [...(readyMessages || []), ...(queuedMessages || [])].slice(0, 10);
+
+  // DIAGNOSTIC: Log queue state every cycle (helps identify silent failures)
+  if (messages.length > 0) {
+    console.log(`[SendQueue] 📬 Found ${messages.length} messages to process (ready=${readyMessages?.length || 0}, queued=${queuedMessages?.length || 0}, now=${nowISO})`);
+    // Log each message's key fields (no tokens/secrets)
+    for (const m of messages) {
+      const hasAccount = !!m.connected_accounts;
+      const hasToken = !!(Array.isArray(m.connected_accounts) ? m.connected_accounts[0]?.access_token : m.connected_accounts?.access_token);
+      console.log(`[SendQueue]   → id=${m.id} type=${m.message_type} status=${m.status} platform=${m.platform || 'null'} account_id=${m.account_id || 'null'} scheduled=${m.scheduled_send_at} retry=${m.retry_count} has_account=${hasAccount} has_token=${hasToken}`);
+    }
+  }
 
   if (!messages.length) return 0;
 
