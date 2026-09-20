@@ -420,75 +420,39 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
   // App Review as long as the account is an App Admin/Tester/Developer.
   // Endpoint: POST /{page-id}/messages with recipient: { comment_id: <comment_id> }
   // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies
+  //
+  // IMPORTANT: Meta's Private Reply API (recipient: { comment_id }) only reliably
+  // supports TEXT-ONLY messages. quick_replies, postback buttons, and generic
+  // templates are NOT supported in this API context and return "Invalid parameter".
+  // Interactive elements should only be sent AFTER the user replies (24h window)
+  // using the standard IGSID Send API (recipient: { id: <IGSID> }).
   if (messageType === "private_reply") {
-    const privateReplyBody: Record<string, unknown> = {
-      recipient: { comment_id: recipientId }, // recipientId IS the comment_id here
-      message: {} as Record<string, unknown>,
-    };
+    // Build text-only message — include link in text body if present
+    let messageText = payload.text || "";
 
-    // Build message body — support Generic Template with web_url buttons for links
-    if (payload.link) {
-      // Use Generic Template with web_url button (same as standard DM path)
-      let title = payload.text;
-      let subtitle = "";
-      if (title.length > 80) {
-        title = payload.text.substring(0, 80);
-        subtitle = payload.text.substring(80, 160);
-      }
-      (privateReplyBody.message as Record<string, unknown>).attachment = {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title,
-            ...(subtitle ? { subtitle } : {}),
-            default_action: { type: "web_url", url: payload.link },
-            buttons: [{ type: "web_url", url: payload.link, title: (payload.button_label || "Open Link →").substring(0, 20) }],
-          }],
-        },
-      };
-    } else if (payload.postback_button) {
-      // Generic Template with POSTBACK button — used for require_follow flows
-      // When tapped → messaging_postbacks webhook fires with the payload
-      let title = payload.text;
-      let subtitle = "";
-      if (title.length > 80) {
-        title = payload.text.substring(0, 80);
-        subtitle = payload.text.substring(80, 160);
-      }
-      (privateReplyBody.message as Record<string, unknown>).attachment = {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title,
-            ...(subtitle ? { subtitle } : {}),
-            buttons: [{
-              type: "postback",
-              title: payload.postback_button.title.substring(0, 20),
-              payload: payload.postback_button.payload,
-            }],
-          }],
-        },
-      };
-      console.log(`[SendQueue] Private Reply with POSTBACK button: "${payload.postback_button.title}" payload=${payload.postback_button.payload}`);
-    } else if (payload.quick_replies?.length) {
-      // Send as actual quick_replies (suggestion chips)
-      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
-      (privateReplyBody.message as Record<string, unknown>).quick_replies = payload.quick_replies.map(qr => ({
-        content_type: qr.content_type || "text",
-        title: qr.title.substring(0, 20),
-        payload: qr.payload,
-      }));
-    } else {
-      (privateReplyBody.message as Record<string, unknown>).text = payload.text;
+    // If there's a link, append it to the message text (URLs auto-link in Instagram DMs)
+    if (payload.link && !messageText.includes(payload.link)) {
+      messageText = messageText.trim() + "\n\n" + payload.link;
     }
+
+    // Log stripped interactive elements for debugging
+    if (payload.quick_replies?.length) {
+      console.log(`[SendQueue] ⚠️ Private Reply: stripped ${payload.quick_replies.length} quick_replies (NOT supported by Meta in comment_id context)`);
+    }
+    if (payload.postback_button) {
+      console.log(`[SendQueue] ⚠️ Private Reply: stripped postback_button "${payload.postback_button.title}" (NOT supported by Meta in comment_id context)`);
+    }
+
+    const privateReplyBody = {
+      recipient: { comment_id: recipientId }, // recipientId IS the comment_id here
+      message: { text: messageText },
+    };
 
     // Private Reply uses the Page ID as the sender endpoint (NOT the IG User ID)
     // Ref: https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies
     // Endpoint: POST /{page-id}/messages with recipient: { comment_id }
     const senderId = input.pageId || igUserId; // prefer page_id, fall back to igUserId
-    console.log(`[SendQueue] Private Reply → comment=${recipientId} sender=${senderId} (page=${input.pageId}, igUser=${igUserId})`);
+    console.log(`[SendQueue] Private Reply → comment=${recipientId} sender=${senderId} (page=${input.pageId}, igUser=${igUserId}) text_length=${messageText.length} has_link=${!!payload.link}`);
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${senderId}/messages?access_token=${token}`,
       {
@@ -500,9 +464,12 @@ async function sendViaMetaAPI(input: MetaSendInput): Promise<MetaSendResult> {
     const data = await res.json();
     if (!res.ok || data.error) {
       const errMsg = data.error?.message || `HTTP ${res.status}`;
-      console.error(`[SendQueue] ❌ Private Reply API error: ${errMsg}`, JSON.stringify(data));
+      const errCode = data.error?.code || "unknown";
+      const errSubcode = data.error?.error_subcode || "none";
+      console.error(`[SendQueue] ❌ Private Reply API error: code=${errCode} subcode=${errSubcode} message=${errMsg}`, JSON.stringify(data));
       return { error: `Meta Private Reply API: ${errMsg}` };
     }
+    console.log(`[SendQueue] ✅ Private Reply sent: message_id=${data.message_id} recipient_id=${data.recipient_id}`);
     return { messageId: data.message_id };
   }
 
