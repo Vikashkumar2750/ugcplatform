@@ -47,7 +47,96 @@ app.use(cors_1.corsMiddleware);
 app.use(express_1.default.json({ limit: "10mb" }));
 // ─── Health check (no auth required) ─────────
 app.get("/health", (_req, res) => {
-    res.json({ status: "ok", time: new Date().toISOString() });
+    res.json({ status: "ok", time: new Date().toISOString(), version: "2.1.0-diag" });
+});
+// ─── Queue Diagnostics (no auth — safe, no secrets) ─────────
+app.get("/health/queue", async (_req, res) => {
+    try {
+        const now = new Date().toISOString();
+        // 1. Count queue items by status
+        const { data: statusCounts, error: countErr } = await supabase
+            .from("message_queue")
+            .select("status")
+            .in("status", ["queued", "ready", "processing", "sent", "failed", "blocked"]);
+        const counts = {};
+        for (const row of (statusCounts || [])) {
+            counts[row.status] = (counts[row.status] || 0) + 1;
+        }
+        // 2. Get stale queued items (scheduled_send_at <= now)
+        const { data: staleQueued, error: staleErr } = await supabase
+            .from("message_queue")
+            .select("id, message_type, status, scheduled_send_at, platform, account_id, retry_count, created_at")
+            .eq("status", "queued")
+            .lte("scheduled_send_at", now)
+            .order("created_at", { ascending: true })
+            .limit(5);
+        // 3. Verify account relationship for first stale item
+        let accountCheck = null;
+        if (staleQueued?.length) {
+            const first = staleQueued[0];
+            if (first.account_id) {
+                const { data: acc, error: accErr } = await supabase
+                    .from("connected_accounts")
+                    .select("id, platform, platform_user_id, page_id, is_active")
+                    .eq("id", first.account_id)
+                    .maybeSingle();
+                accountCheck = {
+                    queue_account_id: first.account_id,
+                    account_found: !!acc,
+                    account_platform: acc?.platform || null,
+                    has_platform_user_id: !!acc?.platform_user_id,
+                    has_page_id: !!acc?.page_id,
+                    is_active: acc?.is_active ?? null,
+                    error: accErr?.message || null,
+                };
+            }
+            else {
+                accountCheck = { queue_account_id: null, error: "account_id is NULL on queue row" };
+            }
+        }
+        // 4. Check message_type constraint (verify private_reply is allowed)
+        const { data: typeCheck, error: typeErr } = await supabase
+            .from("message_queue")
+            .select("id")
+            .eq("message_type", "private_reply")
+            .limit(1);
+        // 5. Test the exact worker query
+        const { data: workerQueryTest, error: workerQueryErr } = await supabase
+            .from("message_queue")
+            .select("*, connected_accounts(platform_user_id, page_id, platform)")
+            .eq("status", "queued")
+            .lte("scheduled_send_at", now)
+            .limit(3);
+        res.json({
+            version: "2.1.0-diag",
+            server_time_utc: now,
+            queue_counts: counts,
+            count_query_error: countErr?.message || null,
+            stale_queued_items: (staleQueued || []).map(s => ({
+                id: s.id,
+                type: s.message_type,
+                status: s.status,
+                scheduled_send_at: s.scheduled_send_at,
+                is_past_due: new Date(s.scheduled_send_at) <= new Date(now),
+                platform: s.platform,
+                account_id: s.account_id,
+                retry_count: s.retry_count,
+            })),
+            stale_query_error: staleErr?.message || null,
+            account_relationship: accountCheck,
+            private_reply_type_allowed: typeErr ? false : true,
+            type_check_error: typeErr?.message || null,
+            worker_query_test: {
+                returned_rows: workerQueryTest?.length || 0,
+                error: workerQueryErr ? { code: workerQueryErr.code, message: workerQueryErr.message, details: workerQueryErr.details, hint: workerQueryErr.hint } : null,
+                first_row_has_account: workerQueryTest?.[0]?.connected_accounts ? true : false,
+            },
+            scheduler_heartbeat_cycle: queueCycleCount,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 // ─── API Docs (dev reference) ─────────────────
 app.get("/docs", (_req, res) => {
